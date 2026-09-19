@@ -164,8 +164,17 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     throw new Error('MAIL_DRIVER=resend requiere RESEND_API_KEY');
   }
 
-  if (env.NODE_ENV === 'production' && env.MAIL_DRIVER !== 'smtp') {
-    throw new Error('en produccion MAIL_DRIVER debe ser smtp');
+  /*
+   * En produccion no se usa `mailpit`: captura todo y no manda nada, asi que el
+   * sistema pareceria funcionar mientras ningun cliente recibe su informe.
+   *
+   * La guarda decia `!== 'smtp'` porque smtp era el UNICO driver real. Al
+   * agregar `resend` eso paso a prohibir un driver legitimo, y tumbo produccion
+   * dos veces: la API se negaba a arrancar y el sitio quedaba en 404. Lo que
+   * hay que prohibir es el driver que NO entrega, no exigir uno en concreto.
+   */
+  if (env.NODE_ENV === 'production' && env.MAIL_DRIVER === 'mailpit') {
+    throw new Error('en produccion MAIL_DRIVER no puede ser mailpit: no entrega nada');
   }
 
   // En produccion no se envia correo real por un canal sin cifrar.
