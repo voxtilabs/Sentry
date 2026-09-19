@@ -119,6 +119,14 @@ export function redisOptionsFromUrl(raw: string): RedisOptions {
           SMTP_USER: config.get('SMTP_USER', { infer: true }),
           SMTP_PASSWORD: config.get('SMTP_PASSWORD', { infer: true }),
           SMTP_SECURE: config.get('SMTP_SECURE', { infer: true }),
+          /*
+           * Faltaba esta linea y tumbo produccion. El tipo la admite opcional,
+           * asi que omitirla compila sin una queja: la llave llegaba
+           * `undefined`, la validacion de mas arriba lanzaba y Nest moria al
+           * inicializar el modulo. El contenedor SI la tenia en su entorno; lo
+           * que faltaba era leerla.
+           */
+          RESEND_API_KEY: config.get('RESEND_API_KEY', { infer: true }),
         }),
     },
     {
