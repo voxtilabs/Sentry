@@ -1,7 +1,6 @@
 import { ResendProvider } from './resend.provider';
 
 const PLANTILLA = { subject: 'Ronda {{sitio}}', text: 'Cumplimiento {{pct}}%' };
-const VARS = { sitio: 'Bodega', pct: 92 };
 /** Sin variables: para las pruebas que no miran la interpolacion. */
 const SIMPLE = { subject: 'Aviso', text: 'La ronda termino.' };
 
@@ -21,10 +20,12 @@ function proveedor(responder: (url: string, init: RequestInit) => Promise<Respon
   };
 }
 
-function cuerpoDe(llamadas: Array<{ url: string; init: RequestInit }>, i = 0): any {
+type CuerpoEnviado = Record<string, unknown>;
+
+function cuerpoDe(llamadas: Array<{ url: string; init: RequestInit }>, i = 0): CuerpoEnviado {
   const llamada = llamadas[i];
   if (!llamada) throw new Error(`no hubo llamada ${i} a Resend`);
-  return JSON.parse(String(llamada.init.body));
+  return JSON.parse(String(llamada.init.body)) as CuerpoEnviado;
 }
 
 function urlDe(llamadas: Array<{ url: string; init: RequestInit }>, i = 0) {
