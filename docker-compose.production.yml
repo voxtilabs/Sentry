@@ -166,6 +166,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_SECURE: ${SMTP_SECURE:-true}
+      # Obligatoria con MAIL_DRIVER=resend: sin ella la API se niega a arrancar.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
       # Dominios extra a los que no se despacha correo (#86). Los reservados por
       # norma (.test, .invalid, .example) ya vienen bloqueados de fabrica y NO
       # dependen de esta linea: sin ella la proteccion igual esta puesta.
