@@ -195,6 +195,14 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_SECURE: ${SMTP_SECURE}
+      # Con MAIL_DRIVER=resend la API se NIEGA A ARRANCAR sin esto, y con razon:
+      # un correo que no sale es peor callado. Pero la variable tiene que llegar
+      # al contenedor, y este archivo es quien las deja pasar: declararla solo en
+      # el entorno de Dokploy no basta.
+      #
+      # Se aprendio tumbando produccion: se puso MAIL_DRIVER=resend sin agregar
+      # esta linea, la API entro en bucle de reinicio y el sitio quedo en 404.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
       # Dominios extra a los que no se despacha correo (#86). Los reservados por
       # norma (.test de las cuentas demo) ya vienen bloqueados de fabrica y NO
       # dependen de esta linea.
