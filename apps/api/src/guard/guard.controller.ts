@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from '../auth/auth.guard';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { CreateScanDto } from './dto/create-scan.dto';
+import { FinishEarlyDto } from './dto/finish-early.dto';
 import { EnrollDeviceKeyDto } from './dto/enroll-device-key.dto';
 import { ReportEventDto } from './dto/report-event.dto';
 import { ShiftMarkDto } from './dto/shift-mark.dto';
@@ -109,6 +110,21 @@ export class GuardController {
     @Req() request: Request & { user: AuthenticatedUser },
   ) {
     return this.guardService.finishFreeRoamPatrol(request.user.sub, patrolId);
+  }
+
+  /*
+   * Terminar la ronda sin haber marcado todos los puntos (#231). Queda
+   * `incompleta` con el cumplimiento REAL: es una salida para el guardia, no
+   * una forma de fingir que recorrio.
+   */
+  @Post('patrols/:patrolId/finish-early')
+  @Permissions('patrols:execute')
+  finishPatrolEarly(
+    @Param('patrolId') patrolId: string,
+    @Body() input: FinishEarlyDto,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.finishPatrolEarly(request.user.sub, patrolId, input.reason);
   }
 
   @Post('events')

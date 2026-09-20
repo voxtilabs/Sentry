@@ -160,3 +160,119 @@ describe('cerrar un recorrido libre', () => {
     expect(String(update?.[0])).toMatch(/status = 'en_curso'/);
   });
 });
+
+describe('terminar la ronda sin completar los puntos', () => {
+  const reglas = { effective: jest.fn().mockResolvedValue({ complianceThreshold: 70 }) };
+  const servicioConReglas = (query: jest.Mock) =>
+    new GuardService(
+      { manager: { query } } as unknown as TenantContextService,
+      vacio({ enqueue: jest.fn() }) as unknown as MailQueueService,
+      reglas as unknown as RulesService,
+      vacio({ notify: jest.fn() }) as unknown as EscalationService,
+      vacio({ assertPatrolStartAllowed: jest.fn() }) as unknown as GpsPolicyService,
+      vacio({ alCerrarRonda: jest.fn() }) as unknown as EnvioInformeService,
+    );
+
+  it('NO la marca completada cuando faltan puntos: queda incompleta', async () => {
+    // Es la diferencia entre darle una salida al guardia y darle una forma de
+    // fingir que recorrio. El informe tiene que decir lo que paso.
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: RONDA, status: 'en_curso', site_id: RECINTO, expected_checkpoint_ids: ['p1', 'p2'] },
+      ])
+      .mockResolvedValueOnce([{ checkpoint_id: 'p1', anomalies: [] }])
+      .mockResolvedValueOnce(undefined);
+
+    const r = await servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA);
+
+    expect(r.status).toBe('incompleta');
+    expect(r.compliancePct).toBe(50);
+    const update = query.mock.calls.find((c) => /UPDATE patrols/.test(String(c[0])));
+    expect(String(update?.[0])).toMatch(/'incompleta'/);
+  });
+
+  it('guarda el cumplimiento REAL, no un cero de castigo', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: RONDA, status: 'en_curso', site_id: RECINTO, expected_checkpoint_ids: ['p1', 'p2', 'p3', 'p4'] },
+      ])
+      .mockResolvedValueOnce([
+        { checkpoint_id: 'p1', anomalies: [] },
+        { checkpoint_id: 'p2', anomalies: [] },
+        { checkpoint_id: 'p3', anomalies: [] },
+      ])
+      .mockResolvedValueOnce(undefined);
+
+    const r = await servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA);
+
+    expect(r.compliancePct).toBe(75);
+  });
+
+  it('si los marco TODOS queda completada, aunque cierre a mano', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: RONDA, status: 'en_curso', site_id: RECINTO, expected_checkpoint_ids: ['p1'] },
+      ])
+      .mockResolvedValueOnce([{ checkpoint_id: 'p1', anomalies: [] }])
+      .mockResolvedValueOnce(undefined);
+
+    const r = await servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA);
+
+    expect(r.status).toBe('completada');
+    expect(r.compliancePct).toBe(100);
+  });
+
+  it('no deja cerrar una ronda ya cerrada', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: RONDA, status: 'completada', site_id: RECINTO, expected_checkpoint_ids: [] },
+      ]);
+
+    await expect(
+      servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('no deja cerrar la ronda de otro guardia', async () => {
+    const query = jest.fn().mockResolvedValueOnce([]);
+
+    await expect(
+      servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('el motivo queda como novedad de la ronda, no se pierde', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: RONDA, status: 'en_curso', site_id: RECINTO, expected_checkpoint_ids: ['p1', 'p2'] },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    await servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA, 'La reja estaba cerrada');
+
+    const evento = query.mock.calls.find((c) => /INSERT INTO field_events/.test(String(c[0])));
+    expect(evento).toBeDefined();
+    expect(String(evento?.[1]?.[3])).toMatch(/La reja estaba cerrada/);
+  });
+
+  it('un motivo en blanco no crea una novedad vacia', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: RONDA, status: 'en_curso', site_id: RECINTO, expected_checkpoint_ids: ['p1'] },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(undefined);
+
+    await servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA, '   ');
+
+    expect(query.mock.calls.filter((c) => /INSERT INTO field_events/.test(String(c[0])))).toHaveLength(0);
+  });
+});

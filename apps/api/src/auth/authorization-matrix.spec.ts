@@ -178,6 +178,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   // lo lanza y lo cierra el, no el supervisor.
   secured(GuardController, 'startFreeRoamPatrol', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'finishFreeRoamPatrol', ['patrols:execute'], ['GUARDIA'], true),
+  secured(GuardController, 'finishPatrolEarly', ['patrols:execute'], ['GUARDIA'], true),
 
   secured(SupervisorController, 'listSites', ['patrols:monitor'], ['SUPERVISOR'], true),
   secured(SupervisorController, 'listRoutes', ['routes:manage'], ['SUPERVISOR'], true),
