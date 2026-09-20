@@ -67,6 +67,12 @@ const COBERTURA: Record<string, Cobertura> = {
     campo: 'text',
     nota: 'recorta y, si queda vacio, lo trata como ausente para no rechazar un panico',
   },
+  '1727647200000-PausarRonda.ts:reason': {
+    via: 'dto',
+    archivo: 'guard/dto/finish-early.dto.ts',
+    campo: 'reason',
+    nota: 'el mismo DTO cubre pausar y terminar sin completar: motivo opcional, recortado',
+  },
   '1724166000000-CreateTenantDeletions.ts:reason': {
     via: 'dto',
     archivo: 'platform-data/dto/schedule-deletion.dto.ts',

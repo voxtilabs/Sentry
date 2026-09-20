@@ -113,6 +113,30 @@ export class GuardController {
   }
 
   /*
+   * Pausar y reanudar (#231). La pausa DETIENE la traza: el servidor rechaza
+   * las posiciones de una ronda que no esta `en_curso`, asi que no depende de
+   * que el telefono deje de mandarlas.
+   */
+  @Post('patrols/:patrolId/pause')
+  @Permissions('patrols:execute')
+  pausePatrol(
+    @Param('patrolId') patrolId: string,
+    @Body() input: FinishEarlyDto,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.pausePatrol(request.user.sub, patrolId, input.reason);
+  }
+
+  @Post('patrols/:patrolId/resume')
+  @Permissions('patrols:execute')
+  resumePatrol(
+    @Param('patrolId') patrolId: string,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.resumePatrol(request.user.sub, patrolId);
+  }
+
+  /*
    * Terminar la ronda sin haber marcado todos los puntos (#231). Queda
    * `incompleta` con el cumplimiento REAL: es una salida para el guardia, no
    * una forma de fingir que recorrio.
