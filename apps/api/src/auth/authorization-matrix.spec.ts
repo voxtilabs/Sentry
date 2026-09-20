@@ -174,6 +174,10 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   secured(GuardController, 'startShift', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'endShift', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'startVoluntaryPatrol', ['patrols:execute'], ['GUARDIA'], true),
+  // El recorrido libre (#231) es del guardia, igual que la ronda voluntaria:
+  // lo lanza y lo cierra el, no el supervisor.
+  secured(GuardController, 'startFreeRoamPatrol', ['patrols:execute'], ['GUARDIA'], true),
+  secured(GuardController, 'finishFreeRoamPatrol', ['patrols:execute'], ['GUARDIA'], true),
 
   secured(SupervisorController, 'listSites', ['patrols:monitor'], ['SUPERVISOR'], true),
   secured(SupervisorController, 'listRoutes', ['routes:manage'], ['SUPERVISOR'], true),

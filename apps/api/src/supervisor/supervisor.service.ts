@@ -396,7 +396,10 @@ export class SupervisorService {
        FROM routes r
        LEFT JOIN route_checkpoints rc ON rc.route_id = r.id
        LEFT JOIN checkpoints c ON c.id = rc.checkpoint_id
-       WHERE r.site_id = $1
+       -- La ruta de recorrido libre (#231) no se planifica ni se edita: no
+       -- tiene puntos y la crea la app sola. Mostrarla aqui seria ofrecer al
+       -- supervisor una ruta vacia que no puede usar para nada.
+       WHERE r.site_id = $1 AND NOT r.is_free_roam
        GROUP BY r.id
        ORDER BY r.name`,
       [siteId],

@@ -83,6 +83,34 @@ export class GuardController {
     return this.guardService.startVoluntaryPatrol(request.user.sub, routeId);
   }
 
+  /*
+   * El recorrido libre (#231). Es la excepcion —un ruido, una alarma, una
+   * vuelta fuera de lo planificado— y por eso va aparte de la ronda
+   * voluntaria: aquella recorre una ruta de verdad, esta no tiene ninguna.
+   */
+  @Post('sites/:siteId/free-roam')
+  @Permissions('patrols:execute')
+  startFreeRoamPatrol(
+    @Param('siteId') siteId: string,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.startFreeRoamPatrol(request.user.sub, siteId);
+  }
+
+  /*
+   * Cerrarlo es parte de la funcion, no un extra: sin esto el recorrido queda
+   * abierto hasta vencer y la traza sigue registrando la posicion del guardia
+   * despues de que volvio a su puesto.
+   */
+  @Post('patrols/:patrolId/free-roam/finish')
+  @Permissions('patrols:execute')
+  finishFreeRoamPatrol(
+    @Param('patrolId') patrolId: string,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.finishFreeRoamPatrol(request.user.sub, patrolId);
+  }
+
   @Post('events')
   @Permissions('patrols:execute')
   reportEvent(
