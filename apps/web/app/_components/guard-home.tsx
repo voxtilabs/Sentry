@@ -130,25 +130,6 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
     }
   }
 
-  /** Cerrarlo es lo unico que detiene el registro de la posicion. */
-  async function cerrarRecorridoLibre(patrolId: string) {
-    setEnRecorridoLibre(true);
-    setErrorLibre(undefined);
-    try {
-      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrolId}/free-roam/finish`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!respuesta.ok) {
-        const cuerpo = (await respuesta.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(cuerpo?.message ?? 'No pudimos cerrar el recorrido');
-      }
-      window.location.reload();
-    } catch (e) {
-      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar el recorrido');
-      setEnRecorridoLibre(false);
-    }
-  }
 
   /**
    * Arranca una ronda que nadie programo.
