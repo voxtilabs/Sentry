@@ -2,7 +2,14 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 
 const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
-const ASSETS_PUBLICOS_APROBADOS = new Set(['sw-tiles.js']);
+/*
+ * `public/` se sirve tal cual y sin autenticacion: lo que se meta ahi queda
+ * expuesto a internet. Por eso la lista es explicita y no un patron.
+ *
+ * `vigilab.png` es el logo del convenio (#231), en la pantalla de ingreso.
+ * Es una marca publica —esta en vigilab.cl— y no lleva dato de nadie.
+ */
+const ASSETS_PUBLICOS_APROBADOS = new Set(['sw-tiles.js', 'vigilab.png']);
 const EXTENSIONES_OPERATIVAS = new Set([
   '.csv',
   '.env',

@@ -110,6 +110,16 @@ a { color: inherit; text-decoration: none; }
 .role-guardia { background: #18a66a; }.role-supervisor { background: #4263eb; }.role-admin { background: #8a55d7; }.role-superadmin { background: #172033; }
 .login-panel footer { align-self: end; color: #a2a7b4; font-size: .68rem; }
 
+/*
+ * El convenio con Vigilab en la pantalla de ingreso. Va en tono menor: es una
+ * credencial, no el encabezado. El logo es negro y rojo sobre transparente, y
+ * este panel es claro, asi que se lee sin caja — a diferencia de la landing,
+ * que tiene modo noche.
+ */
+.login-pie { display: flex; flex-direction: column; gap: .45rem; }
+.login-convenio { display: flex; align-items: center; gap: .5rem; }
+.login-convenio img { width: 68px; height: auto; display: block; opacity: .85; }
+
 .dashboard-shell { --blue: var(--marca-secundario, #4263eb); --blue-dark: var(--marca-secundario, #3048bc); display: grid; min-height: 100dvh; grid-template-columns: 1fr; align-content: start; background: var(--canvas); }
 .dashboard-shell[data-role="GUARDIA"] { --guardia-azul: var(--marca-secundario, #1d3ec8); background: #f2f2f7; }
 .sidebar { position: sticky; z-index: 20; top: 0; display: flex; width: 100%; min-width: 0; max-width: 100vw; height: auto; flex-wrap: wrap; align-items: center; gap: .65rem; padding: max(.8rem, env(safe-area-inset-top)) 1rem .8rem; color: white; background: var(--navy); }

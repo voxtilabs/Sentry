@@ -828,7 +828,26 @@ export function LoginScreen() {
             </form>
           ) : null}
         </div>
-        <footer>SentryCore · Acceso seguro</footer>
+        {/*
+          * El convenio con Vigilab va AQUI y no dentro del panel.
+          *
+          * La app es de marca blanca: en cuanto el tenant tiene nombre o logo
+          * propio, la marca del producto desaparece de su pantalla (ver
+          * brand.tsx). Meter a VoxTi y a Vigilab dentro del panel le pondria a
+          * cada cliente la marca de OTRA empresa de seguridad encima de la
+          * suya — justo lo contrario de lo que promete el producto.
+          *
+          * El ingreso es el unico lugar donde todavia no hay cliente: ahi la
+          * marca del producto es lo que corresponde mostrar.
+          */}
+        <footer className="login-pie">
+          <span>SentryCore · Acceso seguro</span>
+          <span className="login-convenio">
+            <span>VoxTi Labs · en convenio con</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/vigilab.png" alt="Vigilab" width={900} height={256} />
+          </span>
+        </footer>
       </section>
     </main>
   );
