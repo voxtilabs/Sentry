@@ -428,7 +428,61 @@ a { color: inherit; text-decoration: none; }
   .guard-shift-grid span { padding: .7rem .55rem; }
   .guard-shift-grid strong { overflow-wrap: anywhere; }
 }
-@media (max-width: 900px) { .sidebar nav .nav-item.active { order: -1; } }
+/*
+ * La barra del supervisor en el telefono (#231).
+ *
+ * Con siete secciones y items de ~150 px solo entraban DOS Y MEDIO en 390 px:
+ * el supervisor tenia que arrastrar de lado a ciegas para llegar a "Monitoreo
+ * en vivo", que es justo la que mira desde la calle.
+ *
+ * El icono pasa ARRIBA de la etiqueta: cada item baja a ~72 px y entran cinco.
+ * Es la misma forma que ya usa la barra del guardia, asi que las dos pantallas
+ * se leen igual.
+ *
+ * NO se reordena poniendo la activa primero, como estaba antes: la barra
+ * cambiaba de orden al navegar y el supervisor perdia la referencia de donde
+ * estaba parado. Ahora el orden es fijo y la activa se marca donde esta.
+ */
+@media (max-width: 900px) {
+  .sidebar nav { gap: .15rem; }
+
+  .nav-item {
+    flex-direction: column;
+    gap: .3rem;
+    min-width: 4.2rem;
+    /*
+     * El tope de ancho es lo que hace entrar cinco: sin el, "Puntos y
+     * etiquetas" y "Monitoreo en vivo" estiran su item a lo que mida el texto
+     * en una linea y volvemos a tener tres.
+     */
+    max-width: 5.4rem;
+    /* 56 px de alto: se toca de pie y a veces con una sola mano. */
+    min-height: 3.5rem;
+    justify-content: flex-start;
+    padding: .5rem .35rem;
+    font-size: .64rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    /* Dos lineas, cortando por palabra: "Puntos y / etiquetas". */
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  .nav-item span { width: auto; font-size: 1.1rem; }
+
+  /*
+   * La activa se marca con una barra ABAJO y no a la izquierda: el `inset 3px 0`
+   * es un borde lateral, que en una barra horizontal queda como un palito
+   * suelto entre dos items.
+   */
+  .nav-item.active,
+  .dashboard-shell[data-role="ADMIN"] .nav-item.active,
+  .dashboard-shell[data-role="SUPERVISOR"] .nav-item.active {
+    box-shadow: inset 0 -3px var(--marca-primario-texto, #fff);
+    background: rgba(255, 255, 255, .14);
+  }
+}
 @media (max-width: 700px) {
   .hours-row { grid-template-columns: 1fr 5.3rem auto 5.3rem; }
   .holiday-add { grid-template-columns: 1fr; }
