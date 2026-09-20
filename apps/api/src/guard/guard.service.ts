@@ -1325,8 +1325,16 @@ export class GuardService {
      * recinto pueden apretar el boton a la vez y solo puede quedar una ruta.
      */
     await this.tenantContext.manager.query(
-      `INSERT INTO routes (id, tenant_id, site_id, name, is_active, is_free_roam)
-       VALUES ($1, app_tenant_id(), $2, 'Recorrido libre', true, true)
+      /*
+       * `estimated_duration_min` es NOT NULL con CHECK > 0, asi que hay que
+       * darle un valor aunque aqui no signifique nada: un recorrido libre dura
+       * lo que el guardia decida. No se usa para nada —el vencimiento sale de
+       * `scheduled_end_at` y el cierre lo hace el guardia a mano—, pero
+       * omitirla hacia fallar el alta con un 500 contra PostgreSQL real.
+       */
+      `INSERT INTO routes (id, tenant_id, site_id, name, estimated_duration_min,
+                           is_active, is_free_roam)
+       VALUES ($1, app_tenant_id(), $2, 'Recorrido libre', 60, true, true)
        ON CONFLICT DO NOTHING`,
       [rutaId, siteId],
     );
