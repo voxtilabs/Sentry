@@ -20,6 +20,8 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
+import { reportarCaida } from '../observability/crash-reporter';
+
 const TAREA = 'sentrycore-traza-en-segundo-plano';
 
 /**
@@ -28,9 +30,43 @@ const TAREA = 'sentrycore-traza-en-segundo-plano';
  */
 let destino: { patrolId: string; apiBaseUrl: string } | null = null;
 
+/**
+ * La tarea puede fallar en cada tick. Se reporta UNA vez por corrida del
+ * proceso: el sistema la despierta cada pocos segundos y un fallo persistente
+ * —permiso revocado a mitad de ronda, servicio que Android no pudo levantar—
+ * llenaria la cola con veinte copias del mismo problema y gastaria la bateria
+ * del guardia en contarlo.
+ */
+let falloYaReportado = false;
+
 if (!TaskManager.isTaskDefined(TAREA)) {
   TaskManager.defineTask(TAREA, async ({ data, error }) => {
-    if (error || !destino) return;
+    if (error) {
+      /*
+       * Este es el fallo que NADIE ve (#273): ocurre con el telefono en el
+       * bolsillo y la pantalla apagada. Sin reporte, la ronda aparece sin
+       * traza y la unica explicacion disponible es "se habra ido la señal",
+       * que fue exactamente lo que creimos en Janssen.
+       */
+      if (!falloYaReportado) {
+        falloYaReportado = true;
+        try {
+          const fallo = new Error(String(error.message ?? error));
+          // El nombre es lo que agrupa en el panel: sin el, esto se mezcla con
+          // cualquier otro 'Error' y el jefe de operaciones no puede distinguir
+          // "la traza de fondo se cayo" de una pantalla rota.
+          fallo.name = 'TrazaEnSegundoPlanoError';
+          await reportarCaida(fallo, {
+            fatal: false,
+            apiUrl: destino?.apiBaseUrl,
+          });
+        } catch {
+          // Reportar no puede tumbar la tarea del sistema.
+        }
+      }
+      return;
+    }
+    if (!destino) return;
     const posiciones = (data as { locations?: Location.LocationObject[] } | null)?.locations ?? [];
     if (posiciones.length === 0) return;
 
