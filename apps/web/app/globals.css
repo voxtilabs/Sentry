@@ -22,7 +22,13 @@ a { color: inherit; text-decoration: none; }
 
 .brand { display: inline-flex; align-items: center; gap: .72rem; }
 .brand-mark { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: .78rem; background: var(--blue); }
-.brand-mark svg { width: 1.75rem; fill: none; stroke: white; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+/*
+ * El isotipo trae su propio grosor de trazo (viewBox 168) y usa currentColor.
+ * El CSS ya NO fija `stroke` ni `stroke-width`: aqui la hoja de estilo gana
+ * sobre el atributo del SVG, y forzar 2.3 sobre un dibujo de 168 unidades lo
+ * dejaba en un hilo invisible.
+ */
+.brand-mark svg { width: 1.6rem; height: auto; color: white; }
 .brand > span:last-child { display: flex; align-items: baseline; gap: .25rem; font-size: 1.25rem; letter-spacing: -.04em; }
 .brand small { color: #9ca8c8; font-size: .72em; font-weight: 600; letter-spacing: .02em; }
 
