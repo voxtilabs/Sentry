@@ -1136,3 +1136,21 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .recorrido-libre-cierre .secondary-button {
   width: 100%; min-height: var(--guardia-toque, 2.9rem); cursor: pointer;
 }
+
+/*
+ * Terminar la ronda sin completar los puntos (#231). Pide confirmacion porque
+ * no se deshace: la ronda queda `incompleta` con el cumplimiento real y eso es
+ * lo que ve el supervisor.
+ */
+.cierre-anticipado {
+  border: 1px solid var(--line); border-radius: .9rem; padding: .9rem 1rem;
+  background: var(--bg-rest, #E6E9F2);
+}
+.cierre-anticipado p { margin: 0 0 .7rem; font-size: .85rem; line-height: 1.55; }
+.cierre-anticipado label { display: grid; gap: .35rem; font-size: .78rem; margin-bottom: .7rem; }
+.cierre-anticipado label span { color: var(--text-muted, #6E7488); font-weight: 400; }
+.cierre-anticipado input { min-height: 2.75rem; padding: 0 .8rem; border: 1px solid var(--line); border-radius: .6rem; }
+.cierre-anticipado-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.cierre-anticipado-acciones .secondary-button { min-height: 2.75rem; cursor: pointer; }
+/* El destructivo se distingue por texto Y color, nunca solo por color. */
+.cierre-confirmar { border-color: var(--bad, #E23D5C); color: var(--bad-text, #A6203C); }

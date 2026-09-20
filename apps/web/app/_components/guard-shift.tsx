@@ -221,6 +221,38 @@ function Ronda({
   const [estado, setEstado] = useState<EstadoRonda>(() => estadoInicial(patrol.id));
   const [vista, setVista] = useState<Vista>('ronda');
   const [cerrandoLibre, setCerrandoLibre] = useState(false);
+  const [confirmandoCierre, setConfirmandoCierre] = useState(false);
+  const [motivoCierre, setMotivoCierre] = useState('');
+
+  /**
+   * Terminar la ronda sin haber marcado todos los puntos (#231).
+   *
+   * Pide confirmacion porque no se deshace: la ronda queda `incompleta` con el
+   * cumplimiento REAL y eso es lo que ve el supervisor en el informe. Es una
+   * salida para el guardia al que se le cerro una reja, no un atajo para
+   * terminar el turno sin recorrer.
+   */
+  async function terminarSinCompletar() {
+    setCerrandoLibre(true);
+    setErrorLibre(undefined);
+    try {
+      const cuerpo = motivoCierre.trim().length >= 3 ? { reason: motivoCierre.trim() } : {};
+      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/finish-early`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+      });
+      if (!respuesta.ok) {
+        const datos = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(datos?.message ?? 'No pudimos cerrar la ronda');
+      }
+      window.location.assign('/app/guardia');
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar la ronda');
+      setCerrandoLibre(false);
+    }
+  }
   const [errorLibre, setErrorLibre] = useState<string>();
 
   /**
@@ -928,6 +960,64 @@ function Ronda({
             estimados
           </p>
         )}
+
+        {/*
+          * Terminar sin completar (#231). Solo con puntos por marcar: en un
+          * recorrido libre no hay nada que dejar a medias, y ahi el boton de
+          * arriba ya es el que cierra.
+          */}
+        {!patrol.isFreeRoam ? (
+          <div className="recorrido-libre-cierre">
+            {confirmandoCierre ? (
+              <div className="cierre-anticipado">
+                <p>
+                  La ronda quedará <strong>incompleta</strong> con los puntos que alcanzaste a
+                  marcar. Tu supervisor lo va a ver así.
+                </p>
+                <label>
+                  ¿Por qué no pudiste terminarla? <span>(opcional)</span>
+                  <input
+                    maxLength={500}
+                    onChange={(e) => setMotivoCierre(e.target.value)}
+                    placeholder="La reja estaba cerrada"
+                    value={motivoCierre}
+                  />
+                </label>
+                <div className="cierre-anticipado-acciones">
+                  <button
+                    className="secondary-button"
+                    disabled={cerrandoLibre}
+                    onClick={() => setConfirmandoCierre(false)}
+                    type="button"
+                  >
+                    Seguir la ronda
+                  </button>
+                  <button
+                    className="secondary-button cierre-confirmar"
+                    disabled={cerrandoLibre}
+                    onClick={() => void terminarSinCompletar()}
+                    type="button"
+                  >
+                    {cerrandoLibre ? 'Cerrando…' : 'Sí, terminar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="secondary-button"
+                onClick={() => setConfirmandoCierre(true)}
+                type="button"
+              >
+                Terminar sin completar los puntos
+              </button>
+            )}
+            {errorLibre ? (
+              <p className="guard-action-error" role="alert">
+                {errorLibre}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {patrol.isFreeRoam ? (
           <div className="recorrido-libre-cierre">

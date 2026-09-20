@@ -1325,6 +1325,88 @@ export class GuardService {
     return { id: patrolId, status: 'completada' as const };
   }
 
+  /**
+   * Terminar la ronda sin haber marcado todos los puntos (#231).
+   *
+   * Pedido de terreno: el guardia sale, la ronda no se puede completar —lluvia,
+   * un acceso cerrado, lo llaman a otra cosa— y hasta ahora no tenia como
+   * cerrarla. Quedaba abierta hasta vencer a las 12 horas, impidiendole empezar
+   * otra y dejando la traza registrando su posicion.
+   *
+   * NO LA MARCA COMO COMPLETADA. Queda `incompleta` con el cumplimiento REAL:
+   * si marco un punto de dos, el informe dice 50% e incompleta. Esa es la
+   * diferencia entre darle una salida al guardia y darle una forma de fingir
+   * que recorrio. El supervisor ve exactamente lo que paso.
+   *
+   * Se pide un motivo opcional porque "la reja estaba cerrada" vale mas en el
+   * informe que un 50% sin explicacion.
+   */
+  async finishPatrolEarly(guardId: string, patrolId: string, motivo?: string) {
+    const filas = await this.tenantContext.manager.query<
+      Array<{ id: string; status: string; site_id: string; expected_checkpoint_ids: string[] }>
+    >(
+      `SELECT id, status, site_id, expected_checkpoint_ids
+         FROM patrols WHERE id = $1 AND guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    if (ronda.status !== 'en_curso') {
+      throw new ConflictException('Esta ronda ya está cerrada');
+    }
+
+    const escaneos = await this.tenantContext.manager.query<
+      Array<{ checkpoint_id: string; anomalies: ScanAnomaly[] | null }>
+    >(`SELECT checkpoint_id, anomalies FROM scans WHERE patrol_id = $1`, [patrolId]);
+
+    const reglas = await this.rules.effective({ siteId: ronda.site_id });
+    /*
+     * El MISMO calculo que usa el cierre normal. Si aca se inventara otro, dos
+     * rondas con los mismos escaneos podrian mostrar cumplimientos distintos
+     * segun como se cerraron, y el numero dejaria de significar nada.
+     */
+    const cumplimiento = computeCompliance(
+      ronda.expected_checkpoint_ids,
+      escaneos.map((e) => ({ checkpointId: e.checkpoint_id, anomalies: e.anomalies ?? [] })),
+      reglas.complianceThreshold,
+    );
+
+    await this.tenantContext.manager.query(
+      `UPDATE patrols
+          SET status = CASE WHEN $2 >= 100 THEN 'completada' ELSE 'incompleta' END,
+              closed_at = now(), compliance_pct = $2
+        WHERE id = $1 AND status = 'en_curso'`,
+      [patrolId, cumplimiento.pct],
+    );
+
+    /*
+     * El motivo va como novedad de la ronda y no como columna nueva: es texto
+     * libre del guardia, es lo mismo que ya hace `field_events`, y asi aparece
+     * en el informe junto al resto de lo que conto.
+     */
+    const limpio = motivo?.trim();
+    if (limpio) {
+      /*
+       * `criticality` en 'info' y el motivo en `text`: es una nota del guardia,
+       * no una alerta que despierte a nadie. `client_event_id` es obligatorio y
+       * unico por guardia — es la llave con que la app evita duplicar al
+       * reintentar; aca lo genera el servidor porque el evento nace del cierre.
+       */
+      await this.tenantContext.manager.query(
+        `INSERT INTO field_events
+           (tenant_id, site_id, patrol_id, guard_id, criticality, text, client_event_id)
+         VALUES (app_tenant_id(), $1, $2, $3, 'info', $4, gen_random_uuid())`,
+        [ronda.site_id, patrolId, guardId, `Ronda terminada sin completar: ${limpio}`],
+      );
+    }
+
+    return {
+      id: patrolId,
+      status: cumplimiento.pct >= 100 ? ('completada' as const) : ('incompleta' as const),
+      compliancePct: cumplimiento.pct,
+    };
+  }
+
   /** La ruta de recorrido libre del recinto; se crea la primera vez que se usa. */
   private async rutaDeRecorridoLibre(siteId: string): Promise<string> {
     const existentes = await this.tenantContext.manager.query<Array<{ id: string }>>(
