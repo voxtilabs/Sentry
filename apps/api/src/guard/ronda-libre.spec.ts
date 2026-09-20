@@ -8,6 +8,8 @@
  */
 
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import type { GpsPolicyService } from '../geo/gps-policy.service';
 import type { EnvioInformeService } from '../reports/envio-informe.service';
@@ -274,5 +276,110 @@ describe('terminar la ronda sin completar los puntos', () => {
     await servicioConReglas(query).finishPatrolEarly(GUARDIA, RONDA, '   ');
 
     expect(query.mock.calls.filter((c) => /INSERT INTO field_events/.test(String(c[0])))).toHaveLength(0);
+  });
+});
+
+describe('pausar y reanudar la ronda', () => {
+  const servicio2 = (query: jest.Mock) =>
+    new GuardService(
+      { manager: { query } } as unknown as TenantContextService,
+      vacio({ enqueue: jest.fn() }) as unknown as MailQueueService,
+      vacio({ effective: jest.fn() }) as unknown as RulesService,
+      vacio({ notify: jest.fn() }) as unknown as EscalationService,
+      vacio({ assertPatrolStartAllowed: jest.fn() }) as unknown as GpsPolicyService,
+      vacio({ alCerrarRonda: jest.fn() }) as unknown as EnvioInformeService,
+    );
+
+  it('deja constancia ANTES de cambiar el estado', async () => {
+    /*
+     * Si el INSERT fallara despues del UPDATE, la ronda quedaria `pausada` sin
+     * fila que diga desde cuando, y el informe no podria calcular el tiempo
+     * detenido. El orden importa.
+     */
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: RONDA, status: 'en_curso' }])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    await servicio2(query).pausePatrol(GUARDIA, RONDA);
+
+    const sqls = query.mock.calls.map((c) => String(c[0]));
+    const iInsert = sqls.findIndex((q) => /INSERT INTO patrol_pauses/.test(q));
+    const iUpdate = sqls.findIndex((q) => /UPDATE patrols SET status = 'pausada'/.test(q));
+    expect(iInsert).toBeGreaterThan(-1);
+    expect(iInsert).toBeLessThan(iUpdate);
+  });
+
+  it('no deja pausar una ronda que no esta en curso', async () => {
+    const query = jest.fn().mockResolvedValueOnce([{ id: RONDA, status: 'completada' }]);
+    await expect(servicio2(query).pausePatrol(GUARDIA, RONDA)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  it('no deja pausar dos veces', async () => {
+    const query = jest.fn().mockResolvedValueOnce([{ id: RONDA, status: 'pausada' }]);
+    await expect(servicio2(query).pausePatrol(GUARDIA, RONDA)).rejects.toThrow(/ya está pausada/i);
+  });
+
+  it('no deja pausar la ronda de otro guardia', async () => {
+    const query = jest.fn().mockResolvedValueOnce([]);
+    await expect(servicio2(query).pausePatrol(GUARDIA, RONDA)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('el motivo en blanco se guarda como nulo, no como cadena vacia', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: RONDA, status: 'en_curso' }])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    await servicio2(query).pausePatrol(GUARDIA, RONDA, '  ');
+
+    const insert = query.mock.calls.find((c) => /INSERT INTO patrol_pauses/.test(String(c[0])));
+    expect(insert?.[1]?.[1]).toBeNull();
+  });
+
+  it('reanudar cierra la pausa ABIERTA, no "la ultima"', async () => {
+    // Si quedaran dos abiertas, cerrar la mas reciente dejaria la otra abierta
+    // para siempre y el tiempo pausado creceria solo.
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: RONDA, status: 'pausada' }])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    const r = await servicio2(query).resumePatrol(GUARDIA, RONDA);
+
+    expect(r.status).toBe('en_curso');
+    const cierre = query.mock.calls.find((c) => /UPDATE patrol_pauses/.test(String(c[0])));
+    expect(String(cierre?.[0])).toMatch(/resumed_at IS NULL/);
+  });
+
+  it('no deja reanudar una que no esta pausada', async () => {
+    const query = jest.fn().mockResolvedValueOnce([{ id: RONDA, status: 'en_curso' }]);
+    await expect(servicio2(query).resumePatrol(GUARDIA, RONDA)).rejects.toThrow(/no está pausada/i);
+  });
+});
+
+describe('una ronda pausada sigue siendo una ronda ABIERTA', () => {
+  /*
+   * Es el agujero que casi se cuela: las consultas filtraban por
+   * ('pendiente','en_curso'), asi que al pausar la ronda desaparecia del home
+   * —el guardia creia no tener ninguna— y podia abrir otra encima.
+   */
+  const fuente = readFileSync(join(__dirname, 'guard.service.ts'), 'utf8');
+
+  it('ninguna consulta cuenta rondas abiertas sin incluir la pausada', () => {
+    const sinPausada = fuente.match(/IN \('pendiente', 'en_curso'\)(?! *,)/g) ?? [];
+    expect(sinPausada).toEqual([]);
+  });
+
+  it('y las que las cuentan, la incluyen', () => {
+    const conPausada = fuente.match(/IN \('pendiente', 'en_curso', 'pausada'\)/g) ?? [];
+    expect(conPausada.length).toBeGreaterThanOrEqual(5);
   });
 });

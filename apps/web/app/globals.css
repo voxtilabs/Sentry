@@ -1247,3 +1247,45 @@ a.stats-boton { display: inline-flex; align-items: center; }
   outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px;
 }
 .terminar-ronda-seguir:disabled, .terminar-ronda-confirmar:disabled { opacity: .6; cursor: progress; }
+
+/*
+ * Ronda pausada (#231). El aviso va arriba de todo y usa el ambar de atencion,
+ * no el rojo: no es un error, es un estado que hay que notar. Mientras esta
+ * pausada NO se registra por donde va el guardia, y creerse que si es el error
+ * caro — por eso lo dice con todas las letras.
+ */
+.ronda-pausada {
+  margin-bottom: 1rem; padding: 1.1rem;
+  border: 2px solid var(--warn, #FFA51F); border-radius: .9rem;
+  background: var(--warn-soft, #FFF6E6);
+}
+.ronda-pausada h2 {
+  margin: 0 0 .5rem; font-family: Outfit, system-ui, sans-serif;
+  font-size: 1.3rem; font-weight: 700; color: var(--warn-text, #96560A);
+}
+.ronda-pausada p { margin: 0 0 .9rem; font-size: .95rem; line-height: 1.55; color: var(--ink, #12141C); }
+.ronda-pausada-reanudar {
+  width: 100%; min-height: 3.5rem; cursor: pointer; border: 0; border-radius: .75rem;
+  background: var(--action, #3D5AFE); color: white;
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+}
+.ronda-pausada-reanudar:focus-visible { outline: 2px solid var(--ink, #12141C); outline-offset: 2px; }
+.ronda-pausada-reanudar:disabled { opacity: .6; cursor: progress; }
+
+/*
+ * Pausar va ANTES de terminar y con mas peso: es reversible y terminar no.
+ * Ofrecer primero la salida que se deshace evita que el guardia cierre una
+ * ronda que solo queria detener un rato.
+ */
+.pausar-ronda { margin-top: 1.5rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.pausar-ronda-boton {
+  width: 100%; min-height: 3.5rem; cursor: pointer; border-radius: .75rem;
+  border: 2px solid var(--warn, #FFA51F); background: transparent;
+  color: var(--warn-text, #96560A);
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1rem;
+}
+.pausar-ronda-boton:focus-visible { outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px; }
+.pausar-ronda-boton:disabled { opacity: .6; cursor: progress; }
+.pausar-ronda p { margin: .55rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--text-muted, #6E7488); text-align: center; }
+/* Sin el borde de arriba duplicado cuando ya lo puso "pausar". */
+.pausar-ronda + .terminar-ronda { margin-top: .9rem; padding-top: 0; border-top: 0; }

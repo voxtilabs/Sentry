@@ -222,6 +222,37 @@ function Ronda({
   const [vista, setVista] = useState<Vista>('ronda');
   const [cerrandoLibre, setCerrandoLibre] = useState(false);
   const [confirmandoCierre, setConfirmandoCierre] = useState(false);
+  const [pausando, setPausando] = useState(false);
+  const enPausa = patrol.status === 'pausada';
+
+  /**
+   * Pausar y reanudar la ronda (#231).
+   *
+   * La pausa DETIENE el registro de la posicion: el servidor rechaza las
+   * posiciones de una ronda que no esta en curso, asi que no depende de que el
+   * telefono deje de mandarlas. Y queda constancia: el informe muestra cuanto
+   * estuvo detenida y el supervisor la ve pausada en el monitoreo.
+   */
+  async function cambiarPausa(accion: 'pause' | 'resume') {
+    setPausando(true);
+    setErrorLibre(undefined);
+    try {
+      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/${accion}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!respuesta.ok) {
+        const datos = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(datos?.message ?? 'No pudimos cambiar la ronda');
+      }
+      window.location.assign('/app/guardia');
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cambiar la ronda');
+      setPausando(false);
+    }
+  }
   const [motivoCierre, setMotivoCierre] = useState('');
 
   /**
@@ -946,6 +977,33 @@ function Ronda({
         </p>
       ) : null}
 
+      {/*
+        * Ronda PAUSADA (#231). El aviso va arriba de todo y es imposible de
+        * pasar por alto: mientras esta pausada NO se registra por donde va el
+        * guardia, y creerse que si es el error caro.
+        */}
+      {enPausa ? (
+        <section className="ronda-pausada" role="status">
+          <h2>Ronda pausada</h2>
+          <p>
+            No se está registrando por dónde vas. Tu supervisor ve la ronda como pausada.
+          </p>
+          <button
+            className="ronda-pausada-reanudar"
+            disabled={pausando}
+            onClick={() => void cambiarPausa('resume')}
+            type="button"
+          >
+            {pausando ? 'Reanudando…' : 'Reanudar la ronda'}
+          </button>
+          {errorLibre ? (
+            <p className="guard-action-error" role="alert">
+              {errorLibre}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="guardia-cabecera">
         <p className="guardia-eyebrow">Ronda en {patrol.siteName}</p>
         <h1 className="guardia-titulo">{patrol.routeName}</h1>
@@ -1065,6 +1123,25 @@ function Ronda({
             * era como salirse, no que hacer. Para alguien poco tecnologico eso
             * es una trampa — la accion de la ronda manda, la salida acompana.
             */}
+          {/*
+            * Pausar va ANTES de terminar y con mas peso: es reversible y
+            * terminar no. Ofrecer primero la salida que se deshace evita que
+            * el guardia cierre una ronda que solo queria detener un rato.
+            */}
+          {!enPausa && !confirmandoCierre ? (
+            <div className="pausar-ronda">
+              <button
+                className="pausar-ronda-boton"
+                disabled={pausando}
+                onClick={() => void cambiarPausa('pause')}
+                type="button"
+              >
+                {pausando ? 'Pausando…' : 'Pausar la ronda'}
+              </button>
+              <p>Deja de registrarse por dónde vas hasta que la reanudes.</p>
+            </div>
+          ) : null}
+
           <div className="terminar-ronda">
             {confirmandoCierre ? (
               <div className="terminar-ronda-alerta" role="alertdialog" aria-labelledby="alerta-fin">

@@ -26,7 +26,7 @@ import {
 
 interface PatrolRow {
   id: string;
-  status: 'pendiente' | 'en_curso' | 'completada' | 'incompleta' | 'vencida';
+  status: 'pendiente' | 'en_curso' | 'pausada' | 'completada' | 'incompleta' | 'vencida';
   scheduled_start_at: Date;
   scheduled_end_at: Date;
   started_at: Date | null;
@@ -164,7 +164,11 @@ export const CONSULTA_HOME = `
         LEFT JOIN checkpoints c
           ON c.tenant_id = rc.tenant_id AND c.id = rc.checkpoint_id
         WHERE p.guard_id = $1
-          AND p.status IN ('pendiente', 'en_curso')
+          -- El estado pausada cuenta como ABIERTA (#231): sin el, la ronda
+          -- desaparece de la pantalla y el guardia cree que no tiene ninguna.
+          -- Lo mismo en el vencimiento (una pausa olvidada tiene que vencer
+          -- igual) y en la guarda de una-ronda-a-la-vez.
+          AND p.status IN ('pendiente', 'en_curso', 'pausada')
         -- Se agrupa por las CLAVES PRIMARIAS (p.id, s.id, r.id): eso habilita
         -- la dependencia funcional y deja usar cualquier columna de esas tablas.
         -- Agrupar por p.site_id no sirve: es columna de patrols, no la PK de
@@ -315,7 +319,7 @@ export class GuardService {
     )) {
       await this.tenantContext.manager.query(
         `UPDATE patrols SET status = 'vencida'
-         WHERE id = $1 AND status IN ('pendiente', 'en_curso')`,
+         WHERE id = $1 AND status IN ('pendiente', 'en_curso', 'pausada')`,
         [patrol.id],
       );
       return {
@@ -660,7 +664,7 @@ export class GuardService {
     ) {
       await this.tenantContext.manager.query(
         `UPDATE patrols SET status = 'vencida'
-         WHERE id = $1 AND status IN ('pendiente', 'en_curso')`,
+         WHERE id = $1 AND status IN ('pendiente', 'en_curso', 'pausada')`,
         [patrolId],
       );
       estado = 'vencida';
@@ -1160,7 +1164,7 @@ export class GuardService {
      */
     const abiertas = await this.tenantContext.manager.query<Array<{ id: string }>>(
       `SELECT id FROM patrols
-       WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso') LIMIT 1`,
+       WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso', 'pausada') LIMIT 1`,
       [guardId],
     );
     if (abiertas.length > 0) {
@@ -1230,7 +1234,7 @@ export class GuardService {
      */
     const abiertas = await this.tenantContext.manager.query<Array<{ id: string }>>(
       `SELECT id FROM patrols
-        WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso') LIMIT 1`,
+        WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso', 'pausada') LIMIT 1`,
       [guardId],
     );
     if (abiertas.length > 0) {
@@ -1323,6 +1327,79 @@ export class GuardService {
       [patrolId],
     );
     return { id: patrolId, status: 'completada' as const };
+  }
+
+  /**
+   * Pausar la ronda (#231).
+   *
+   * El guardia tiene que poder detenerla —lo llaman, come, entra a un
+   * subterraneo— y que quede CONSTANCIA. Sin esto solo caben dos salidas, las
+   * dos mentirosas: dejarla corriendo, y el informe acredita un tiempo en que
+   * nadie recorrio; o cerrarla incompleta, y pierde lo que llevaba marcado.
+   *
+   * LA PAUSA DETIENE LA TRAZA. Se rastrea solo mientras la ronda esta en curso,
+   * y una ronda pausada no lo esta. El estado en `pausada` es lo que hace que
+   * el servidor rechace las posiciones que llegen mientras tanto: no se confia
+   * en que el telefono deje de mandarlas.
+   */
+  async pausePatrol(guardId: string, patrolId: string, motivo?: string) {
+    const filas = await this.tenantContext.manager.query<Array<{ id: string; status: string }>>(
+      `SELECT id, status FROM patrols WHERE id = $1 AND guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    if (ronda.status === 'pausada') throw new ConflictException('Esta ronda ya está pausada');
+    if (ronda.status !== 'en_curso') {
+      throw new ConflictException('Solo se puede pausar una ronda en curso');
+    }
+
+    const limpio = motivo?.trim();
+    /*
+     * El INSERT va primero: si fallara despues de cambiar el estado, la ronda
+     * quedaria `pausada` sin fila que diga desde cuando, y el informe no
+     * podria calcular el tiempo detenido.
+     */
+    await this.tenantContext.manager.query(
+      `INSERT INTO patrol_pauses (tenant_id, patrol_id, reason)
+       VALUES (app_tenant_id(), $1, $2)`,
+      [patrolId, limpio && limpio.length >= 3 ? limpio : null],
+    );
+    await this.tenantContext.manager.query(
+      `UPDATE patrols SET status = 'pausada' WHERE id = $1 AND status = 'en_curso'`,
+      [patrolId],
+    );
+
+    return { id: patrolId, status: 'pausada' as const };
+  }
+
+  /** Reanudar: vuelve a 'en_curso' y la traza se enciende de nuevo. */
+  async resumePatrol(guardId: string, patrolId: string) {
+    const filas = await this.tenantContext.manager.query<Array<{ id: string; status: string }>>(
+      `SELECT id, status FROM patrols WHERE id = $1 AND guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    if (ronda.status !== 'pausada') throw new ConflictException('Esta ronda no está pausada');
+
+    /*
+     * Se cierra la pausa ABIERTA, no "la ultima": si por lo que sea quedaran
+     * dos, cerrar la mas reciente dejaria la otra abierta para siempre y el
+     * tiempo pausado creceria solo. El indice unico lo impide, pero la consulta
+     * no depende de que el indice exista.
+     */
+    await this.tenantContext.manager.query(
+      `UPDATE patrol_pauses SET resumed_at = now()
+        WHERE patrol_id = $1 AND resumed_at IS NULL`,
+      [patrolId],
+    );
+    await this.tenantContext.manager.query(
+      `UPDATE patrols SET status = 'en_curso' WHERE id = $1 AND status = 'pausada'`,
+      [patrolId],
+    );
+
+    return { id: patrolId, status: 'en_curso' as const };
   }
 
   /**
