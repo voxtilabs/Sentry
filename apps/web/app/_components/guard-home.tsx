@@ -34,11 +34,7 @@ export interface GuardHomeData {
     scheduledStartAt: string;
     scheduledEndAt: string;
   };
-  /**
-   * La ronda en curso es un recorrido libre (#231): no tiene puntos, asi que
-   * nada la cierra sola y el guardia necesita el boton para terminarla.
-   */
-  isFreeRoam?: boolean;
+
   /** Presupuesto de compresion de foto, resuelto por la API en la cascada del recinto. */
   photoBudget?: { targetBytes: number; maxBytes: number };
   /**
@@ -61,6 +57,12 @@ export interface GuardHomeData {
     /** Zona horaria del RECINTO. La marca de agua de la foto la usa. */
     timezone?: string;
     routeName: string;
+    /**
+     * La ronda es un recorrido libre (#231): no tiene puntos, asi que nada la
+     * cierra sola y el guardia necesita el boton para terminarla. Viene DENTRO
+     * de `patrol`, que es donde la API la pone.
+     */
+    isFreeRoam?: boolean;
     estimatedDurationMin: number;
     completedCheckpointCount: number;
     checkpoints: Array<{
@@ -443,7 +445,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
           * ronda y —lo que importa— dejando la traza registrando su posicion
           * despues de que volvio a su puesto.
           */}
-        {data.isFreeRoam ? (
+        {patrol.isFreeRoam ? (
           <div className="recorrido-libre-en-curso">
             <p>Estás en un recorrido libre. Se registra por dónde vas hasta que lo cierres.</p>
             <button
