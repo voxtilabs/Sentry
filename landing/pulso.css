@@ -273,3 +273,42 @@ footer p { margin:0; font-size:14px; color:var(--text-muted); }
 
 /* Contacto — el destino lo arma el navegador; el aspecto lo pone el sistema */
 .contacto-nota { font-size:13px; color:var(--text-muted); margin-top:16px; }
+
+
+/* ── Pie: empresa y convenio ──────────────────────────────────────────── */
+
+.marca-producto svg { height:26px; }
+
+footer .envoltorio { align-items:start; gap:32px; flex-wrap:wrap; }
+.pie-marca .pie-razon {
+  margin:12px 0 2px; font-family:Outfit, sans-serif; font-weight:700;
+  font-size:14px; letter-spacing:-.02em; color:var(--text);
+}
+.pie-marca address { margin-top:8px; font-style:normal; font-size:13px; line-height:1.6; color:var(--text-muted); }
+
+/*
+ * El logo de Vigilab va en su propia caja clara y no suelto sobre el fondo.
+ * Es negro y rojo sobre transparente: en modo noche el "VIGI" negro
+ * desapareceria. La caja no es adorno, es lo que lo hace legible en los dos
+ * modos. La regla de no ponerle recuadro al logo es para el NUESTRO.
+ */
+.pie-convenio { display:flex; flex-direction:column; gap:10px; max-width:320px; }
+.pie-convenio .rotulo {
+  font-family:'JetBrains Mono', monospace; font-size:11px; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--text-muted);
+}
+.pie-convenio a {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:fit-content; padding:12px 18px; border-radius:14px;
+  background:#FFFFFF; border:1px solid var(--border);
+}
+.pie-convenio a:focus-visible { outline:2px solid var(--action); outline-offset:2px; }
+.pie-convenio img { display:block; width:150px; height:auto; }
+.pie-convenio p { margin:0; font-size:13px; line-height:1.6; color:var(--text-muted); }
+
+.pie-dominio { align-self:end; }
+
+@media (max-width:640px) {
+  footer .envoltorio { gap:24px; }
+  .pie-dominio { align-self:start; }
+}
