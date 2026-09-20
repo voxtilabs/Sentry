@@ -433,7 +433,9 @@ export class SchedulingService {
          )
          SELECT app_tenant_id(), $1, r.id, $3, $4, $5
          FROM routes r
-         WHERE r.id = $2 AND r.site_id = $6
+         -- Un recorrido libre es por definicion lo NO planificado: programarlo
+         -- seria una ronda asignada sin puntos que marcar.
+         WHERE r.id = $2 AND r.site_id = $6 AND NOT r.is_free_roam
          RETURNING route_id`,
         [
           shiftId,

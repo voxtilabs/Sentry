@@ -1089,3 +1089,24 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .captura-en-terreno { width: 100%; min-height: 2.75rem; cursor: pointer; font-size: .78rem; }
 .captura-en-terreno:disabled { color: #8a91a2; cursor: progress; }
 .captura-aviso { margin: .1rem 0 .4rem; color: var(--ink); text-align: left; }
+
+/*
+ * Recorrido libre (#231). Va en tono menor a proposito: es la excepcion, no el
+ * camino normal. Un guardia que ve dos botones del mismo peso elige el que no
+ * le pide elegir ruta, y este no acredita ningun punto de control.
+ */
+.recorrido-libre { margin-top: 1.25rem; border-top: 1px solid var(--line); padding-top: .9rem; }
+.recorrido-libre > summary {
+  cursor: pointer; font-size: .82rem; color: var(--text-muted, #6E7488);
+  min-height: 2.75rem; display: flex; align-items: center;
+}
+.recorrido-libre > summary:focus-visible { outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px; }
+.recorrido-libre p { margin: .5rem 0 .9rem; font-size: .82rem; line-height: 1.55; color: var(--text-muted, #6E7488); }
+.recorrido-libre .secondary-button { width: 100%; min-height: 2.75rem; cursor: pointer; }
+
+.recorrido-libre-en-curso {
+  margin-top: 1rem; padding: .9rem 1rem; border: 1px solid var(--line);
+  border-radius: .9rem; background: var(--bg-rest, #E6E9F2);
+}
+.recorrido-libre-en-curso p { margin: 0 0 .7rem; font-size: .85rem; line-height: 1.55; }
+.recorrido-libre-en-curso .secondary-button { width: 100%; min-height: 2.75rem; cursor: pointer; }

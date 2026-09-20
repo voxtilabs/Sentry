@@ -36,6 +36,7 @@ interface PatrolRow {
   site_name: string;
   site_timezone: string;
   route_name: string;
+  es_libre: boolean;
   estimated_duration_min: number;
   checkpoints: Array<{
     id: string;
@@ -113,6 +114,7 @@ export const CONSULTA_HOME = `
           s.name AS site_name,
           s.timezone AS site_timezone,
           r.name AS route_name,
+          r.is_free_roam AS es_libre,
           r.estimated_duration_min,
           COALESCE(
             jsonb_agg(
@@ -373,6 +375,13 @@ export class GuardService {
         // despues como se corrige una pantalla.
         timezone: patrol.site_timezone,
         routeName: patrol.route_name,
+        /*
+         * La app necesita saberlo para ofrecer el boton de cerrar: un recorrido
+         * libre no tiene punto de cierre que lo termine solo, y si no se cierra
+         * la traza sigue registrando la posicion del guardia despues de que
+         * volvio a su puesto.
+         */
+        isFreeRoam: patrol.es_libre === true,
         estimatedDurationMin: patrol.estimated_duration_min,
         startedAt: patrol.started_at,
         completedCheckpointCount: patrol.completed_checkpoint_count,
@@ -1188,6 +1197,147 @@ export class GuardService {
       isVoluntary: true,
       expectedCheckpoints: puntos.length,
     };
+  }
+
+  /**
+   * El recorrido libre: salir a rondar sin ruta ni puntos (#231).
+   *
+   * Es la excepcion, no el camino normal. Un ruido, una alarma, una vuelta
+   * fuera de lo planificado: el guardia necesita que quede constancia de por
+   * donde anduvo, y no hay ruta que seguir ni puntos que marcar.
+   *
+   * La ruta de recorrido libre se crea sola la primera vez que el recinto la
+   * usa. No se siembra al crear el recinto porque la mayoria no la va a usar
+   * nunca, y una ruta vacia en la lista del supervisor es una pregunta que
+   * nadie pidio.
+   */
+  async startFreeRoamPatrol(guardId: string, siteId: string) {
+    const recintos = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT s.id
+         FROM sites s
+         JOIN guard_sites gs ON gs.tenant_id = s.tenant_id AND gs.site_id = s.id
+        WHERE s.id = $1 AND gs.guard_id = $2 AND s.is_active`,
+      [siteId, guardId],
+    );
+    if (recintos.length === 0) {
+      throw new NotFoundException('El recinto no existe o no lo tienes asignado');
+    }
+
+    /*
+     * Una ronda a la vez, igual que la voluntaria: `home()` trae UNA sola, asi
+     * que una segunda abierta queda invisible y los escaneos irian a la que el
+     * telefono muestre y no a la que el guardia cree estar haciendo.
+     */
+    const abiertas = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM patrols
+        WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso') LIMIT 1`,
+      [guardId],
+    );
+    if (abiertas.length > 0) {
+      throw new ConflictException('Ya tienes una ronda abierta: termínala antes de iniciar otra');
+    }
+
+    const rutaId = await this.rutaDeRecorridoLibre(siteId);
+
+    const jornada = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM shift_assignments
+        WHERE guard_id = $1 AND status = 'en_curso'
+        ORDER BY started_at DESC LIMIT 1`,
+      [guardId],
+    );
+
+    const patrolId = randomUUID();
+    /*
+     * `expected_checkpoint_ids` va vacio y no nulo: la columna es NOT NULL y
+     * todo lo que la lee espera una lista. Vacia significa "no habia nada que
+     * marcar", que es exactamente lo que pasa aca.
+     *
+     * `is_voluntary` en true la deja fuera de los promedios de cumplimiento,
+     * que es lo correcto: un recorrido sin puntos no se puede cumplir ni
+     * incumplir, y promediarlo como 0% hundiria el numero del recinto.
+     */
+    await this.tenantContext.manager.query(
+      `INSERT INTO patrols (
+        id, tenant_id, site_id, route_id, guard_id, status, started_at,
+        scheduled_start_at, scheduled_end_at, expected_checkpoint_ids,
+        shift_assignment_id, is_voluntary
+      ) VALUES ($1, app_tenant_id(), $2, $3, $4, 'en_curso', now(),
+                now(), now() + interval '12 hours', '[]'::jsonb, $5, true)`,
+      [patrolId, siteId, rutaId, guardId, jornada[0]?.id ?? null],
+    );
+
+    return { id: patrolId, status: 'en_curso' as const, isFreeRoam: true as const };
+  }
+
+  /**
+   * Cerrar el recorrido libre, que es lo unico que puede terminarlo.
+   *
+   * Una ronda normal se cierra sola al marcar su punto de cierre. Un recorrido
+   * libre no tiene puntos, asi que sin esto quedaria abierto hasta vencer a las
+   * 12 horas: el guardia arrastraria una ronda fantasma que le impide empezar
+   * otra, y la traza seguiria registrando su posicion despues de que volvio a
+   * su puesto. Eso ultimo importa mas que la comodidad: se rastrea SOLO
+   * mientras la ronda esta en curso.
+   */
+  async finishFreeRoamPatrol(guardId: string, patrolId: string) {
+    const filas = await this.tenantContext.manager.query<
+      Array<{ id: string; status: string; es_libre: boolean }>
+    >(
+      `SELECT p.id, p.status, r.is_free_roam AS es_libre
+         FROM patrols p
+         JOIN routes r ON r.tenant_id = p.tenant_id AND r.id = p.route_id
+        WHERE p.id = $1 AND p.guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    /*
+     * Solo las libres. Dejar cerrar una ronda asignada a voluntad seria darle
+     * al guardia la forma de terminar su turno sin recorrer: el informe diria
+     * "completada" con la mitad de los puntos sin marcar.
+     */
+    if (!ronda.es_libre) {
+      throw new ConflictException('Solo un recorrido libre se cierra a mano');
+    }
+    if (ronda.status !== 'en_curso') {
+      throw new ConflictException('Este recorrido ya está cerrado');
+    }
+
+    await this.tenantContext.manager.query(
+      `UPDATE patrols SET status = 'completada', ended_at = now() WHERE id = $1`,
+      [patrolId],
+    );
+    return { id: patrolId, status: 'completada' as const };
+  }
+
+  /** La ruta de recorrido libre del recinto; se crea la primera vez que se usa. */
+  private async rutaDeRecorridoLibre(siteId: string): Promise<string> {
+    const existentes = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM routes WHERE site_id = $1 AND is_free_roam LIMIT 1`,
+      [siteId],
+    );
+    const existente = existentes[0];
+    if (existente) return existente.id;
+
+    const rutaId = randomUUID();
+    /*
+     * `ON CONFLICT DO NOTHING` contra el indice unico: dos guardias del mismo
+     * recinto pueden apretar el boton a la vez y solo puede quedar una ruta.
+     */
+    await this.tenantContext.manager.query(
+      `INSERT INTO routes (id, tenant_id, site_id, name, is_active, is_free_roam)
+       VALUES ($1, app_tenant_id(), $2, 'Recorrido libre', true, true)
+       ON CONFLICT DO NOTHING`,
+      [rutaId, siteId],
+    );
+
+    const creadas = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM routes WHERE site_id = $1 AND is_free_roam LIMIT 1`,
+      [siteId],
+    );
+    const creada = creadas[0];
+    if (!creada) throw new ConflictException('No se pudo preparar el recorrido libre');
+    return creada.id;
   }
 
   /**
