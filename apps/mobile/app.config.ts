@@ -56,8 +56,16 @@ function asset(nombre: string): string | undefined {
 
 /** Identidad visual de la plataforma (#114). Espeja `apps/mobile/src/theme.ts`. */
 const MARCA = '#1f3b73';
-const SPLASH_FONDO = '#1f3b73';
-const ADAPTATIVO_FONDO = '#1f3b73';
+/*
+ * Los dos del sistema de diseno de la marca, no el #1f3b73 de antes: ese azul
+ * no salia de ninguna paleta y desentonaba con el isotipo, que usa --action.
+ *
+ * El splash va oscuro (--text) porque el isotipo va en azul encima; el fondo
+ * del icono adaptativo tambien, con el isotipo en blanco recortado por la
+ * mascara del launcher.
+ */
+const SPLASH_FONDO = '#FFFFFF';
+const ADAPTATIVO_FONDO = '#3D5AFE';
 
 const config: ExpoConfig = {
   name: 'SentryCore',
