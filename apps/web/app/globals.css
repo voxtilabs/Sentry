@@ -1137,20 +1137,59 @@ a.stats-boton { display: inline-flex; align-items: center; }
   width: 100%; min-height: var(--guardia-toque, 2.9rem); cursor: pointer;
 }
 
+
+
+
 /*
- * Terminar la ronda sin completar los puntos (#231). Pide confirmacion porque
- * no se deshace: la ronda queda `incompleta` con el cumplimiento real y eso es
- * lo que ve el supervisor.
+ * Terminar la ronda (#231). Va al FINAL de la vista y en tono menor: la accion
+ * del guardia es marcar puntos, no salirse. Estaba arriba del boton de
+ * escanear y lo primero que veia era como abandonar.
+ *
+ * Todo lo tocable mide 56 px. Esto se usa de pie, en la calle, de noche y a
+ * veces con guantes: el minimo de 44 px es el piso, no el objetivo.
  */
-.cierre-anticipado {
-  border: 1px solid var(--line); border-radius: .9rem; padding: .9rem 1rem;
-  background: var(--bg-rest, #E6E9F2);
+.terminar-ronda { margin-top: 1.5rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.terminar-ronda-boton {
+  width: 100%; min-height: 3.5rem; cursor: pointer;
+  border: 1px solid var(--border-strong, #CBD0DE); border-radius: .75rem;
+  background: transparent; color: var(--text-muted, #6E7488);
+  font-family: Outfit, system-ui, sans-serif; font-weight: 650; font-size: 1rem;
 }
-.cierre-anticipado p { margin: 0 0 .7rem; font-size: .85rem; line-height: 1.55; }
-.cierre-anticipado label { display: grid; gap: .35rem; font-size: .78rem; margin-bottom: .7rem; }
-.cierre-anticipado label span { color: var(--text-muted, #6E7488); font-weight: 400; }
-.cierre-anticipado input { min-height: 2.75rem; padding: 0 .8rem; border: 1px solid var(--line); border-radius: .6rem; }
-.cierre-anticipado-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
-.cierre-anticipado-acciones .secondary-button { min-height: 2.75rem; cursor: pointer; }
-/* El destructivo se distingue por texto Y color, nunca solo por color. */
-.cierre-confirmar { border-color: var(--bad, #E23D5C); color: var(--bad-text, #A6203C); }
+.terminar-ronda-boton:focus-visible { outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px; }
+
+/* La alerta de confirmacion: grande, con la consecuencia dicha en una frase. */
+.terminar-ronda-alerta {
+  border: 2px solid var(--bad, #E23D5C); border-radius: .9rem;
+  padding: 1.1rem; background: var(--bad-soft, #FFEEF1);
+}
+.terminar-ronda-alerta h3 {
+  margin: 0 0 .6rem; font-family: Outfit, system-ui, sans-serif;
+  font-size: 1.25rem; font-weight: 700; color: var(--bad-text, #A6203C);
+}
+.terminar-ronda-alerta p { margin: 0 0 .9rem; font-size: .95rem; line-height: 1.55; color: var(--ink, #12141C); }
+.terminar-ronda-alerta label { display: grid; gap: .3rem; margin-bottom: 1rem; font-size: .88rem; font-weight: 600; }
+.terminar-ronda-alerta label span { font-weight: 400; color: var(--text-muted, #6E7488); font-size: .8rem; }
+.terminar-ronda-alerta input {
+  min-height: 3.25rem; padding: 0 .9rem; font-size: 1rem;
+  border: 1px solid var(--border-strong, #CBD0DE); border-radius: .6rem; background: white;
+}
+
+/*
+ * "Seguir la ronda" va PRIMERO y relleno; "terminar" debajo y en contorno. El
+ * orden y el peso dicen cual es la salida segura sin que nadie tenga que leer.
+ */
+.terminar-ronda-seguir, .terminar-ronda-confirmar {
+  width: 100%; min-height: 3.5rem; cursor: pointer; border-radius: .75rem;
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+}
+.terminar-ronda-seguir {
+  border: 0; background: var(--action, #3D5AFE); color: white; margin-bottom: .6rem;
+}
+/* El destructivo se distingue por TEXTO y color, nunca solo por color. */
+.terminar-ronda-confirmar {
+  border: 2px solid var(--bad, #E23D5C); background: transparent; color: var(--bad-text, #A6203C);
+}
+.terminar-ronda-seguir:focus-visible, .terminar-ronda-confirmar:focus-visible {
+  outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px;
+}
+.terminar-ronda-seguir:disabled, .terminar-ronda-confirmar:disabled { opacity: .6; cursor: progress; }

@@ -518,6 +518,12 @@ function Ronda({
   );
 
   const siguiente = siguientePunto(puntos, estado.puntos);
+  /*
+   * Cuantos le quedan, para decirselo de frente al confirmar el cierre. Se usa
+   * `puntosFaltantes`, que ya es de donde sale el resto de la pantalla: con un
+   * calculo propio el aviso podria decir un numero y la lista mostrar otro.
+   */
+  const puntosPendientes = puntosFaltantes(puntos, estado.puntos).length;
   // El panel de tareas se apaga solo cuando ya no queda ninguna por responder,
   // así el guardia no tiene que cerrarlo a mano para seguir.
   const tareasEnPantalla =
@@ -961,81 +967,6 @@ function Ronda({
           </p>
         )}
 
-        {/*
-          * Terminar sin completar (#231). Solo con puntos por marcar: en un
-          * recorrido libre no hay nada que dejar a medias, y ahi el boton de
-          * arriba ya es el que cierra.
-          */}
-        {!patrol.isFreeRoam ? (
-          <div className="recorrido-libre-cierre">
-            {confirmandoCierre ? (
-              <div className="cierre-anticipado">
-                <p>
-                  La ronda quedará <strong>incompleta</strong> con los puntos que alcanzaste a
-                  marcar. Tu supervisor lo va a ver así.
-                </p>
-                <label>
-                  ¿Por qué no pudiste terminarla? <span>(opcional)</span>
-                  <input
-                    maxLength={500}
-                    onChange={(e) => setMotivoCierre(e.target.value)}
-                    placeholder="La reja estaba cerrada"
-                    value={motivoCierre}
-                  />
-                </label>
-                <div className="cierre-anticipado-acciones">
-                  <button
-                    className="secondary-button"
-                    disabled={cerrandoLibre}
-                    onClick={() => setConfirmandoCierre(false)}
-                    type="button"
-                  >
-                    Seguir la ronda
-                  </button>
-                  <button
-                    className="secondary-button cierre-confirmar"
-                    disabled={cerrandoLibre}
-                    onClick={() => void terminarSinCompletar()}
-                    type="button"
-                  >
-                    {cerrandoLibre ? 'Cerrando…' : 'Sí, terminar'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                className="secondary-button"
-                onClick={() => setConfirmandoCierre(true)}
-                type="button"
-              >
-                Terminar sin completar los puntos
-              </button>
-            )}
-            {errorLibre ? (
-              <p className="guard-action-error" role="alert">
-                {errorLibre}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {patrol.isFreeRoam ? (
-          <div className="recorrido-libre-cierre">
-            <button
-              className="secondary-button"
-              disabled={cerrandoLibre}
-              onClick={() => void terminarRecorridoLibre()}
-              type="button"
-            >
-              {cerrandoLibre ? 'Cerrando…' : 'Terminar recorrido libre'}
-            </button>
-            {errorLibre ? (
-              <p className="guard-action-error" role="alert">
-                {errorLibre}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
       </section>
 
       <nav className="guardia-vistas-ronda" aria-label="Acciones del turno">
@@ -1126,6 +1057,72 @@ function Ronda({
             {...(avisoPantalla ? { aviso: avisoPantalla } : {})}
             {...(errorEscaneo ? { error: errorEscaneo } : {})}
           />
+
+          {/*
+            * Terminar la ronda va AL FINAL y no arriba.
+            *
+            * Estaba antes del boton de escanear: lo primero que veia el guardia
+            * era como salirse, no que hacer. Para alguien poco tecnologico eso
+            * es una trampa — la accion de la ronda manda, la salida acompana.
+            */}
+          <div className="terminar-ronda">
+            {confirmandoCierre ? (
+              <div className="terminar-ronda-alerta" role="alertdialog" aria-labelledby="alerta-fin">
+                <h3 id="alerta-fin">¿Terminar la ronda ahora?</h3>
+                {patrol.isFreeRoam ? (
+                  <p>Se deja de registrar por dónde vas. Esto no se puede deshacer.</p>
+                ) : (
+                  <p>
+                    Te quedan <strong>{puntosPendientes} punto{puntosPendientes === 1 ? '' : 's'} sin marcar</strong>.
+                    La ronda queda incompleta y tu supervisor lo va a ver así. Esto no se puede
+                    deshacer.
+                  </p>
+                )}
+                {!patrol.isFreeRoam ? (
+                  <label>
+                    ¿Por qué no pudiste terminarla? <span>Puedes dejarlo en blanco</span>
+                    <input
+                      maxLength={500}
+                      onChange={(e) => setMotivoCierre(e.target.value)}
+                      placeholder="La reja estaba cerrada"
+                      value={motivoCierre}
+                    />
+                  </label>
+                ) : null}
+                <button
+                  className="terminar-ronda-seguir"
+                  disabled={cerrandoLibre}
+                  onClick={() => setConfirmandoCierre(false)}
+                  type="button"
+                >
+                  No, sigo la ronda
+                </button>
+                <button
+                  className="terminar-ronda-confirmar"
+                  disabled={cerrandoLibre}
+                  onClick={() =>
+                    void (patrol.isFreeRoam ? terminarRecorridoLibre() : terminarSinCompletar())
+                  }
+                  type="button"
+                >
+                  {cerrandoLibre ? 'Terminando…' : 'Sí, terminar la ronda'}
+                </button>
+                {errorLibre ? (
+                  <p className="guard-action-error" role="alert">
+                    {errorLibre}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                className="terminar-ronda-boton"
+                onClick={() => setConfirmandoCierre(true)}
+                type="button"
+              >
+                Terminar la ronda
+              </button>
+            )}
+          </div>
         </>
       ) : null}
 
