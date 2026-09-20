@@ -1303,8 +1303,23 @@ export class GuardService {
       throw new ConflictException('Este recorrido ya está cerrado');
     }
 
+    /*
+     * La columna es `closed_at`, no `ended_at`: `ended_at` no existe y el
+     * UPDATE fallaba con 42703, dejando al guardia con una ronda abierta que
+     * no podia cerrar ni reemplazar.
+     *
+     * `compliance_pct` en 0 y no nulo porque la columna alimenta los informes,
+     * y un nulo ahi se lee distinto segun quien lo mire. La ronda es
+     * `is_voluntary`, asi que ese 0 NO entra en los promedios del recinto: un
+     * recorrido sin puntos no se puede cumplir ni incumplir.
+     *
+     * El `AND status = 'en_curso'` protege de una carrera: dos toques seguidos
+     * al boton no pueden cerrar dos veces.
+     */
     await this.tenantContext.manager.query(
-      `UPDATE patrols SET status = 'completada', ended_at = now() WHERE id = $1`,
+      `UPDATE patrols
+          SET status = 'completada', closed_at = now(), compliance_pct = 0
+        WHERE id = $1 AND status = 'en_curso'`,
       [patrolId],
     );
     return { id: patrolId, status: 'completada' as const };

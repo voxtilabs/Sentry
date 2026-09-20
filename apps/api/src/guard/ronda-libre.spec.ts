@@ -152,6 +152,11 @@ describe('cerrar un recorrido libre', () => {
 
     expect(r.status).toBe('completada');
     const update = query.mock.calls.find((c) => /UPDATE patrols/.test(String(c[0])));
-    expect(String(update?.[0])).toMatch(/ended_at = now\(\)/);
+    // La columna es `closed_at`: `ended_at` no existe y el UPDATE fallaba con
+    // 42703 contra PostgreSQL real. Que las columnas EXISTAN lo comprueba
+    // ronda-libre.integration.spec.ts, que sí tiene una base delante.
+    expect(String(update?.[0])).toMatch(/closed_at = now\(\)/);
+    // Sin esto, dos toques seguidos al boton cerrarian dos veces.
+    expect(String(update?.[0])).toMatch(/status = 'en_curso'/);
   });
 });

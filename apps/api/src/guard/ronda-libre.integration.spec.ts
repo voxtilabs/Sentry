@@ -55,6 +55,35 @@ describeDatabase('la ruta de recorrido libre se puede crear de verdad', () => {
     expect(faltantes).toEqual([]);
   });
 
+  it('el UPDATE de cierre usa columnas que existen de verdad', async () => {
+    /*
+     * Fallo en produccion con 42703: el UPDATE decia `ended_at`, que no existe
+     * —la columna se llama `closed_at`—. El guardia quedaba con una ronda
+     * abierta que no podia cerrar ni reemplazar, y la traza siguiendo.
+     *
+     * Las pruebas unitarias comprueban que el SQL CONTENGA cierto texto: eso
+     * pasa igual con una columna inventada.
+     */
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const fuente = readFileSync(join(__dirname, 'guard.service.ts'), 'utf8');
+    const update = /UPDATE patrols\n\s*SET ([\s\S]*?)\n\s*WHERE id = \$1 AND status = 'en_curso'/.exec(
+      fuente,
+    );
+    expect(update?.[1]).toBeDefined();
+
+    const usadas = [...(update?.[1] ?? '').matchAll(/(\w+)\s*=/g)].map((m) => m[1] as string);
+    expect(usadas.length).toBeGreaterThan(1);
+
+    const reales = await dataSource.query<Array<{ column_name: string }>>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'patrols'`,
+    );
+    const nombres = reales.map((c) => c.column_name);
+    const inventadas = usadas.filter((c) => !nombres.includes(c));
+
+    expect(inventadas).toEqual([]);
+  });
+
   it('la columna is_free_roam existe y su indice unico tambien', async () => {
     const columnas = await dataSource.query<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns
