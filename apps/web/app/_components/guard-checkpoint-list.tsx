@@ -92,12 +92,28 @@ export function GuardCheckpointList({
 
   return (
     <section className="guardia-ronda" aria-labelledby="guardia-destino">
-      <p className="guardia-progreso">
-        Punto {Math.min(hechos + 1, total)} de {total}
-      </p>
-      <h2 className="guardia-destino" id="guardia-destino">
-        {siguiente ? siguiente.name : 'Ronda completa'}
-      </h2>
+      {/*
+        * Un recorrido libre (#231) no tiene puntos: decirle "Punto 0 de 0 ·
+        * Ronda completa" al guardia que acaba de salir a caminar es mentirle
+        * con dos frases seguidas. Sin puntos se dice lo que si es cierto.
+        */}
+      {total === 0 ? (
+        <>
+          <p className="guardia-progreso">Recorrido libre</p>
+          <h2 className="guardia-destino" id="guardia-destino">
+            Sin puntos que marcar
+          </h2>
+        </>
+      ) : (
+        <>
+          <p className="guardia-progreso">
+            Punto {Math.min(hechos + 1, total)} de {total}
+          </p>
+          <h2 className="guardia-destino" id="guardia-destino">
+            {siguiente ? siguiente.name : 'Ronda completa'}
+          </h2>
+        </>
+      )}
       {siguiente?.isClosingPoint ? (
         <p className="guardia-nota">Al escanear este punto se cierra la ronda.</p>
       ) : null}

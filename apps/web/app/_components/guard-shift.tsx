@@ -118,6 +118,11 @@ export interface GuardShiftData {
     /** Zona horaria del RECINTO, que manda la API. Ver guard-photo.ts. */
     timezone?: string;
     routeName: string;
+    /**
+     * Recorrido libre (#231): sin puntos, asi que nada lo cierra solo. El
+     * guardia lo termina desde esta pantalla, que es la que ve mientras anda.
+     */
+    isFreeRoam?: boolean;
     estimatedDurationMin: number;
     completedCheckpointCount: number;
     checkpoints: PuntoRuta[];
@@ -215,6 +220,35 @@ function Ronda({
   const puente = useGuardBridge(apiUrl);
   const [estado, setEstado] = useState<EstadoRonda>(() => estadoInicial(patrol.id));
   const [vista, setVista] = useState<Vista>('ronda');
+  const [cerrandoLibre, setCerrandoLibre] = useState(false);
+  const [errorLibre, setErrorLibre] = useState<string>();
+
+  /**
+   * Terminar el recorrido libre.
+   *
+   * Una ronda normal se cierra sola al marcar su punto de cierre. Un recorrido
+   * libre no tiene puntos: sin esto quedaria abierto hasta vencer a las 12
+   * horas, impidiendole al guardia empezar otra ronda y —lo que importa—
+   * dejando la traza registrando su posicion despues de que volvio a su puesto.
+   */
+  async function terminarRecorridoLibre() {
+    setCerrandoLibre(true);
+    setErrorLibre(undefined);
+    try {
+      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/free-roam/finish`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!respuesta.ok) {
+        const cuerpo = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(cuerpo?.message ?? 'No pudimos cerrar el recorrido');
+      }
+      window.location.assign('/app/guardia');
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar el recorrido');
+      setCerrandoLibre(false);
+    }
+  }
   /*
    * La traza en vivo (#280): mientras la ronda este abierta, el shell muestrea
    * y este portal sube las posiciones. `Ronda` solo se monta con la ronda en
@@ -877,11 +911,41 @@ function Ronda({
       <section className="guardia-cabecera">
         <p className="guardia-eyebrow">Ronda en {patrol.siteName}</p>
         <h1 className="guardia-titulo">{patrol.routeName}</h1>
-        <p className="guardia-turno">
-          Ronda {hora.format(new Date(shift.scheduledStartAt))} a{' '}
-          {hora.format(new Date(shift.scheduledEndAt))} · {patrol.estimatedDurationMin} min
-          estimados
-        </p>
+        {/*
+          * En un recorrido libre la ventana y la duracion estimada no
+          * significan nada: dura lo que el guardia decida. Decir "60 min
+          * estimados" ahi seria inventarle un plazo que nadie le puso.
+          */}
+        {patrol.isFreeRoam ? (
+          <p className="guardia-turno">
+            Empezaste a las {hora.format(new Date(shift.scheduledStartAt))}. Se registra por
+            dónde vas hasta que lo cierres.
+          </p>
+        ) : (
+          <p className="guardia-turno">
+            Ronda {hora.format(new Date(shift.scheduledStartAt))} a{' '}
+            {hora.format(new Date(shift.scheduledEndAt))} · {patrol.estimatedDurationMin} min
+            estimados
+          </p>
+        )}
+
+        {patrol.isFreeRoam ? (
+          <div className="recorrido-libre-cierre">
+            <button
+              className="secondary-button"
+              disabled={cerrandoLibre}
+              onClick={() => void terminarRecorridoLibre()}
+              type="button"
+            >
+              {cerrandoLibre ? 'Cerrando…' : 'Terminar recorrido libre'}
+            </button>
+            {errorLibre ? (
+              <p className="guard-action-error" role="alert">
+                {errorLibre}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <nav className="guardia-vistas-ronda" aria-label="Acciones del turno">
