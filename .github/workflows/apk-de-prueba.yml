@@ -53,7 +53,15 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
 
+      # `packages` acotado a proposito: el valor por defecto del action es
+      # `tools platform-tools`, y `tools` es el SDK viejo que Google retiro.
+      # Desde que el runner trae cmdline-tools 16, sdkmanager responde
+      # "Failed to find package 'tools'" y la compilacion muere antes de
+      # empezar. Gradle baja solo la plataforma y las build-tools que pide el
+      # proyecto, asi que aqui basta con platform-tools.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # apps/mobile va FUERA de los workspaces de npm a proposito (Metro no se
       # lleva bien con el hoisting), asi que se instala por su cuenta.
