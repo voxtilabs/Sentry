@@ -438,31 +438,6 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
             hacia nada. */}
         {error ? <p className="guard-action-error" role="alert">{error}</p> : null}
 
-        {/*
-          * Cerrar el recorrido libre (#231). Un recorrido sin puntos no tiene
-          * punto de cierre que lo termine solo: sin este boton quedaria abierto
-          * hasta vencer a las 12 horas, impidiendole al guardia empezar otra
-          * ronda y —lo que importa— dejando la traza registrando su posicion
-          * despues de que volvio a su puesto.
-          */}
-        {patrol.isFreeRoam ? (
-          <div className="recorrido-libre-en-curso">
-            <p>Estás en un recorrido libre. Se registra por dónde vas hasta que lo cierres.</p>
-            <button
-              className="secondary-button"
-              disabled={enRecorridoLibre}
-              onClick={() => cerrarRecorridoLibre(patrol.id)}
-              type="button"
-            >
-              {enRecorridoLibre ? 'Cerrando…' : 'Terminar recorrido libre'}
-            </button>
-            {errorLibre ? (
-              <p className="guard-action-error" role="alert">
-                {errorLibre}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
 
         <div className="guard-shift-grid">
           <span><small>Ronda</small><strong>{time.format(new Date(shift.scheduledStartAt))} — {time.format(new Date(shift.scheduledEndAt))}</strong></span>

@@ -1110,3 +1110,13 @@ a.stats-boton { display: inline-flex; align-items: center; }
 }
 .recorrido-libre-en-curso p { margin: 0 0 .7rem; font-size: .85rem; line-height: 1.55; }
 .recorrido-libre-en-curso .secondary-button { width: 100%; min-height: 2.75rem; cursor: pointer; }
+
+/*
+ * Cerrar el recorrido libre, desde la pantalla de la ronda en curso — que es
+ * la que el guardia tiene delante mientras camina. Estaba en GuardHome, que
+ * NUNCA se monta con una ronda abierta: era un boton que no veia nadie.
+ */
+.recorrido-libre-cierre { margin-top: .9rem; }
+.recorrido-libre-cierre .secondary-button {
+  width: 100%; min-height: var(--guardia-toque, 2.9rem); cursor: pointer;
+}
