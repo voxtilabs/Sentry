@@ -53,6 +53,8 @@ export function GuardCheckpointList({
   onEscanear,
   onEscanearQr,
   onCancelar,
+  onDejarParaDespues,
+  saltados = [],
 }: {
   puntos: readonly PuntoRuta[];
   registros: EstadoRonda['puntos'];
@@ -81,6 +83,13 @@ export function GuardCheckpointList({
   onEscanear: () => void;
   onEscanearQr: () => void;
   onCancelar: () => void;
+  /**
+   * Deja este punto para el final. Solo viene cuando hay OTRO punto pendiente
+   * al que ir; si no viene, el boton no se pinta.
+   */
+  onDejarParaDespues?: () => void;
+  /** Los que ya se dejaron para el final, para decirlo en la lista. */
+  saltados?: readonly string[];
 }) {
   const total = puntos.length;
   const hechos = puntos.filter((punto) => registros[punto.id] !== undefined).length;
@@ -198,6 +207,37 @@ export function GuardCheckpointList({
         </p>
       ) : null}
 
+      {/*
+        * "Dejarlo para despues" va DESPUES del error y no arriba: es la salida
+        * al problema que el guardia acaba de tener, y solo tiene sentido
+        * leerla cuando el problema ya esta en pantalla.
+        *
+        * Reportado en terreno: el punto 6 esta al fondo de un pasillo sin
+        * salida —se entra derecho y se sale haciendo una U—. Si el escaneo
+        * falla ahi, la pantalla seguia pidiendo el 6 y el guardia, que ya
+        * camino de vuelta, tenia que rehacer el pasillo entero.
+        *
+        * No lo perdona: el punto vuelve a salir cuando ya no queda otro, y si
+        * igual no se puede marcar, la ronda se cierra incompleta con su
+        * porcentaje real. Una cosa es darle una salida al guardia y otra es
+        * darle una forma de fingir que recorrio.
+        */}
+      {siguiente && onDejarParaDespues ? (
+        <>
+          <button
+            className="guardia-boton-secundario ancho dejar-para-despues"
+            type="button"
+            onClick={onDejarParaDespues}
+            disabled={ocupado}
+          >
+            Dejar {siguiente.name} para después
+          </button>
+          <p className="guardia-nota">
+            Sigue con el punto que tienes delante. Este vuelve a aparecer al final.
+          </p>
+        </>
+      ) : null}
+
       <ol className="guardia-puntos">
         {puntos.map((punto) => (
           <Punto
@@ -205,6 +245,7 @@ export function GuardCheckpointList({
             punto={punto}
             registro={registros[punto.id]}
             esSiguiente={punto.id === siguiente?.id}
+            saltado={saltados.includes(punto.id) && registros[punto.id] === undefined}
             exigeFoto={puntoExigeFoto(punto, politicaFoto)}
           />
         ))}
@@ -217,11 +258,13 @@ function Punto({
   punto,
   registro,
   esSiguiente,
+  saltado,
   exigeFoto,
 }: {
   punto: PuntoRuta;
   registro: RegistroPunto | undefined;
   esSiguiente: boolean;
+  saltado: boolean;
   exigeFoto: boolean;
 }) {
   const estado = registro?.estado ?? 'pendiente';
@@ -242,6 +285,9 @@ function Punto({
         <strong>{punto.name}</strong>
         <span className="guardia-punto-estados">
           <span className={`guardia-chip ${estado}`}>{TEXTO_ESTADO[estado]}</span>
+          {/* Se dice con todas las letras para que el guardia no crea que se
+              perdio: sigue contando y sigue faltando. */}
+          {saltado ? <span className="guardia-chip saltado">Para el final</span> : null}
           {/* Solo se marca el QR. Poner también "NFC" en cada punto llenaría la
               lista con una etiqueta que no dice nada: NFC es lo normal y lo que
               hay que ver de un vistazo es la excepción. */}
