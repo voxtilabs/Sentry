@@ -135,6 +135,17 @@ export class AdminController {
     return this.admin.setSiteActive(params.siteId, input.isActive);
   }
 
+  /**
+   * Borra un recinto SIN historia. Con rondas o novedades responde 409 y dice
+   * cuantas: el esquema protege la evidencia con ON DELETE RESTRICT y esto solo
+   * traduce esa negativa a algo que el administrador entienda.
+   */
+  @Delete('sites/:siteId')
+  @Permissions('tenant:sites:manage')
+  deleteSite(@Param() params: SiteParam, @Req() request: Autenticado) {
+    return this.admin.deleteSite(params.siteId, { actorId: request.user.sub });
+  }
+
   @Get('sites/:siteId/business-hours')
   @Permissions('tenant:sites:manage')
   listBusinessHours(@Param() params: SiteParam) {

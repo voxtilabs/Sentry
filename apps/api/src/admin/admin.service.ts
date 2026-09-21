@@ -623,6 +623,74 @@ export class AdminService {
     return { id: siteId, isActive };
   }
 
+  /**
+   * Borra un recinto, y solo si no tiene HISTORIA.
+   *
+   * Pedido de terreno: se creo un recinto por error y el panel solo ofrecia
+   * darlo de baja, con lo cual queda para siempre en la lista de todos.
+   *
+   * La linea entre lo que se puede borrar y lo que no ya estaba dibujada en el
+   * esquema y no se reinventa aca: `checkpoints`, `routes`, `turnos`, horarios
+   * y asignaciones cuelgan con ON DELETE CASCADE porque son CONFIGURACION; las
+   * `patrols` y los `field_events` cuelgan con ON DELETE RESTRICT porque son
+   * EVIDENCIA del trabajo de un guardia. Un producto de seguridad privada no
+   * puede ofrecer un boton que borre rondas y novedades: la base lo impide y
+   * aca solo se traduce esa negativa a algo que el administrador entienda.
+   *
+   * Se cuentan antes para poder decir CUANTAS cosas lo impiden —"tiene 12
+   * rondas registradas" se entiende; "violacion de llave foranea" no— y el
+   * RESTRICT queda igual como ultima linea, por si algo se crea entre la
+   * cuenta y el borrado.
+   */
+  async deleteSite(siteId: string, contexto?: ContextoEscritura) {
+    const sitio = await this.ensureSite(siteId);
+
+    const [historia] = await this.tenantContext.manager.query<
+      Array<{ rondas: string; novedades: string }>
+    >(
+      `SELECT
+         (SELECT count(*) FROM patrols WHERE site_id = $1) AS rondas,
+         (SELECT count(*) FROM field_events WHERE site_id = $1) AS novedades`,
+      [siteId],
+    );
+    const rondas = Number(historia?.rondas ?? 0);
+    const novedades = Number(historia?.novedades ?? 0);
+
+    if (rondas > 0 || novedades > 0) {
+      const partes: string[] = [];
+      if (rondas > 0) partes.push(`${rondas} ${rondas === 1 ? 'ronda' : 'rondas'}`);
+      if (novedades > 0) {
+        partes.push(`${novedades} ${novedades === 1 ? 'novedad' : 'novedades'}`);
+      }
+      throw new ConflictException(
+        `No se puede eliminar "${sitio.name}": tiene ${partes.join(' y ')} en su historial. ` +
+          'Dalo de baja: deja de aparecer en la app del guardia y el historial se conserva.',
+      );
+    }
+
+    try {
+      await this.tenantContext.manager.query(`DELETE FROM sites WHERE id = $1`, [siteId]);
+    } catch (error) {
+      // El RESTRICT del esquema, por si algo nacio entre la cuenta y el borrado.
+      if ((error as { code?: string })?.code === '23503') {
+        throw new ConflictException(
+          `No se puede eliminar "${sitio.name}": alguien registro trabajo en el recinto ` +
+            'mientras se borraba. Vuelve a intentarlo o dalo de baja.',
+        );
+      }
+      throw error;
+    }
+
+    await this.registrar(
+      contexto,
+      'recinto.eliminado',
+      'site',
+      `Recinto "${sitio.name}" eliminado (sin rondas ni novedades registradas)`,
+      siteId,
+    );
+    return { id: siteId, deleted: true };
+  }
+
   async listBusinessHours(siteId: string) {
     await this.ensureSite(siteId);
     const rows = await this.tenantContext.manager.query<Array<{
@@ -1073,8 +1141,13 @@ export class AdminService {
    */
   private async registrar(
     contexto: ContextoEscritura | undefined,
-    accion: 'punto.creado' | 'punto.modificado' | 'etiqueta.registrada' | 'etiqueta.retirada',
-    entityType: 'checkpoint' | 'tag',
+    accion:
+      | 'punto.creado'
+      | 'punto.modificado'
+      | 'etiqueta.registrada'
+      | 'etiqueta.retirada'
+      | 'recinto.eliminado',
+    entityType: 'checkpoint' | 'tag' | 'site',
     resumen: string,
     entityId?: string,
   ): Promise<void> {
