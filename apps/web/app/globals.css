@@ -1289,3 +1289,19 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .pausar-ronda p { margin: .55rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--text-muted, #6E7488); text-align: center; }
 /* Sin el borde de arriba duplicado cuando ya lo puso "pausar". */
 .pausar-ronda + .terminar-ronda { margin-top: .9rem; padding-top: 0; border-top: 0; }
+
+/*
+ * Punto dejado para el final (reporte de terreno del 21-09-2026). Ambar y no
+ * rojo: no es una falla, es una decision de recorrido que hay que ver de un
+ * vistazo sin que parezca una alarma.
+ */
+.guardia-chip.saltado {
+  border: 1px solid var(--warn, #FFA51F);
+  background: var(--warn-soft, #FFF6E6);
+  color: var(--warn-text, #96560A);
+}
+.guardia-boton-secundario.dejar-para-despues {
+  min-height: 3.5rem;
+  border-color: var(--warn, #FFA51F);
+  color: var(--warn-text, #96560A);
+}

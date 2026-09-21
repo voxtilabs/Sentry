@@ -40,6 +40,7 @@ import {
 import {
   aplicarVeredictos,
   cargarEstadoRonda,
+  CLAVE_SALTADOS,
   estadoInicial,
   guardarEstadoRonda,
   marcarFotoPuntoSubida,
@@ -50,6 +51,7 @@ import {
   registrarCierre,
   registrarEscaneo,
   registrarNovedad,
+  sePuedeSaltar,
   siguientePunto,
   type CierreRonda,
   type EstadoRonda,
@@ -76,7 +78,7 @@ import {
   leerFoto,
   listarPendientes,
 } from './guard-photo-store';
-import { nuevoUuid } from './guard-storage';
+import { escribirJson, leerJson, nuevoUuid } from './guard-storage';
 import {
   ErrorEscaneoPortal,
   useGuardBridge,
@@ -319,6 +321,16 @@ function Ronda({
    * desmontaje o un shell viejo apagan el grifo sin tocar nada mas.
    */
   useTrazaEnVivo({ puente, apiUrl, patrolId: patrol.id, activa: estado.cierre === undefined });
+  /*
+   * Los puntos que el guardia dejo para despues (reporte de terreno del
+   * 21-09-2026). Se guardan aparte del estado de la ronda —no son un hecho de
+   * terreno, son una decision de recorrido— y por ronda, porque la de manana
+   * empieza de cero. Sobreviven a que el WebView se recargue: si no, el
+   * telefono lo mandaria de vuelta al pasillo que acaba de dejar.
+   */
+  const [saltados, setSaltados] = useState<string[]>(() =>
+    leerJson<string[]>(`${CLAVE_SALTADOS}:${patrol.id}`, []),
+  );
   const [fase, setFase] = useState<FaseEscaneo>('inactivo');
   const [anuncio, setAnuncio] = useState('');
   const [errorEscaneo, setErrorEscaneo] = useState<string>();
@@ -548,7 +560,20 @@ function Ronda({
     [actualizar, actualizarTareas, apiUrl, idsDeEscaneo, patrol.id, refrescarFotosPendientes],
   );
 
-  const siguiente = siguientePunto(puntos, estado.puntos);
+  const siguiente = siguientePunto(puntos, estado.puntos, saltados);
+  const puedeSaltar = sePuedeSaltar(puntos, estado.puntos, saltados, siguiente);
+
+  /** Deja este punto para el final y manda al guardia al que tiene delante. */
+  function dejarParaDespues() {
+    if (siguiente === undefined || !puedeSaltar) return;
+    const conEste = saltados.includes(siguiente.id) ? saltados : [...saltados, siguiente.id];
+    setSaltados(conEste);
+    escribirJson(`${CLAVE_SALTADOS}:${patrol.id}`, conEste);
+    setErrorEscaneo(undefined);
+    setAnuncio(
+      `${siguiente.name} queda pendiente para el final. Sigue con el punto que tienes delante.`,
+    );
+  }
   /*
    * Cuantos le quedan, para decirselo de frente al confirmar el cierre. Se usa
    * `puntosFaltantes`, que ya es de donde sale el resto de la pantalla: con un
@@ -1110,7 +1135,9 @@ function Ronda({
             esperandoTareas={tareasEnPantalla}
             puntos={puntos}
             registros={estado.puntos}
+            saltados={saltados}
             siguiente={siguiente}
+            {...(puedeSaltar ? { onDejarParaDespues: dejarParaDespues } : {})}
             {...(politicaFoto ? { politicaFoto } : {})}
             {...(avisoPantalla ? { aviso: avisoPantalla } : {})}
             {...(errorEscaneo ? { error: errorEscaneo } : {})}
