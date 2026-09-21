@@ -38,6 +38,7 @@ import { TrazaMetricasController } from '../geo/traza-metricas.controller';
 import { PurgaRetencionController } from '../retention/purga-retencion.controller';
 import { PlatformController } from '../platform/platform.controller';
 import { SupportAccessController } from '../platform-data/support-access.controller';
+import { SKIP_TENANT_CONTEXT } from '../database/tenant-context/skip-tenant-context.decorator';
 import { TenantDataController } from '../platform-data/tenant-data.controller';
 import { ReportsController } from '../reports/reports.controller';
 import { PlatformRulesController } from '../rules/platform-rules.controller';
@@ -502,6 +503,31 @@ describe('matriz de autorización de endpoints', () => {
       if (!isPublic) expect(actualPermissions.length).toBeGreaterThan(0);
     },
   );
+
+  it('un endpoint SOLO de SUPERADMIN no puede exigir contexto de empresa', () => {
+    /*
+     * El SUPERADMIN no tiene tenant: si el interceptor global le exige uno, el
+     * endpoint responde 401 al UNICO rol que puede usarlo. Le paso exactamente
+     * eso al acceso de soporte auditado (#109): construido, desplegado y
+     * alcanzable por nadie, hasta que alguien intento usarlo de verdad.
+     *
+     * La prueba mira la METADATA del decorador, no la lista declarada: lo que
+     * se olvida al escribir un controlador nuevo es el decorador.
+     */
+    const soloSuperadmin = ENDPOINT_AUTHORIZATION.filter(
+      ({ roles, public: isPublic }) => !isPublic && roles.length === 1 && roles[0] === 'SUPERADMIN',
+    );
+    expect(soloSuperadmin.length).toBeGreaterThan(5);
+
+    const sinSalida = soloSuperadmin
+      .filter(({ controller, handler }) => {
+        const method = controller.prototype[handler as keyof typeof controller.prototype];
+        return overriddenMetadata<boolean>(SKIP_TENANT_CONTEXT, [method, controller]) !== true;
+      })
+      .map(({ controller, handler }) => endpointKey(controller, handler));
+
+    expect(sinSalida).toEqual([]);
+  });
 
   it('mantiene a SUPERADMIN fuera del contexto tenant y al resto dentro', () => {
     expect(TENANT_ROLES).not.toContain('SUPERADMIN');
