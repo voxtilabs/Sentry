@@ -92,7 +92,28 @@ describe('GuardService', () => {
     });
     expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('p.guard_id = $1'), [
       'guard-id',
+      null,
     ]);
+  });
+
+  it('EL BUG DE TERRENO: el recinto elegido llega a la consulta y la filtra', async () => {
+    /*
+     * Bruno, con dos recintos asignados al guardia: «la seleccion de recinto no
+     * funciona; aunque le demos con EDIFICIO, toma maquinaria».
+     *
+     * El parametro llegaba hasta getHome y se devolvia como selectedSiteId,
+     * pero la consulta nunca lo usaba: traia la ronda que ganara el ORDER BY.
+     * El selector se veia, se movia y no hacia nada.
+     */
+    const manager = { query: jest.fn().mockResolvedValue([]) };
+    const service = new GuardService({ manager } as unknown as TenantContextService, sinCorreo(), sinReglas(), sinEscalamiento(), sinPuertaGps(), sinEnvioInforme());
+
+    await service.getHome('guard-id', 'site-edificio');
+
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('p.site_id = $2::uuid'),
+      ['guard-id', 'site-edificio'],
+    );
   });
 
   it('vence al mirarla la ronda que quedo abierta de un turno pasado', async () => {

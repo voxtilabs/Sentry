@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 
 import type { AuthenticatedUser } from '../auth/auth.guard';
@@ -35,11 +44,17 @@ export class GuardController {
     return this.signatures.enroll(request.user.sub, input.deviceId, input.key);
   }
 
+  /*
+   * `siteId` se valida como UUID aqui y no en el servicio: la consulta lo
+   * compara con `$2::uuid` y un valor mal formado —la URL la puede editar
+   * cualquiera— saldria como 22P02, o sea un 500 en la pantalla principal del
+   * guardia. Opcional: sin recinto elegido se responde la ronda que haya.
+   */
   @Get('home')
   @Permissions('patrols:execute')
   home(
     @Req() request: Request & { user: AuthenticatedUser },
-    @Query('siteId') siteId?: string,
+    @Query('siteId', new ParseUUIDPipe({ optional: true })) siteId?: string,
   ) {
     return this.guardService.getHome(request.user.sub, siteId);
   }
