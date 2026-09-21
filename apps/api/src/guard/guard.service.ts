@@ -303,11 +303,31 @@ export class GuardService {
        * guardia rondas del edificio de al frente estando en maquinaria, y al
        * iniciarlas el servidor lo mandaba al otro recinto sin decirle nada.
        */
-      const recintosOfrecidos =
-        siteId !== undefined && assignedSites.some((s) => s.id === siteId)
-          ? [siteId]
-          : assignedSites.map((s) => s.id);
+      const elegidoParaRondas =
+        siteId !== undefined ? assignedSites.find((s) => s.id === siteId) : undefined;
+      const recintosOfrecidos = elegidoParaRondas
+        ? [elegidoParaRondas.id]
+        : assignedSites.map((s) => s.id);
       const rutasVoluntarias = await this.rutasParaRondaVoluntaria(recintosOfrecidos);
+
+      /*
+       * Cuantas hay en los OTROS recintos del guardia.
+       *
+       * Reportado en terreno el mismo dia que se filtro por recinto: «eliminó
+       * el boton de ronda voluntaria, quedó solo el de ronda libre». Es cierto
+       * y es correcto —el recinto nuevo todavia no tiene rutas cargadas— pero
+       * desaparecer sin decir nada se lee como que el sistema se rompio. Con
+       * este numero la pantalla puede explicar que las hay en otro recinto y
+       * que se cambia con el selector de arriba.
+       */
+      const rutasEnOtrosRecintos =
+        elegidoParaRondas && rutasVoluntarias.length === 0 && assignedSites.length > 1
+          ? (
+              await this.rutasParaRondaVoluntaria(
+                assignedSites.filter((s) => s.id !== elegidoParaRondas.id).map((s) => s.id),
+              )
+            ).length
+          : 0;
 
       /*
        * El mensaje dice DONDE no hay turno cuando el guardia eligio recinto.
@@ -326,6 +346,8 @@ export class GuardService {
         selectedSiteId: siteId ?? assignedSites[0]?.id ?? null,
         message: mensaje,
         voluntaryRoutes: rutasVoluntarias,
+        voluntaryRoutesElsewhere: rutasEnOtrosRecintos,
+        selectedSiteName: elegidoParaRondas?.name ?? null,
         connection: { status: 'online' as const },
         synchronization: { pendingItems: 0 },
       };

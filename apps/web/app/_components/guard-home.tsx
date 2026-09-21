@@ -30,6 +30,14 @@ export interface GuardHomeData {
     siteName: string;
     checkpointCount: number;
   }>;
+  /**
+   * Cuantas rondas voluntarias hay en los OTROS recintos del guardia cuando en
+   * el elegido no hay ninguna. Sirve para explicar una ausencia en vez de
+   * dejar que la seccion desaparezca sola.
+   */
+  voluntaryRoutesElsewhere?: number;
+  /** Nombre del recinto elegido, para nombrarlo en ese aviso. */
+  selectedSiteName?: string | null;
   shift?: {
     scheduledStartAt: string;
     scheduledEndAt: string;
@@ -229,6 +237,26 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
           * dice para que sirve, porque un guardia no tiene por que adivinar por
           * que le conviene salir a una hora que nadie le fijo.
           */}
+        {/*
+          * Que no haya ninguna en ESTE recinto no es lo mismo que no haber
+          * ninguna. Reportado en terreno: «eliminó el botón de ronda
+          * voluntaria, quedó solo el de ronda libre» — era cierto, el recinto
+          * recien creado no tenia rutas, pero la seccion desaparecia sin decir
+          * nada y se leyo como que el sistema se habia roto.
+          */}
+        {rutasVoluntarias.length === 0 && (data.voluntaryRoutesElsewhere ?? 0) > 0 ? (
+          <div className="ronda-voluntaria vacia">
+            <h3>Ronda voluntaria</h3>
+            <p>
+              {data.selectedSiteName
+                ? `En ${data.selectedSiteName} todavía no hay rondas configuradas para recorrer por tu cuenta.`
+                : 'En este recinto todavía no hay rondas configuradas para recorrer por tu cuenta.'}{' '}
+              Hay {data.voluntaryRoutesElsewhere === 1 ? 'una' : data.voluntaryRoutesElsewhere} en
+              otro recinto: cámbialo arriba para verla.
+            </p>
+          </div>
+        ) : null}
+
         {rutasVoluntarias.length > 0 ? (
           <div className="ronda-voluntaria">
             <h3>Ronda voluntaria</h3>
