@@ -169,6 +169,16 @@ export const CONSULTA_HOME = `
           -- Lo mismo en el vencimiento (una pausa olvidada tiene que vencer
           -- igual) y en la guarda de una-ronda-a-la-vez.
           AND p.status IN ('pendiente', 'en_curso', 'pausada')
+          -- El recinto que ELIGIO el guardia (#231). Sin esta linea el
+          -- selector no servia para nada: el parametro llegaba a getHome, se
+          -- devolvia como selectedSiteId y la consulta seguia trayendo la
+          -- ronda que ganara el ORDER BY. Reportado en terreno: «aunque le
+          -- demos con EDIFICIO, toma maquinaria».
+          --
+          -- El ::uuid no es adorno: un parametro que solo aparece dentro de
+          -- un IS NULL no le da a PostgreSQL de donde deducir el tipo y la
+          -- sentencia revienta con 42P08. Ver parametros-tipados.integration.
+          AND ($2::uuid IS NULL OR p.site_id = $2::uuid)
         -- Se agrupa por las CLAVES PRIMARIAS (p.id, s.id, r.id): eso habilita
         -- la dependencia funcional y deja usar cualquier columna de esas tablas.
         -- Agrupar por p.site_id no sirve: es columna de patrols, no la PK de
@@ -250,7 +260,7 @@ export class GuardService {
   async getHome(guardId: string, siteId?: string) {
     const rows = await this.tenantContext.manager.query<PatrolRow[]>(
       CONSULTA_HOME,
-      [guardId],
+      [guardId, siteId ?? null],
     );
 
     const patrol = rows?.[0];
@@ -288,15 +298,33 @@ export class GuardService {
        * que no funciona. Se piden las activas de sus recintos con al menos dos
        * puntos, que es lo que `startVoluntaryPatrol` exige.
        */
-      const rutasVoluntarias = await this.rutasParaRondaVoluntaria(
-        assignedSites.map((s) => s.id),
-      );
+      /*
+       * Las del recinto ELEGIDO, no las de todos. Mezclarlas le ofrecia al
+       * guardia rondas del edificio de al frente estando en maquinaria, y al
+       * iniciarlas el servidor lo mandaba al otro recinto sin decirle nada.
+       */
+      const recintosOfrecidos =
+        siteId !== undefined && assignedSites.some((s) => s.id === siteId)
+          ? [siteId]
+          : assignedSites.map((s) => s.id);
+      const rutasVoluntarias = await this.rutasParaRondaVoluntaria(recintosOfrecidos);
+
+      /*
+       * El mensaje dice DONDE no hay turno cuando el guardia eligio recinto.
+       * Con dos recintos asignados, "no tienes un turno" a secas se lee como
+       * "no trabajas hoy" y el guardia no vuelve a mirar el otro.
+       */
+      const elegido = assignedSites.find((s) => s.id === siteId);
+      const mensaje =
+        elegido && assignedSites.length > 1
+          ? `No tienes un turno asignado en ${elegido.name} en este momento.`
+          : 'No tienes un turno asignado en este momento.';
 
       return {
         hasAssignment: false as const,
         assignedSites,
         selectedSiteId: siteId ?? assignedSites[0]?.id ?? null,
-        message: 'No tienes un turno asignado en este momento.',
+        message: mensaje,
         voluntaryRoutes: rutasVoluntarias,
         connection: { status: 'online' as const },
         synchronization: { pendingItems: 0 },
