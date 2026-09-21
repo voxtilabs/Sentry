@@ -1305,3 +1305,10 @@ a.stats-boton { display: inline-flex; align-items: center; }
   border-color: var(--warn, #FFA51F);
   color: var(--warn-text, #96560A);
 }
+
+/*
+ * La seccion de ronda voluntaria cuando en ESTE recinto no hay ninguna. Se
+ * pinta apagada y sin boton: explica una ausencia, no ofrece una accion.
+ */
+.ronda-voluntaria.vacia { border-style: dashed; opacity: .85; }
+.ronda-voluntaria.vacia p { margin: 0; }
