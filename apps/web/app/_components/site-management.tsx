@@ -130,6 +130,30 @@ export function SiteManagement({
     startTransition(() => router.refresh());
   }
 
+  /*
+   * Eliminar un recinto, no solo darlo de baja.
+   *
+   * Pedido de terreno: se creo uno por error y quedaba para siempre en la lista
+   * de todos. El servidor solo lo deja si NO tiene rondas ni novedades —eso es
+   * evidencia del trabajo de un guardia y no se borra desde un boton—, asi que
+   * aca no se decide nada: se pregunta, se manda, y si el servidor dice que no,
+   * se muestra su motivo, que ya viene con el numero y con la alternativa.
+   */
+  async function deleteSite(site: TenantSite) {
+    const seguro = window.confirm(
+      `¿Eliminar el recinto "${site.name}"?\n\n` +
+        'Se borran sus puntos de control, etiquetas, rutas y horarios. No se puede deshacer.\n\n' +
+        'Si el recinto tiene rondas o novedades registradas, el sistema no va a dejar: ' +
+        'en ese caso dalo de baja.',
+    );
+    if (!seguro) return;
+    const response = await jsonRequest(`${apiUrl}/admin/sites/${site.id}`, 'DELETE');
+    if (!response.ok) return setMessage(await responseMessage(response));
+    if (selectedId === site.id) setSelectedId(null);
+    setMessage(`Recinto "${site.name}" eliminado.`);
+    startTransition(() => router.refresh());
+  }
+
   async function createCheckpoint(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) return;
@@ -259,6 +283,10 @@ export function SiteManagement({
                   <div className="row-actions">
                     <button className="secondary-button" onClick={() => void selectSite(site)}>Administrar</button>
                     <button className="secondary-button" onClick={() => void toggleSite(site)}>{site.isActive ? 'Dar de baja' : 'Reactivar'}</button>
+                    {/* Eliminar va al final y en ultimo lugar visual: dar de
+                        baja es lo que resuelve casi todos los casos, y esto
+                        solo funciona en recintos sin historia. */}
+                    <button className="danger-button" onClick={() => void deleteSite(site)}>Eliminar</button>
                   </div>
                 </article>
               ))}
@@ -372,5 +400,15 @@ function groupByBranch(sites: TenantSite[]): Array<[string, TenantSite[]]> { con
 function roundCoordinate(value: number) { return Math.round(value * 1_000_000) / 1_000_000; }
 function coordinatesComplete(value: Coordinates) { return (value[0] === null) === (value[1] === null); }
 function requestOptions(): RequestInit { return { credentials: 'include', cache: 'no-store' }; }
-function jsonRequest(url: string, method: string, body: object) { return fetch(url, { method, credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); }
+// El cuerpo es opcional: un DELETE con `body: "undefined"` es un 400 antes de
+// llegar a mirar que recinto se queria borrar.
+function jsonRequest(url: string, method: string, body?: object) {
+  return fetch(url, {
+    method,
+    credentials: 'include',
+    ...(body === undefined
+      ? {}
+      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+  });
+}
 async function responseMessage(response: Response) { try { const data = (await response.json()) as { message?: string | string[] }; return Array.isArray(data.message) ? data.message.join('. ') : data.message ?? 'No fue posible completar la operación.'; } catch { return 'No fue posible completar la operación.'; } }

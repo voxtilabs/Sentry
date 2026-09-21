@@ -108,6 +108,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   secured(AdminController, 'createSite', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'updateSite', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'setSiteActive', ['tenant:sites:manage'], ['ADMIN'], true),
+  secured(AdminController, 'deleteSite', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'listBusinessHours', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'replaceBusinessHours', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'listHolidays', ['tenant:sites:manage'], ['ADMIN'], true),

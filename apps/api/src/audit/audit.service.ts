@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = [
   'usuario.sesiones_revocadas',
   'recinto.creado',
   'recinto.desactivado',
+  'recinto.eliminado',
   'punto.creado',
   'punto.modificado',
   'etiqueta.registrada',
