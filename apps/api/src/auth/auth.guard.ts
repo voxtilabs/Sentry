@@ -157,7 +157,14 @@ export class AuthGuard implements CanActivate {
     }
 
     const requiresTenant = this.reflector.getAllAndOverride<boolean>(REQUIRES_TENANT, targets);
-    if (requiresTenant && !payload.tenant_id) {
+    /*
+     * La empresa de la ventana de soporte CUENTA como contexto de empresa: es
+     * exactamente la que el interceptor va a poner en la transaccion. Sin esto,
+     * el permiso se concedia y el endpoint moria un renglon mas abajo pidiendo
+     * un tenant que el SUPERADMIN no tiene nunca — que es justo el caso que la
+     * ventana viene a resolver.
+     */
+    if (requiresTenant && !payload.tenant_id && !tenantDeSoporte) {
       this.auditDenied(context, 'tenant_required', payload);
       throw new ForbiddenException('La operación requiere contexto de empresa');
     }

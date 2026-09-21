@@ -58,6 +58,17 @@ describe('lo que el soporte puede leer durante una ventana auditada (#109)', () 
     }
   });
 
+  it('los endpoints que lee el soporte son de empresa: sin ventana no hay contexto', () => {
+    /*
+     * Todo lo que concede esta lista vive detras de @TenantScope, y el
+     * SUPERADMIN no tiene tenant en su sesion. Si la empresa de la ventana no
+     * contara como contexto, el permiso se concederia y el endpoint moriria un
+     * renglon mas abajo: concedido y muerto, que es peor que negado.
+     */
+    expect(elSoporteLoPuedeLeer({ ...base, tenantDeLaVentana: 'tenant-1' })).toBe(true);
+    expect(elSoporteLoPuedeLeer({ ...base, tenantDeLaVentana: '' })).toBe(false);
+  });
+
   it('la lista es corta y toda de lectura', () => {
     expect(PERMISOS_DE_LECTURA_DE_SOPORTE.length).toBeLessThanOrEqual(5);
     for (const permiso of PERMISOS_DE_LECTURA_DE_SOPORTE) {
