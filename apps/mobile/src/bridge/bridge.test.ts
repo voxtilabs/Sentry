@@ -362,3 +362,53 @@ test('la cola rechaza API HTTP externa y claves que no sean UUID', () => {
   });
   assert.equal(leerMensajePortal(JSON.stringify(invalido)).ok, false);
 });
+
+test('el aviso de red que llega antes del saludo no se pierde: se reenvia al quedar listo', async () => {
+  /*
+   * Reporte de terreno (21-09-2026): «de repente tira sin señal y no la
+   * recupera a menos que cerremos la app».
+   *
+   * El aviso de conectividad es un EVENTO del sistema, no un estado que la
+   * pantalla pueda volver a mirar. Si llega mientras el WebView carga, antes
+   * se descartaba en silencio — y puede no haber otro cambio de red en toda la
+   * ronda, asi que el portal se quedaba con lo que tuviera.
+   */
+  const { puente, inyectados } = setup();
+
+  puente.notificarConexion({ enLinea: false, tipo: 'ninguna' });
+  assert.equal(
+    inyectados.filter((s) => s.includes('connectivity.state')).length,
+    0,
+    'antes del saludo no se puede enviar nada',
+  );
+
+  puente.alRecibirMensaje(
+    evento(armarSobre('hello', { portalBuild: 'test', requiere: { major: 1, minMinor: 0 } })),
+  );
+  await esperarMensajes();
+
+  const avisos = inyectados.filter((s) => s.includes('connectivity.state'));
+  assert.equal(avisos.length, 1);
+  assert.ok(avisos[0]?.includes(String.raw`\"enLinea\":false`));
+  puente.detener();
+});
+
+test('el ultimo estado de red se reenvia entero, no solo el primero que llego', async () => {
+  const { puente, inyectados } = setup();
+
+  puente.notificarConexion({ enLinea: false, tipo: 'ninguna' });
+  // La red volvio mientras el portal seguia cargando: lo que tiene que ver el
+  // portal al abrir es esto, no el corte que ya paso.
+  puente.notificarConexion({ enLinea: true, tipo: 'celular' });
+
+  puente.alRecibirMensaje(
+    evento(armarSobre('hello', { portalBuild: 'test', requiere: { major: 1, minMinor: 0 } })),
+  );
+  await esperarMensajes();
+
+  const avisos = inyectados.filter((s) => s.includes('connectivity.state'));
+  assert.equal(avisos.length, 1);
+  assert.ok(avisos[0]?.includes(String.raw`\"enLinea\":true`));
+  assert.ok(avisos[0]?.includes(String.raw`\"tipo\":\"celular\"`));
+  puente.detener();
+});

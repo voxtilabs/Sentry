@@ -233,6 +233,29 @@ async function leerEstadoServidor(apiUrl: string): Promise<EstadoServidor | null
   }
 }
 
+/**
+ * Quien manda cuando el puente dice "sin señal" y el servidor contesta igual.
+ *
+ * Reportado en terreno: la app se queda en "Sin señal" con el telefono
+ * teniendo señal, y no se recupera hasta cerrarla. El aviso de conectividad lo
+ * empuja el shell nativo una sola vez por cambio; si ese empujon se pierde
+ * —Android no siempre reemite cuando la red vuelve a validarse, y el WebView
+ * puede no estar listo para recibirlo— la pantalla se queda con el ultimo dato
+ * que recibio, que es del minuto en que no habia.
+ *
+ * Una respuesta del servidor es prueba mas fuerte que cualquier aviso: si
+ * `/sync/status` contesto DESPUES del aviso de que no habia señal, la señal
+ * esta. Al reves no: perder la señal despues de una respuesta buena es lo
+ * normal y ahi el aviso tiene razon.
+ */
+export function elServidorDesmienteElAviso(
+  sinSenalDesde: number | null,
+  servidorRespondioEn: number | null,
+): boolean {
+  if (sinSenalDesde === null || servidorRespondioEn === null) return false;
+  return servidorRespondioEn > sinSenalDesde;
+}
+
 // ------------------------------------------------------------------- componente
 
 const COLA_VACIA: EstadoCola = { pendientes: 0, rechazadas: [], sincronizando: false };
@@ -271,10 +294,21 @@ export function SyncEstado({
   // Valor fijo en el primer render: leer `navigator` aca romperia la hidratacion.
   const [enLineaNavegador, setEnLineaNavegador] = useState(true);
   const [ahora, setAhora] = useState(() => Date.now());
+  const [sinSenalDesde, setSinSenalDesde] = useState<number | null>(null);
+  const [servidorRespondioEn, setServidorRespondioEn] = useState<number | null>(null);
+  const enLineaPrevio = useRef<boolean | undefined>(undefined);
 
   const reglasApi = useReglasSync(apiUrl, siteId, reglas === undefined);
   const reglasActivas = reglas ?? reglasApi;
-  const enLinea = conexion?.enLinea ?? enLineaNavegador;
+  const avisa = conexion?.enLinea ?? enLineaNavegador;
+  const enLinea = avisa || elServidorDesmienteElAviso(sinSenalDesde, servidorRespondioEn);
+
+  // Se anota CUANDO empezo el aviso de "sin señal", no que lo hubo: lo que
+  // decide es si el servidor contesto antes o despues.
+  useEffect(() => {
+    if (enLineaPrevio.current !== false && avisa === false) setSinSenalDesde(Date.now());
+    enLineaPrevio.current = avisa;
+  }, [avisa]);
 
   useEffect(() => suscribirCola(setCola), []);
 
@@ -294,6 +328,9 @@ export function SyncEstado({
 
   const consultarServidor = useCallback(async () => {
     const estado = await leerEstadoServidor(apiUrl);
+    // Que haya contestado es el dato: prueba que hay señal aunque el puente
+    // siga diciendo que no.
+    if (estado !== null) setServidorRespondioEn(Date.now());
     setServidor(estado);
     setConsultado(true);
   }, [apiUrl]);
@@ -324,6 +361,24 @@ export function SyncEstado({
       document.removeEventListener('visibilitychange', alVolverAlFrente);
     };
   }, [consultarServidor]);
+
+  /*
+   * Mientras dice "sin señal", y SOLO mientras lo dice, se le vuelve a
+   * preguntar al servidor cada medio minuto.
+   *
+   * Los otros disparadores no alcanzan para el caso reportado: el guardia
+   * mira la app sin cambiarla de pantalla —no hay `visibilitychange`—, el
+   * navegador no emite `online` porque para el nunca hubo corte, y sin cola
+   * pendiente no hay lote que sincronizar. Sin esto el aviso se queda pegado
+   * hasta que cierren la app, que es justo lo que pasaba.
+   *
+   * Cuando hay señal esto no corre: cuesta cero en el turno normal.
+   */
+  useEffect(() => {
+    if (enLinea) return undefined;
+    const id = setInterval(() => void consultarServidor(), 30_000);
+    return () => clearInterval(id);
+  }, [enLinea, consultarServidor]);
 
   const desde = useDesdeSinSubir(cola.pendientes);
 
