@@ -164,6 +164,13 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
   const registrar = opciones.alRegistrar ?? (() => undefined);
   let listo = false;
   let bloqueado = false;
+  /*
+   * El ultimo estado de red que se intento avisar. Los avisos llegan cuando
+   * Android quiere, y el WebView todavia puede no estar listo para recibirlos:
+   * sin esto el aviso se descartaba y la pantalla se quedaba con el estado que
+   * tuviera —en la practica, "sin señal" hasta cerrar la app—.
+   */
+  let ultimaConexion: EstadoConexionPayload | undefined;
 
   /*
    * A proposito NO hay temporizador de saludo. Lo hubo, y bloqueaba la app
@@ -258,6 +265,11 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     );
     bloqueado = false;
     listo = true;
+    // Lo que no se pudo avisar mientras cargaba se avisa ahora, no en el
+    // proximo cambio de red: puede no haber otro en toda la ronda.
+    if (ultimaConexion !== undefined) {
+      enviar(armarSobre('connectivity.state', ultimaConexion, { prefijo: 'net' }));
+    }
   }
 
   async function atenderEscaneo(id: string, payload: EscaneoNfcPayload): Promise<void> {
@@ -480,6 +492,7 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     guionPrevio: construirGuionPrevio(opciones.appVersion),
     alRecibirMensaje,
     notificarConexion: (estado) => {
+      ultimaConexion = estado;
       if (listo && !bloqueado) {
         enviar(armarSobre('connectivity.state', estado, { prefijo: 'net' }));
       }

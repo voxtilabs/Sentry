@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -266,13 +267,43 @@ function AppShell({ portal }: { portal: URL }) {
   }, []);
 
   useEffect(() => {
-    const subscription = Network.addNetworkStateListener((estado) => {
+    const avisar = (estado: Network.NetworkState) => {
       puente.notificarConexion(normalizarConexion(estado));
       if (estado.isConnected === true && estado.isInternetReachable !== false) {
         void sincronizarCola().catch(() => undefined);
       }
+    };
+
+    const subscription = Network.addNetworkStateListener(avisar);
+
+    /*
+     * Reportado en terreno: la app se queda en "sin señal" con el telefono
+     * teniendo señal y no se recupera hasta cerrarla.
+     *
+     * El aviso del sistema es un EVENTO, no un estado que se pueda volver a
+     * mirar: si el que decia que la red volvio no llega —Android coalesce los
+     * callbacks con la pantalla apagada y no siempre reemite cuando la red se
+     * vuelve a validar— la pantalla se queda con el ultimo que si llego. Y
+     * cerrar la app "lo arreglaba" justo porque al arrancar se pregunta el
+     * estado de cero.
+     *
+     * Volver a primer plano es el momento barato de preguntar: es lo que hace
+     * el guardia cuando sospecha que algo anda mal, y es una consulta al
+     * sistema, sin red.
+     */
+    const preguntarDeNuevo = () => {
+      void Network.getNetworkStateAsync().then(avisar).catch(() => undefined);
+    };
+
+    preguntarDeNuevo();
+    const alCambiarDeEstado = AppState.addEventListener('change', (estadoApp) => {
+      if (estadoApp === 'active') preguntarDeNuevo();
     });
-    return () => subscription.remove();
+
+    return () => {
+      subscription.remove();
+      alCambiarDeEstado.remove();
+    };
   }, [puente]);
 
   // Escaneo continuo NFC en la pantalla de Login
