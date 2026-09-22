@@ -105,9 +105,14 @@ jobs:
             throw new Error('versionCode invalido');
           }
           const original = readFileSync(ruta, 'utf8');
-          const cambiado = original.replace(/versionCode\s+\d+/, `versionCode ${codigo}`);
-          if (cambiado === original) throw new Error('no se encontro versionCode en build.gradle');
-          writeFileSync(ruta, cambiado);
+          // Se comprueba que el patron EXISTA, no que el texto cambie: el
+          // prebuild escribe `versionCode 1`, asi que la primera entrega pide
+          // justamente el numero que ya estaba y un "no cambio nada" no es un
+          // error. Confundir las dos cosas tumbo la primera corrida.
+          if (!/versionCode\s+\d+/.test(original)) {
+            throw new Error('no se encontro versionCode en build.gradle');
+          }
+          writeFileSync(ruta, original.replace(/versionCode\s+\d+/, `versionCode ${codigo}`));
           console.log(`versionCode = ${codigo}`);
           NODE
 
