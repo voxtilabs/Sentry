@@ -173,6 +173,9 @@ const config: ExpoConfig = {
     // Plugin local: vuelca las cookies del WebView en onPause. Ver
     // plugins/with-volcado-de-cookies.js.
     './plugins/with-volcado-de-cookies',
+    // Plugin local: firma el release con la llave de subida de Play cuando
+    // esta en el entorno. Ver plugins/with-firma-de-subida.js.
+    './plugins/with-firma-de-subida',
   ],
 
   android: {
