@@ -80,7 +80,7 @@ if (!TaskManager.isTaskDefined(TAREA)) {
     }));
 
     try {
-      await fetch(`${destino.apiBaseUrl}/geo/patrols/${destino.patrolId}/track`, {
+      const respuesta = await fetch(`${destino.apiBaseUrl}/geo/patrols/${destino.patrolId}/track`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -97,6 +97,32 @@ if (!TaskManager.isTaskDefined(TAREA)) {
         },
         body: JSON.stringify({ points }),
       });
+
+      /*
+       * EL SERVIDOR ES QUIEN SABE SI LA RONDA SIGUE VIVA.
+       *
+       * Un 4xx aqui significa que esta ronda ya no acepta posiciones: se
+       * cerro, se pauso, o el guardia retiro el consentimiento. Cuando eso
+       * pasa, el servicio en primer plano tiene que MORIR — si no, el telefono
+       * sigue despertando el GPS y mostrando "Ronda en curso" cuando no hay
+       * ninguna. Visto en el telefono de prueba: ronda cerrada, notificacion
+       * puesta y la tarea disparando cada pocos segundos.
+       *
+       * El portal manda `track.stop` al cerrar, y eso sigue siendo el camino
+       * normal. Esto es la red debajo: el muestreo lo registra ANDROID y
+       * sobrevive a que el portal se recargue, se quede sin WebView o muera el
+       * proceso, asi que no puede depender solo de que alguien se acuerde de
+       * apagarlo. La regla es la misma que ya rige en el servidor: fuera de la
+       * ronda no se registra nada.
+       *
+       * Los 5xx NO cuentan: ahi el servidor esta caido, no cerrando la ronda, y
+       * apagar la traza por un error pasajero perderia el recorrido de verdad.
+       */
+      if (!respuesta.ok && respuesta.status >= 400 && respuesta.status < 500) {
+        destino = null;
+        await detenerTrazaEnSegundoPlano();
+        return;
+      }
     } catch (fallo) {
       console.warn('[traza-fondo] fallo la subida:', String(fallo));
       /*
