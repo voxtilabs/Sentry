@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+
+import { DivulgacionUbicacion } from './divulgacion-ubicacion';
 import { useEffect, useState } from 'react';
 
 import type { CheckpointKind } from '@sentrycore/shared';
@@ -204,6 +206,18 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
 
   if (!data.hasAssignment || !data.patrol || !data.shift) {
     return (
+      <>
+      {/*
+        * La divulgacion destacada va DELANTE del dialogo de Android (rechazo de
+        * Play del 02-10-2026). Se monta en las dos vistas de esta pantalla
+        * porque el guardia puede caer en cualquiera de las dos al ingresar.
+        */}
+      {puente.divulgacionPendiente ? (
+        <DivulgacionUbicacion
+          onContinuar={puente.continuarTrasDivulgacion}
+          onPosponer={puente.posponerDivulgacion}
+        />
+      ) : null}
       <section className="empty-assignment" aria-live="polite">
         <span className="empty-icon">✓</span>
         {data.assignedSites && data.assignedSites.length > 1 ? (
@@ -337,6 +351,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
 
         <ConnectionStatus pendingItems={data.synchronization.pendingItems} />
       </section>
+      </>
     );
   }
 
@@ -396,6 +411,15 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
 
   return (
     <>
+      {/* Misma divulgacion que en la vista sin ronda: el guardia puede ingresar
+          en cualquiera de las dos y el dialogo del sistema no puede adelantarse
+          al texto en ninguna. */}
+      {puente.divulgacionPendiente ? (
+        <DivulgacionUbicacion
+          onContinuar={puente.continuarTrasDivulgacion}
+          onPosponer={puente.posponerDivulgacion}
+        />
+      ) : null}
       {puente.avisoUbicacion ? (
         <p className="guardia-anuncio guardia-anuncio-alerta" role="alert">
           {puente.avisoUbicacion}

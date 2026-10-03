@@ -1312,3 +1312,44 @@ a.stats-boton { display: inline-flex; align-items: center; }
  */
 .ronda-voluntaria.vacia { border-style: dashed; opacity: .85; }
 .ronda-voluntaria.vacia p { margin: 0; }
+
+/*
+ * Divulgacion destacada de ubicacion. Va por ENCIMA de todo y no se cierra
+ * tocando el fondo: Play exige accion afirmativa, y un aviso que se despacha
+ * con un toque al costado no es una accion afirmativa.
+ */
+.divulgacion-fondo {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
+  justify-content: center; padding: 1.25rem; background: rgba(8, 10, 18, .72);
+  overflow-y: auto;
+}
+.divulgacion {
+  width: 100%; max-width: 32rem; max-height: 92vh; overflow-y: auto;
+  background: var(--surface, #fff); border-radius: 1.1rem; padding: 1.5rem;
+  box-shadow: 0 24px 60px rgba(8, 10, 18, .35);
+}
+.divulgacion h2 {
+  margin: .2rem 0 1rem; font-family: Outfit, system-ui, sans-serif;
+  font-size: 1.55rem; font-weight: 800; line-height: 1.2;
+}
+.divulgacion-principal {
+  margin: 0 0 1.1rem; font-size: 1.05rem; line-height: 1.55;
+  color: var(--ink, #12141C);
+}
+.divulgacion-puntos { margin: 0 0 1.4rem; padding-left: 1.1rem; }
+.divulgacion-puntos li { margin-bottom: .6rem; font-size: .95rem; line-height: 1.5; }
+.divulgacion-acciones { display: flex; flex-direction: column; gap: .6rem; }
+.divulgacion-continuar {
+  min-height: 3.5rem; border: 0; border-radius: .75rem; cursor: pointer;
+  background: var(--action, #3D5AFE); color: #fff;
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+}
+.divulgacion-posponer {
+  min-height: 3.5rem; border: 1px solid var(--line, #d7dbe8); border-radius: .75rem;
+  cursor: pointer; background: transparent; color: var(--text-muted, #6E7488);
+  font-family: Outfit, system-ui, sans-serif; font-weight: 600; font-size: 1rem;
+}
+.divulgacion-continuar:disabled, .divulgacion-posponer:disabled { opacity: .6; cursor: progress; }
+.divulgacion-pie {
+  margin: 1rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--text-muted, #6E7488);
+}
