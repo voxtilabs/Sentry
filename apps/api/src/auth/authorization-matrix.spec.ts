@@ -305,6 +305,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   secured(QrController, 'siteSheet', ['tenant:sites:manage'], ['ADMIN'], true),
 
   secured(PlatformOpsController, 'provision', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(PlatformOpsController, 'reponerAdmin', ['platform:tenants:manage'], ['SUPERADMIN']),
   secured(PlatformOpsController, 'platformMetrics', ['platform:metrics:read'], ['SUPERADMIN']),
 
   secured(EventsStreamController, 'stream', ['patrols:monitor'], ['SUPERVISOR'], true),

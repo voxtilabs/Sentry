@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { patrolRulesSchema } from '@sentrycore/shared';
@@ -14,6 +15,7 @@ import { DataSource, QueryFailedError } from 'typeorm';
 import { createAuthActionToken } from '../auth/auth-action-token';
 import { MailService } from '../auth/mail.service';
 import type { ProvisionTenantDto } from './dto/provision-tenant.dto';
+import type { ReponerAdminDto } from './dto/reponer-admin.dto';
 
 /** Igual que la invitacion de AdminService: el enlace del correo lo dice. */
 const INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -57,6 +59,82 @@ export class ProvisioningService {
    * el commit— produce un enlace de invitacion muerto, sin empresa detras y sin
    * dato filtrado; eso se resuelve repitiendo el alta.
    */
+  /**
+   * Repone el acceso del ADMIN de una empresa mandando la invitacion a un
+   * correo que SI reciba.
+   *
+   * El caso que lo pide: una empresa dada de alta con un correo equivocado —o
+   * de un dominio que ya no existe— queda sin administrador y sin forma de
+   * recuperarlo, porque la recuperacion de contraseña va al mismo buzon muerto.
+   *
+   * LO QUE ESTA FUNCION NO HACE, Y NO DEBE HACER NUNCA: fijar o devolver una
+   * clave. La plataforma sigue sin poder entrar como el administrador de un
+   * cliente; lo unico que cambia es a donde llega el enlace para que ESA
+   * persona defina la suya. Si algun dia alguien agrega aqui un "y de paso
+   * dejame la clave en la respuesta", se perdio la propiedad entera.
+   */
+  async reponerAdmin(actorId: string, input: ReponerAdminDto) {
+    const invitacion = createAuthActionToken(INVITATION_TTL_MS);
+    let fila: { user_id: string; email: string; tenant_name: string } | undefined;
+    try {
+      const filas = await this.dataSource.query<
+        Array<{ user_id: string; email: string; tenant_name: string }>
+      >(
+        `SELECT * FROM platform_reponer_admin($1::uuid, $2::uuid, $3::citext, $4, $5::timestamptz)`,
+        [actorId, input.tenantId, input.email, invitacion.tokenHash, invitacion.expiresAt],
+      );
+      fila = filas[0];
+    } catch (error) {
+      const codigo = (error as { code?: string })?.code;
+      if (codigo === 'P0002' || codigo === '02000') {
+        throw new NotFoundException('La empresa no existe o no tiene administrador');
+      }
+      if (codigo === '23505') {
+        throw new ConflictException('Ese correo ya pertenece a otra cuenta');
+      }
+      if (codigo === '42501') {
+        // El permiso de la API ya filtra, pero la reja de la base es la que
+        // manda: un SUPERADMIN desactivado llega hasta aqui y rebota.
+        throw new ForbiddenException('Solo un SUPERADMIN activo puede reponer el acceso');
+      }
+      throw error;
+    }
+    if (!fila) throw new NotFoundException('La empresa no existe o no tiene administrador');
+
+    /*
+     * El correo se manda DESPUES de que la base confirmo el cambio. Al reves
+     * —mandar y despues escribir— deja a alguien con un enlace que no sirve, y
+     * en una recuperacion de acceso eso es peor que no mandar nada.
+     */
+    try {
+      await this.mail.invitation(
+        input.email,
+        invitacion.token,
+        input.tenantId,
+        `invitation:${invitacion.tokenHash}`,
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        'El acceso se repuso pero no se pudo enviar el correo. Vuelve a intentarlo.',
+      );
+    }
+
+    this.logger.log(
+      JSON.stringify({
+        event: 'admin_de_empresa_repuesto',
+        tenant_id: input.tenantId,
+        user_id: fila.user_id,
+      }),
+    );
+    return {
+      tenantId: input.tenantId,
+      tenantName: fila.tenant_name,
+      adminUserId: fila.user_id,
+      email: fila.email,
+      invitationExpiresAt: invitacion.expiresAt,
+    };
+  }
+
   async altaCompleta(actorId: string, input: ProvisionTenantDto) {
     const overrides = this.validarReglas(input.ruleOverrides);
 
