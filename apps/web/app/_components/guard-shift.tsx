@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { DivulgacionUbicacion } from './divulgacion-ubicacion';
 import { GuardCheckpointList, type FaseEscaneo } from './guard-checkpoint-list';
 import {
   motivoQrInvalido,
@@ -190,6 +191,12 @@ function SinAsignacion({ apiUrl, mensaje }: { apiUrl: string; mensaje?: string }
   const puente = useGuardBridge(apiUrl);
   return (
     <>
+      {puente.divulgacionPendiente ? (
+        <DivulgacionUbicacion
+          onContinuar={puente.continuarTrasDivulgacion}
+          onPosponer={puente.posponerDivulgacion}
+        />
+      ) : null}
       <SyncEstado apiUrl={apiUrl} conexion={puente.conexion} />
       <section className="empty-assignment">
         <span className="empty-icon" aria-hidden="true">
