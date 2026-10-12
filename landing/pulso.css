@@ -177,7 +177,7 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
   background:transparent; color:var(--medio-texto); border-color:rgba(255,255,255,.28);
 }
 .boton-claro:hover { background:rgba(255,255,255,.08); }
-.boton-compacto { min-height:40px; padding:10px 20px; font-size:15px; }
+.boton-compacto { min-height:40px; padding:10px 20px; font-size:15px; white-space:nowrap; }
 
 /* Google Play: la insignia va tal cual la entrega Google, sin recolorear. */
 .descarga { margin-top:32px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
@@ -195,13 +195,45 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
 .barra-respaldo:hover strong { color:var(--action-text); }
 
 @media (max-width:860px) {
-  .portada-rejilla { grid-template-columns:1fr; gap:32px; }
-  .portada-visual { order:-1; }
-  .telefono { width:min(210px, 60%); }
+  .portada-rejilla { grid-template-columns:1fr; gap:28px; }
+  /*
+   * El titular PRIMERO. Con la foto arriba, lo primero que veia alguien en un
+   * telefono era una captura sin contexto y el "que es esto" quedaba bajo el
+   * pliegue. La imagen acompana al argumento; no lo reemplaza.
+   */
+  .portada-visual { order:1; }
+  .telefono { width:min(230px, 62%); }
   .barra-respaldo { display:none; }
 }
 @media (max-width:620px) {
-  .barra .boton-compacto { display:none; }
+  /*
+   * En la barra cabe una sola cosa ademas del logo, y es la accion. El
+   * interruptor se va: el sitio igual arranca en el modo que pide el sistema.
+   */
+  .barra .interruptor { display:none; }
+  .barra .boton-compacto { padding:9px 16px; font-size:14px; }
+  .portada { padding:48px 0 40px; }
+  .descarga { gap:14px; }
+}
+
+/*
+ * Capturas anchas en pantallas angostas: un panel de 2880 px reducido al ancho
+ * de un telefono no se lee. El lienzo las deja a un tamano legible y se desliza
+ * con el dedo, en vez de fingir que caben.
+ */
+.lienzo { margin:0; }
+@media (max-width:720px) {
+  .lienzo {
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    border-radius:12px; scrollbar-width:thin;
+  }
+  .lienzo img { min-width:660px; }
+  .captura-ancha figcaption::before {
+    content:'Desliza la imagen para ver el detalle';
+    display:block; margin-bottom:6px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint);
+  }
 }
 .etiqueta {
   display:inline-block; margin-bottom:24px; padding:6px 14px; border-radius:999px;
@@ -405,3 +437,29 @@ footer .envoltorio { align-items:start; gap:32px; flex-wrap:wrap; }
   background:var(--bg-raised); border:1px solid var(--border);
 }
 .descarga-articulo p { color:var(--text-muted); max-width:46ch; }
+
+/* La accion de la barra cambia de etiqueta, no de tamano de letra: en 360 px
+   el logo y "Solicitar una demo" no caben juntos. */
+.rotulo-corto { display:none; }
+@media (max-width:480px) {
+  .rotulo-largo { display:none; }
+  .rotulo-corto { display:inline; }
+  .barra .marca-producto svg { height:22px; }
+}
+
+/*
+ * Tablas en pantallas angostas. Una tabla de tres columnas no se achica sin
+ * volverse ilegible: se desliza dentro de su propia caja y el resto de la
+ * pagina deja de moverse de lado, que es lo que rompe la lectura en un
+ * telefono.
+ */
+@media (max-width:720px) {
+  .ficha-envoltorio { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .ficha-envoltorio .ficha { min-width:520px; }
+  .ficha-envoltorio::after {
+    content:'Desliza la tabla para verla completa';
+    display:block; margin-top:8px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint);
+  }
+}
