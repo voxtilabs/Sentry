@@ -1,4 +1,28 @@
 /* ───────────────────────────────────────────────────────────────
+   Fuentes propias.
+
+   Antes venian de Google Fonts: dos conexiones a otro dominio ANTES de
+   pintar la primera letra, y la tipografia saltando a la vista cuando por
+   fin llegaban. Servidas desde este dominio viajan con el CSS, no le
+   cuentan a un tercero quien entro al sitio, y el sitio sigue funcionando
+   si Google cae. Subconjunto latino: 156 KB las siete.
+   ─────────────────────────────────────────────────────────────── */
+@font-face { font-family:Outfit; font-style:normal; font-weight:400; font-display:swap;
+  src:url('fuentes/outfit-400.woff2') format('woff2'); }
+@font-face { font-family:Outfit; font-style:normal; font-weight:700; font-display:swap;
+  src:url('fuentes/outfit-700.woff2') format('woff2'); }
+@font-face { font-family:Outfit; font-style:normal; font-weight:800; font-display:swap;
+  src:url('fuentes/outfit-800.woff2') format('woff2'); }
+@font-face { font-family:Inter; font-style:normal; font-weight:400; font-display:swap;
+  src:url('fuentes/inter-400.woff2') format('woff2'); }
+@font-face { font-family:Inter; font-style:normal; font-weight:500; font-display:swap;
+  src:url('fuentes/inter-500.woff2') format('woff2'); }
+@font-face { font-family:'JetBrains Mono'; font-style:normal; font-weight:400; font-display:swap;
+  src:url('fuentes/jetbrains-400.woff2') format('woff2'); }
+@font-face { font-family:'JetBrains Mono'; font-style:normal; font-weight:500; font-display:swap;
+  src:url('fuentes/jetbrains-500.woff2') format('woff2'); }
+
+/* ───────────────────────────────────────────────────────────────
    Sistema Pulso · VoxTi Labs 1.0
    Ningun componente sabe en que modo esta: todos piden tokens.
    Escala de espaciado: 8 16 24 32 48 64 96. Nada intermedio.
@@ -14,6 +38,10 @@
   --bad:#E23D5C; --bad-text:#A6203C; --bad-soft:#FFEEF1; --bad-soft-br:#FCD6DE;
   --field-bg:#FFFFFF;
   --sobre-relleno:#FFFFFF;   /* texto sobre --action y --bad */
+  /* Superficie oscura de portada, igual que las bandas de voxtilabs.cl.
+     No cambia con el modo: es la firma visual de la empresa. */
+  --medio-bg:#0B0D14; --medio-bg-alzado:#141826; --medio-borde:#262C40;
+  --medio-texto:#EDEFF7; --medio-texto-cuerpo:#B9C0D4; --medio-texto-tenue:#8189A0;
 }
 [data-mode="noche"] {
   --bg:#0B0D14; --bg-raised:#141826; --bg-rest:#1D2233;
@@ -121,8 +149,60 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
 .interruptor:hover { color:var(--text); background:var(--bg-raised); }
 .interruptor:focus-visible { outline:2px solid var(--action); outline-offset:2px; }
 
-/* Portada */
-.portada { padding:96px 0 64px; }
+/* Portada — banda oscura de marca, con el producto al lado */
+.portada {
+  background:var(--medio-bg); color:var(--medio-texto-cuerpo);
+  padding:72px 0 56px; border-bottom:1px solid var(--medio-borde);
+}
+.portada h1 { color:var(--medio-texto); }
+.portada .entrada { color:var(--medio-texto-cuerpo); }
+/* El punto azul del titular: la firma de VoxTi Labs. */
+.portada h1 .punto { color:var(--action); }
+.portada .etiqueta {
+  background:rgba(61,90,254,.14); border-color:rgba(61,90,254,.38); color:#AEBBFF;
+}
+.portada-rejilla {
+  display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);
+  gap:48px; align-items:center;
+}
+.portada-visual { display:flex; justify-content:center; }
+/* Marco de telefono: deja claro que eso es la app y no una captura del panel. */
+.telefono {
+  width:min(260px, 100%); padding:10px; border-radius:34px;
+  background:linear-gradient(160deg, #2A3147, #11141F);
+  border:1px solid var(--medio-borde); box-shadow:0 24px 60px rgba(0,0,0,.45);
+}
+.telefono img { display:block; width:100%; height:auto; border-radius:26px; }
+.boton-claro {
+  background:transparent; color:var(--medio-texto); border-color:rgba(255,255,255,.28);
+}
+.boton-claro:hover { background:rgba(255,255,255,.08); }
+.boton-compacto { min-height:40px; padding:10px 20px; font-size:15px; }
+
+/* Google Play: la insignia va tal cual la entrega Google, sin recolorear. */
+.descarga { margin-top:32px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.descarga-insignia { display:inline-block; line-height:0; }
+.descarga-insignia img { width:168px; height:auto; }
+.descarga p { margin:0; max-width:34ch; font-size:14px; color:var(--medio-texto-tenue); }
+
+/* Barra */
+.barra-acciones { display:flex; align-items:center; gap:16px; }
+.barra-respaldo {
+  display:flex; flex-direction:column; line-height:1.15;
+  text-decoration:none; color:var(--text-muted);
+}
+.barra-respaldo strong { font-family:Outfit, sans-serif; font-size:14px; color:var(--text); }
+.barra-respaldo:hover strong { color:var(--action-text); }
+
+@media (max-width:860px) {
+  .portada-rejilla { grid-template-columns:1fr; gap:32px; }
+  .portada-visual { order:-1; }
+  .telefono { width:min(210px, 60%); }
+  .barra-respaldo { display:none; }
+}
+@media (max-width:620px) {
+  .barra .boton-compacto { display:none; }
+}
 .etiqueta {
   display:inline-block; margin-bottom:24px; padding:6px 14px; border-radius:999px;
   background:var(--action-soft); border:1px solid var(--action-soft-br); color:var(--action-text);
@@ -132,6 +212,12 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
 .acciones { display:flex; flex-wrap:wrap; gap:16px; margin-top:32px; }
 
 /* Cifras — numero en Outfit 700, unidad en Inter con --text-muted */
+.portada .cifras {
+  background:var(--medio-bg-alzado); border-color:var(--medio-borde);
+}
+.portada .cifra { background:var(--medio-bg-alzado); border-color:var(--medio-borde); }
+.portada .cifras .valor { color:var(--medio-texto); }
+.portada .cifras .unidad, .portada .cifras .glosa { color:var(--medio-texto-tenue); }
 .cifras {
   display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
   gap:1px; background:var(--border); border:1px solid var(--border);
@@ -312,3 +398,10 @@ footer .envoltorio { align-items:start; gap:32px; flex-wrap:wrap; }
   footer .envoltorio { gap:24px; }
   .pie-dominio { align-self:start; }
 }
+
+/* La insignia de Google Play dentro de un articulo: misma caja, fondo claro */
+.descarga-articulo {
+  margin:32px 0; padding:20px 24px; border-radius:14px;
+  background:var(--bg-raised); border:1px solid var(--border);
+}
+.descarga-articulo p { color:var(--text-muted); max-width:46ch; }

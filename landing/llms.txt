@@ -13,6 +13,9 @@
 - **Para quien**: empresas de seguridad privada, administraciones de condominios y edificios.
 - **Que resuelve**: probar que la ronda se hizo. El papel no lo prueba; una etiqueta
   pegada en el punto exige presencia fisica para marcarla.
+- **Donde se descarga**: la app del guardia esta publicada en Google Play
+  (https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore), es gratuita y
+  solo Android; entrar requiere una cuenta que crea la empresa de seguridad.
 - **Que hace falta**: un telefono Android con NFC por guardia y etiquetas NFC en los
   puntos. Sin lectores propietarios ni servidores en el recinto.
 - **Sin señal**: la app guarda y sincroniza despues, conservando la hora real de la marca.
@@ -44,6 +47,9 @@
   un registro que sirve de evidencia.
 - [Control de rondas con NFC](https://sentry.voxtilabs.cl/control-de-rondas-nfc/): como funciona, que equipos
   hacen falta, NFC frente a QR y papel, y los huecos que hay que cerrar.
+- [App para guardias de seguridad](https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/): recorrido
+  pantalla por pantalla de la aplicacion del guardia, con capturas reales: entrar, marcar un
+  punto, reportar una novedad, trabajar sin señal y que hay que dejar listo en cada telefono.
 
 ## Datos verificables
 
