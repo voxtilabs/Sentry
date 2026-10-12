@@ -24,9 +24,8 @@
 <meta property="og:description" content="Qué exige la Ley 21.719 para registrar por GPS el recorrido de un guardia en Chile: consentimiento, finalidad, plazos y multas de hasta 20.000 UTM.">
 <meta property="og:image" content="https://sentry.voxtilabs.cl/img/og-sentrycore.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preload" href="../fuentes/outfit-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fuentes/inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../pulso.css">
 <style>
 .articulo { padding:64px 0 96px; }
@@ -171,7 +170,14 @@
 <div class="barra">
   <div class="envoltorio">
     <a class="marca marca-producto" href="../" aria-label="SentryCore, inicio"><svg viewBox="0 0 899 133" fill="none" aria-hidden="true" focusable="false"><g transform="translate(0.00 0.00) scale(0.59524)" fill="none"><path d="M 138 92 L 138 112 A 40 40 0 0 1 98 152 L 56 152 A 40 40 0 0 1 16 112 L 16 70 A 40 40 0 0 1 56 30 L 76 30" stroke="var(--action)" stroke-width="32.0" stroke-linecap="round"/><rect x="108" y="0" width="60" height="60" rx="22" fill="var(--action)"/></g><path d="M 50.40 17.33 A 24.70 18.77 0 1 0 15.53 42.78 L 43.37 57.22 A 24.70 18.77 0 1 1 8.50 82.67" transform="translate(136.00 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 71.50 60.00 A 31.50 31.50 0 1 0 61.88 82.66" transform="translate(203.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 60.00 L 71.50 60.00" transform="translate(203.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 100.00 L 8.50 45.50 A 25.50 25.50 0 0 1 59.50 45.50 L 59.50 100.00" transform="translate(292.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 23.50 12 L 23.50 86.00 A 14.00 14.00 0 0 0 37.50 100.00" transform="translate(369.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 20.00 L 48.50 20.00" transform="translate(369.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 100.00 L 8.50 46.00 A 26.00 26.00 0 0 1 34.50 20.00" transform="translate(435.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 63.50 20.00 L 26.82 124.00" transform="translate(493.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 20.00 L 36.00 100.00" transform="translate(493.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 84.86 20.75 A 45.50 45.50 0 1 0 84.86 79.25" transform="translate(579.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 40.00 24.50 A 35.50 35.50 0 1 1 40.00 95.50 A 35.50 35.50 0 1 1 40.00 24.50 Z" transform="translate(685.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 4.50 100.00 L 4.50 46.00 A 26.00 26.00 0 0 1 30.50 20.00" transform="translate(771.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 75.50 60.00 A 35.50 35.50 0 1 0 64.66 85.54" transform="translate(818.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 4.50 60.00 L 75.50 60.00" transform="translate(818.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></a>
-    <button class="interruptor" id="cambiarModo">Modo noche</button>
+    <div class="barra-acciones">
+      <a class="barra-respaldo" href="https://voxtilabs.cl" rel="noopener">
+        <span class="rotulo">Un producto de</span>
+        <strong>VoxTi&nbsp;Labs</strong>
+      </a>
+      <a class="boton boton-primario boton-compacto" href="../#contacto">Solicitar una demo</a>
+      <button class="interruptor" id="cambiarModo">Modo noche</button>
+    </div>
   </div>
 </div>
 

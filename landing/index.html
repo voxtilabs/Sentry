@@ -36,9 +36,8 @@
 <meta name="twitter:description" content="Acredita que la ronda se hizo: NFC en cada punto, recorrido durante el turno e informe con mapa. Preparado para la Ley 21.719.">
 <meta name="twitter:image" content="https://sentry.voxtilabs.cl/img/og-sentrycore.png">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preload" href="fuentes/outfit-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fuentes/inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="pulso.css">
 <script type="application/ld+json">
 {
@@ -63,6 +62,10 @@
         "@type": "Country",
         "name": "Chile"
       },
+      "sameAs": [
+        "https://voxtilabs.cl",
+        "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore"
+      ],
       "contactPoint": {
         "@type": "ContactPoint",
         "contactType": "ventas",
@@ -89,6 +92,9 @@
         "@id": "https://sentry.voxtilabs.cl/#voxtilabs"
       },
       "countriesSupported": "CL",
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "installUrl": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "sameAs": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
       "featureList": [
         "Marcaje de puntos de control con etiquetas NFC o códigos QR",
         "Registro del recorrido por GPS durante la ronda, una posición por minuto",
@@ -118,6 +124,33 @@
       "dateModified": "2026-08-30"
     },
     {
+      "@type": "MobileApplication",
+      "@id": "https://sentry.voxtilabs.cl/#app",
+      "name": "SentryCore",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Android 8.0+",
+      "inLanguage": "es-CL",
+      "url": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "installUrl": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "description": "Aplicación Android para el guardia: marca los puntos de control con NFC o QR, registra el recorrido de la ronda, permite reportar novedades con foto y funciona sin señal.",
+      "featureList": [
+        "Marcaje de puntos con etiquetas NFC",
+        "Respaldo por código QR cuando la etiqueta no responde",
+        "Funciona sin señal y sincroniza al recuperar conexión",
+        "Reporte de novedades con fotografía",
+        "Botón de pánico silencioso"
+      ],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "CLP",
+        "description": "La app se descarga gratis; el acceso lo habilita la empresa de seguridad contratante."
+      },
+      "publisher": { "@id": "https://sentry.voxtilabs.cl/#voxtilabs" },
+      "isPartOf": { "@id": "https://sentry.voxtilabs.cl/#sentrycore" }
+    },
+    {
       "@type": "WebSite",
       "@id": "https://sentry.voxtilabs.cl/#sitio",
       "url": "https://sentry.voxtilabs.cl/",
@@ -136,6 +169,14 @@
       "@id": "https://sentry.voxtilabs.cl/#preguntas",
       "inLanguage": "es-CL",
       "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "¿Dónde se descarga la aplicación del guardia?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "En Google Play, buscando SentryCore. La descarga es gratuita y solo funciona para Android. Entrar requiere una cuenta que crea la empresa de seguridad: el guardia usa el código de 6 dígitos que le da su supervisor, su usuario y contraseña, o una tarjeta NFC con PIN."
+          }
+        },
         {
           "@type": "Question",
           "name": "¿Qué es SentryCore?",
@@ -244,43 +285,67 @@
 <div class="barra">
   <div class="envoltorio">
     <a class="marca marca-producto" href="/" aria-label="SentryCore, inicio"><svg viewBox="0 0 899 133" fill="none" aria-hidden="true" focusable="false"><g transform="translate(0.00 0.00) scale(0.59524)" fill="none"><path d="M 138 92 L 138 112 A 40 40 0 0 1 98 152 L 56 152 A 40 40 0 0 1 16 112 L 16 70 A 40 40 0 0 1 56 30 L 76 30" stroke="var(--action)" stroke-width="32.0" stroke-linecap="round"/><rect x="108" y="0" width="60" height="60" rx="22" fill="var(--action)"/></g><path d="M 50.40 17.33 A 24.70 18.77 0 1 0 15.53 42.78 L 43.37 57.22 A 24.70 18.77 0 1 1 8.50 82.67" transform="translate(136.00 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 71.50 60.00 A 31.50 31.50 0 1 0 61.88 82.66" transform="translate(203.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 60.00 L 71.50 60.00" transform="translate(203.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 100.00 L 8.50 45.50 A 25.50 25.50 0 0 1 59.50 45.50 L 59.50 100.00" transform="translate(292.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 23.50 12 L 23.50 86.00 A 14.00 14.00 0 0 0 37.50 100.00" transform="translate(369.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 20.00 L 48.50 20.00" transform="translate(369.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 100.00 L 8.50 46.00 A 26.00 26.00 0 0 1 34.50 20.00" transform="translate(435.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 63.50 20.00 L 26.82 124.00" transform="translate(493.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 20.00 L 36.00 100.00" transform="translate(493.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 84.86 20.75 A 45.50 45.50 0 1 0 84.86 79.25" transform="translate(579.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 40.00 24.50 A 35.50 35.50 0 1 1 40.00 95.50 A 35.50 35.50 0 1 1 40.00 24.50 Z" transform="translate(685.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 4.50 100.00 L 4.50 46.00 A 26.00 26.00 0 0 1 30.50 20.00" transform="translate(771.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 75.50 60.00 A 35.50 35.50 0 1 0 64.66 85.54" transform="translate(818.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 4.50 60.00 L 75.50 60.00" transform="translate(818.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></a>
-    <button class="interruptor" id="cambiarModo">Modo noche</button>
+    <div class="barra-acciones">
+      <a class="barra-respaldo" href="https://voxtilabs.cl" rel="noopener">
+        <span class="rotulo">Un producto de</span>
+        <strong>VoxTi&nbsp;Labs</strong>
+      </a>
+      <a class="boton boton-primario boton-compacto" href="#contacto">Solicitar una demo</a>
+      <button class="interruptor" id="cambiarModo">Modo noche</button>
+    </div>
   </div>
 </div>
 
 <main id="contenido">
 <header class="portada">
-  <div class="envoltorio">
-    <span class="etiqueta">Software de rondas de guardias · Hecho en Chile</span>
-    <h1>La ronda se hizo.<br>Y puedes probarlo.</h1>
-    <p class="entrada">
-      Para empresas de seguridad privada: el guardia acerca el teléfono a la etiqueta de cada punto. El recorrido queda
-      registrado durante todo el turno. El informe sale solo, con el mapa de lo que
-      pasó esa noche.
-    </p>
-    <div class="acciones">
-      <a class="boton boton-secundario" href="#capturas">Ver el producto</a>
-      <a class="boton boton-fantasma" href="#como">Cómo funciona</a>
-      <a class="boton boton-fantasma" href="#marca">Personalización</a>
-      <a class="boton boton-fantasma" href="#preguntas">Preguntas frecuentes</a>
+  <div class="envoltorio portada-rejilla">
+    <div class="portada-texto">
+      <span class="etiqueta">Software de rondas de guardias &middot; Hecho en Chile</span>
+      <h1>La ronda se hizo.<br>Y puedes probarlo<span class="punto">.</span></h1>
+      <p class="entrada">
+        Para empresas de seguridad privada: el guardia acerca el tel&eacute;fono a la etiqueta de cada punto. El recorrido queda
+        registrado durante todo el turno. El informe sale solo, con el mapa de lo que
+        pas&oacute; esa noche.
+      </p>
+      <div class="acciones">
+        <a class="boton boton-primario" href="#contacto">Solicitar una demo</a>
+        <a class="boton boton-claro" href="#capturas">Ver el producto</a>
+      </div>
+      <div class="descarga">
+        <a class="descarga-insignia" href="https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore&amp;hl=es_CL"
+           rel="noopener" target="_blank" aria-label="Descargar SentryCore en Google Play">
+          <img src="img/google-play-es.png" alt="Disponible en Google Play" width="646" height="250"
+               decoding="async" fetchpriority="low">
+        </a>
+        <p>La app del guardia, publicada en Google&nbsp;Play. El panel del supervisor corre en cualquier navegador.</p>
+      </div>
     </div>
 
+    <div class="portada-visual" aria-hidden="true">
+      <div class="telefono">
+        <img src="img/app-guardia-2026-08-30.png" alt="" width="1170" height="2004"
+             decoding="async" fetchpriority="high">
+      </div>
+    </div>
+  </div>
+
+  <div class="envoltorio">
     <div class="cifras">
       <div class="cifra">
         <div class="valor">13 <span class="unidad">m</span></div>
-        <span class="glosa">Precisión del recorrido, medida en terreno</span>
+        <span class="glosa">Precisi&oacute;n del recorrido, medida en terreno</span>
       </div>
       <div class="cifra">
-        <div class="valor">1 <span class="unidad">posición / min</span></div>
-        <span class="glosa">Durante toda la ronda, con el teléfono guardado</span>
+        <div class="valor">1 <span class="unidad">posici&oacute;n / min</span></div>
+        <span class="glosa">Durante toda la ronda, con el tel&eacute;fono guardado</span>
       </div>
       <div class="cifra">
-        <div class="valor">90 <span class="unidad">días</span></div>
-        <span class="glosa">Después el recorrido se elimina</span>
+        <div class="valor">90 <span class="unidad">d&iacute;as</span></div>
+        <span class="glosa">Despu&eacute;s el recorrido se elimina</span>
       </div>
       <div class="cifra">
         <div class="valor">2 <span class="unidad">m</span></div>
-        <span class="glosa">Salto máximo entre posiciones consecutivas</span>
+        <span class="glosa">Salto m&aacute;ximo entre posiciones consecutivas</span>
       </div>
     </div>
   </div>
@@ -571,6 +636,10 @@
       <article class="captura">
         <h3><a href="control-de-rondas-nfc/">Control de rondas con NFC</a></h3>
         <p>Cómo funciona, qué equipos hacen falta, en qué se diferencia del QR y del libro de novedades, y cuáles son los huecos que hay que cerrar.</p>
+      </article>
+      <article class="captura">
+        <h3><a href="app-para-guardias-de-seguridad/">La app del guardia, por dentro</a></h3>
+        <p>Qué ve el guardia en el teléfono durante el turno, cómo marca un punto, qué pasa sin señal y cómo se descarga desde Google Play.</p>
       </article>
       <article class="captura">
         <h3><a href="#preguntas">Preguntas frecuentes</a></h3>

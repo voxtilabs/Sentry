@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="es-CL" data-mode="dia">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App para guardias de seguridad: qué ve el guardia en el turno</title>
+<meta name="description" content="Pantalla por pantalla: cómo el guardia marca un punto con NFC o QR, reporta una novedad, qué pasa sin señal y cómo se descarga la app desde Google Play.">
+<link rel="canonical" href="https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/">
+<link rel="alternate" hreflang="es-cl" href="https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<meta name="author" content="VoxTi Labs">
+<meta name="geo.region" content="CL">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B0D14" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="SentryCore">
+<meta property="og:locale" content="es_CL">
+<meta property="og:url" content="https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/">
+<meta property="og:title" content="App para guardias de seguridad: qué ve el guardia en el turno">
+<meta property="og:description" content="Pantalla por pantalla: cómo el guardia marca un punto con NFC o QR, reporta una novedad, qué pasa sin señal y cómo se descarga desde Google Play.">
+<meta property="og:image" content="https://sentry.voxtilabs.cl/img/og-sentrycore.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="../fuentes/outfit-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fuentes/inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../pulso.css">
+<style>
+.articulo { padding:64px 0 96px; }
+.articulo h1 { font-size:clamp(34px, 5vw, 48px); margin-bottom:24px; }
+.articulo h2 { font-size:27px; margin:48px 0 16px; }
+.articulo h3 { margin:32px 0 8px; }
+.articulo ul { margin:0 0 16px; padding-left:20px; max-width:66ch; }
+.articulo li { margin-bottom:8px; }
+.respuesta {
+  background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--action);
+  border-radius:22px; padding:24px 32px; margin:0 0 32px;
+}
+.respuesta p { margin:0; color:var(--text); font-size:18px; }
+.migas { font-size:13px; color:var(--text-muted); margin-bottom:24px; }
+.migas a { color:var(--text-muted); }
+.fuente { font-size:14px; color:var(--text-muted); }
+.actualizado {
+  font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--text-muted);
+  margin-bottom:16px; display:block;
+}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "@id": "https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/#articulo",
+      "headline": "App para guardias de seguridad: qué ve el guardia en el turno",
+      "description": "Recorrido pantalla por pantalla de la aplicación Android que usa el guardia durante su turno: marcar puntos con NFC o QR, reportar novedades, trabajar sin señal y cerrar la ronda.",
+      "inLanguage": "es-CL",
+      "datePublished": "2026-10-12",
+      "dateModified": "2026-10-12",
+      "image": "https://sentry.voxtilabs.cl/img/app-puntos-2026-10-12.png",
+      "author": { "@type": "Organization", "name": "VoxTi Labs", "url": "https://voxtilabs.cl" },
+      "publisher": { "@type": "Organization", "name": "VoxTi Labs", "logo": { "@type": "ImageObject", "url": "https://sentry.voxtilabs.cl/img/logo-voxtilabs-512.png" } },
+      "mainEntityOfPage": "https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/",
+      "about": { "@id": "https://sentry.voxtilabs.cl/#app" }
+    },
+    {
+      "@type": "MobileApplication",
+      "@id": "https://sentry.voxtilabs.cl/#app",
+      "name": "SentryCore",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Android 8.0+",
+      "inLanguage": "es-CL",
+      "url": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "installUrl": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CLP" },
+      "publisher": { "@type": "Organization", "name": "VoxTi Labs" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SentryCore", "item": "https://sentry.voxtilabs.cl/" },
+        { "@type": "ListItem", "position": 2, "name": "App para guardias de seguridad", "item": "https://sentry.voxtilabs.cl/app-para-guardias-de-seguridad/" }
+      ]
+    },
+    {
+      "@type": "HowTo",
+      "name": "Cómo marca un punto de control el guardia",
+      "inLanguage": "es-CL",
+      "totalTime": "PT1M",
+      "tool": [
+        { "@type": "HowToTool", "name": "Teléfono Android con NFC" },
+        { "@type": "HowToTool", "name": "Etiqueta NFC pegada en el punto de control" }
+      ],
+      "step": [
+        { "@type": "HowToStep", "name": "Iniciar la ronda", "text": "El guardia inicia la ronda desde la pestaña Turno. Recién ahí empieza a registrarse el recorrido." },
+        { "@type": "HowToStep", "name": "Acercar el teléfono a la etiqueta", "text": "Apoya la parte trasera del teléfono contra la etiqueta NFC del punto hasta que la app confirme la lectura." },
+        { "@type": "HowToStep", "name": "Usar el QR si la etiqueta no responde", "text": "La app ofrece escanear el código QR pegado al lado, que vale exactamente igual que la etiqueta." },
+        { "@type": "HowToStep", "name": "Tomar la foto si el punto es acceso crítico", "text": "En los puntos marcados como acceso crítico, la app pide una fotografía del acceso antes de continuar." },
+        { "@type": "HowToStep", "name": "Responder las tareas del punto", "text": "Si el punto trae preguntas o un checklist, el guardia las responde en el lugar y el supervisor las ve en el informe." }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "¿Dónde se descarga la app para guardias de seguridad?",
+          "acceptedAnswer": { "@type": "Answer", "text": "En Google Play, buscando SentryCore. La descarga es gratuita y es solo para Android. Para entrar hace falta una cuenta creada por la empresa de seguridad: el guardia usa el código de 6 dígitos que le da su supervisor, su usuario y contraseña, o una tarjeta NFC con PIN." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Sirve en un teléfono sin NFC?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sí. Si el equipo no tiene antena NFC o está apagada, el guardia marca los puntos leyendo el código QR pegado junto a la etiqueta. El registro vale igual." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Qué pasa si el guardia se queda sin señal en medio de la ronda?",
+          "acceptedAnswer": { "@type": "Answer", "text": "La app sigue funcionando. Los puntos marcados, las fotos y las novedades quedan guardados en el teléfono con su hora y ubicación reales, y se suben solos cuando vuelve la conexión. La pantalla avisa si queda algo pendiente por subir." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿La app registra la ubicación del guardia todo el turno?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Solo mientras hay una ronda en curso. Si el guardia la pausa o la cierra, el registro se detiene. El recorrido se conserva por un plazo configurable, 90 días por defecto, y después se elimina." }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Consume mucha batería?",
+          "acceptedAnswer": { "@type": "Answer", "text": "El muestreo del recorrido es configurable por la empresa. Lo que sí es necesario en cada teléfono es excluir la app de la optimización de batería de Android: si el sistema la suspende en segundo plano, el recorrido queda cortado aunque la ronda se haya hecho completa." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<div class="barra">
+  <div class="envoltorio">
+    <a class="marca marca-producto" href="../" aria-label="SentryCore, inicio"><svg viewBox="0 0 899 133" fill="none" aria-hidden="true" focusable="false"><g transform="translate(0.00 0.00) scale(0.59524)" fill="none"><path d="M 138 92 L 138 112 A 40 40 0 0 1 98 152 L 56 152 A 40 40 0 0 1 16 112 L 16 70 A 40 40 0 0 1 56 30 L 76 30" stroke="var(--action)" stroke-width="32.0" stroke-linecap="round"/><rect x="108" y="0" width="60" height="60" rx="22" fill="var(--action)"/></g><path d="M 50.40 17.33 A 24.70 18.77 0 1 0 15.53 42.78 L 43.37 57.22 A 24.70 18.77 0 1 1 8.50 82.67" transform="translate(136.00 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 71.50 60.00 A 31.50 31.50 0 1 0 61.88 82.66" transform="translate(203.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 60.00 L 71.50 60.00" transform="translate(203.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 100.00 L 8.50 45.50 A 25.50 25.50 0 0 1 59.50 45.50 L 59.50 100.00" transform="translate(292.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 23.50 12 L 23.50 86.00 A 14.00 14.00 0 0 0 37.50 100.00" transform="translate(369.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 20.00 L 48.50 20.00" transform="translate(369.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 100.00 L 8.50 46.00 A 26.00 26.00 0 0 1 34.50 20.00" transform="translate(435.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 63.50 20.00 L 26.82 124.00" transform="translate(493.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 8.50 20.00 L 36.00 100.00" transform="translate(493.90 0)" stroke="var(--text)" stroke-width="17.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 84.86 20.75 A 45.50 45.50 0 1 0 84.86 79.25" transform="translate(579.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 40.00 24.50 A 35.50 35.50 0 1 1 40.00 95.50 A 35.50 35.50 0 1 1 40.00 24.50 Z" transform="translate(685.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 4.50 100.00 L 4.50 46.00 A 26.00 26.00 0 0 1 30.50 20.00" transform="translate(771.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 75.50 60.00 A 35.50 35.50 0 1 0 64.66 85.54" transform="translate(818.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M 4.50 60.00 L 75.50 60.00" transform="translate(818.90 0)" stroke="var(--text-muted)" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></a>
+    <div class="barra-acciones">
+      <a class="barra-respaldo" href="https://voxtilabs.cl" rel="noopener">
+        <span class="rotulo">Un producto de</span>
+        <strong>VoxTi&nbsp;Labs</strong>
+      </a>
+      <a class="boton boton-primario boton-compacto" href="../#contacto">Solicitar una demo</a>
+      <button class="interruptor" id="cambiarModo">Modo noche</button>
+    </div>
+  </div>
+</div>
+
+<main class="articulo">
+  <div class="envoltorio">
+    <nav class="migas" aria-label="Ruta"><a href="../">SentryCore</a> &middot; App para guardias de seguridad</nav>
+    <span class="actualizado">Actualizado el 12 de octubre de 2026</span>
+    <h1>App para guardias de seguridad: qu&eacute; ve el guardia en el turno</h1>
+
+    <div class="respuesta">
+      <p>La aplicaci&oacute;n del guardia hace una sola cosa y la hace sin vueltas: <strong>dejar constancia
+      de la ronda mientras ocurre</strong>. Marca cada punto acercando el tel&eacute;fono a una etiqueta NFC,
+      reporta lo que encuentra con foto, y sigue funcionando entera cuando no hay se&ntilde;al.</p>
+    </div>
+
+    <p>Esta p&aacute;gina recorre la app pantalla por pantalla, con capturas reales. Si buscas la
+    explicaci&oacute;n t&eacute;cnica del marcaje, est&aacute; en
+    <a href="../control-de-rondas-nfc/">control de rondas con NFC</a>; si lo que te preocupa es la parte
+    legal del GPS, en <a href="../ley-21719-geolocalizacion-guardias/">geolocalizaci&oacute;n y Ley 21.719</a>.</p>
+
+    <div class="descarga descarga-articulo">
+      <a class="descarga-insignia" href="https://play.google.com/store/apps/details?id=com.voxtilabs.sentrycore&amp;hl=es_CL"
+         rel="noopener" target="_blank" aria-label="Descargar SentryCore en Google Play">
+        <img src="../img/google-play-es.png" alt="Disponible en Google Play" width="646" height="250" decoding="async">
+      </a>
+      <p>Descarga gratuita, solo Android. El acceso lo habilita la empresa de seguridad: sin cuenta, la app no entra a ning&uacute;n dato.</p>
+    </div>
+
+    <h2>Entrar: tres formas, ninguna con papeles</h2>
+    <p>El guardia entra con el <strong>c&oacute;digo de 6 d&iacute;gitos</strong> que le da su supervisor, con
+    usuario y contrase&ntilde;a, o acercando una <strong>tarjeta NFC</strong> y escribiendo su PIN. El c&oacute;digo de
+    la empresa se escribe una sola vez y queda guardado en ese tel&eacute;fono.</p>
+    <p>La contrase&ntilde;a la define el propio guardia desde un enlace de activaci&oacute;n. Nadie m&aacute;s la conoce:
+    ni el supervisor, ni el administrador de la empresa, ni el soporte del sistema.</p>
+
+    <h2>El turno, en una pantalla</h2>
+    <figure class="figura-articulo">
+      <img class="captura-alta" src="../img/app-puntos-2026-10-12.png" width="540" height="1152" decoding="async" loading="lazy"
+           alt="Pesta&ntilde;a Puntos de la app: recorrido asignado con cinco puntos de control numerados y dos marcados como acceso cr&iacute;tico.">
+      <figcaption>El recorrido completo antes de salir a caminar. Los puntos marcados como acceso cr&iacute;tico son los que van a exigir foto.</figcaption>
+    </figure>
+    <p>Abajo hay tres pesta&ntilde;as y nada m&aacute;s: <strong>Turno</strong> con la tarea de ahora,
+    <strong>Puntos</strong> con el recorrido completo y <strong>Sesiones</strong> con los equipos donde el
+    guardia tiene la cuenta abierta. Arriba, una l&iacute;nea de estado dice siempre dos cosas: si hay se&ntilde;al y
+    si qued&oacute; algo por subir.</p>
+
+    <h2>Marcar un punto</h2>
+    <figure class="figura-articulo">
+      <img class="captura-alta" src="../img/app-escaneo-2026-10-12.png" width="540" height="828" decoding="async" loading="lazy"
+           alt="Pantalla de escaneo esperando la etiqueta NFC, con las opciones de usar el c&oacute;digo QR o dejar el punto para despu&eacute;s.">
+      <figcaption>Esperando la etiqueta. Si no responde, el QR del punto vale igual; si el punto no se puede alcanzar, se deja para el final.</figcaption>
+    </figure>
+    <p>El guardia apoya la parte trasera del tel&eacute;fono contra la etiqueta pegada en el muro. Como la
+    etiqueta est&aacute; en el lugar, marcarla <strong>exige haber llegado</strong>. Si la etiqueta no responde
+    &mdash;se mojó, la taparon, el equipo no tiene antena&mdash; la app ofrece el c&oacute;digo QR, que registra lo mismo.</p>
+    <p>Y si el punto no se puede alcanzar esa vuelta, el guardia lo <strong>deja para despu&eacute;s</strong> y sigue
+    con el siguiente. Vuelve a aparecer al final. Es la diferencia entre un sistema que acompa&ntilde;a el
+    terreno y uno que obliga a devolverse o a inventar la marca.</p>
+
+    <h2>Novedades: lo que no es un punto marcado</h2>
+    <figure class="figura-articulo">
+      <img class="captura-alta" src="../img/app-novedad-2026-10-12.png" width="540" height="852" decoding="async" loading="lazy"
+           alt="Formulario de novedad con las cuatro criticidades: informativa, baja, media y alta, y el campo para describir lo ocurrido.">
+      <figcaption>Cuatro criticidades. La que elige el guardia decide a qui&eacute;n se le avisa y con qu&eacute; apuro.</figcaption>
+    </figure>
+    <p>Un port&oacute;n forzado, una luminaria quemada, alguien en el per&iacute;metro. El guardia elige la
+    criticidad &mdash;<em>informativa</em>, <em>baja</em>, <em>media</em> o <em>alta</em>&mdash;, describe qu&eacute; pas&oacute; y
+    adjunta una foto. La alta dispara el aviso de inmediato; la informativa queda en el libro.</p>
+    <p>Aparte va el <strong>bot&oacute;n de p&aacute;nico</strong>, que exige mantener el dedo apretado varios segundos
+    para evitar disparos accidentales. Al activarse <strong>no suena ni vibra</strong>: si el guardia tiene a
+    alguien al lado, una alarma audible lo pondr&iacute;a en m&aacute;s riesgo.</p>
+
+    <h2>Sin se&ntilde;al, igual funciona</h2>
+    <p>Subterr&aacute;neos, bodegas, faenas sin cobertura. Todo lo que el guardia hace sin se&ntilde;al
+    &mdash;marcar puntos, responder tareas, sacar fotos, reportar novedades, incluso el p&aacute;nico&mdash; queda
+    guardado en el tel&eacute;fono con su hora y su ubicaci&oacute;n reales, y se sube solo al recuperar conexi&oacute;n.</p>
+    <p>El supervisor ve la <strong>hora en que ocurri&oacute;</strong>, no la hora en que lleg&oacute; al servidor. Y el
+    guardia ve en su pantalla si le queda algo pendiente antes de cerrar sesi&oacute;n.</p>
+
+    <h2>Lo que la app no hace</h2>
+    <ul>
+      <li><strong>No registra la ubicaci&oacute;n fuera de la ronda.</strong> Ni durante el turno completo, ni
+      despu&eacute;s de cerrar. Es una decisi&oacute;n de producto, no un ajuste que alguien pueda cambiar sin que el
+      trabajador se entere.</li>
+      <li><strong>No graba audio ni mira lo que el guardia hace en su tel&eacute;fono.</strong></li>
+      <li><strong>No guarda el recorrido para siempre:</strong> se elimina solo al cumplirse el plazo que fij&oacute;
+      la empresa, 90 d&iacute;as por defecto.</li>
+      <li><strong>No funciona en iPhone.</strong> Hoy es solo Android, por el acceso a NFC que exige el marcaje.</li>
+    </ul>
+
+    <h2>Lo que hay que dejar listo en cada tel&eacute;fono</h2>
+    <ul>
+      <li>Permiso de ubicaci&oacute;n en <strong>&laquo;Permitir todo el tiempo&raquo;</strong>: Android lo pregunta en dos pasos.</li>
+      <li><strong>Sin optimizaci&oacute;n de bater&iacute;a</strong> para la app. Es el paso que m&aacute;s se olvida y el que m&aacute;s
+      da&ntilde;o hace: si el sistema la suspende, el recorrido sale cortado aunque la ronda se haya hecho entera.</li>
+      <li>C&aacute;mara permitida y NFC encendido.</li>
+      <li>Hora autom&aacute;tica, para que las marcas no queden fuera de lugar en el informe.</li>
+    </ul>
+
+    <h2>Preguntas frecuentes</h2>
+    <h3>&iquest;D&oacute;nde se descarga?</h3>
+    <p>En Google Play, buscando SentryCore. Es gratis y es solo para Android. Entrar requiere una cuenta
+    creada por la empresa de seguridad.</p>
+    <h3>&iquest;Sirve en un tel&eacute;fono sin NFC?</h3>
+    <p>S&iacute;: el guardia marca leyendo el c&oacute;digo QR pegado junto a la etiqueta.</p>
+    <h3>&iquest;Qu&eacute; pasa si se queda sin se&ntilde;al?</h3>
+    <p>Todo queda guardado en el tel&eacute;fono y se sube solo al volver la conexi&oacute;n, con la hora real de cada marca.</p>
+    <h3>&iquest;Registra la ubicaci&oacute;n todo el turno?</h3>
+    <p>No. Solo mientras la ronda est&aacute; en curso; si se pausa o se cierra, el registro se detiene.</p>
+    <h3>&iquest;Consume mucha bater&iacute;a?</h3>
+    <p>El muestreo lo configura la empresa. Lo indispensable es excluir la app de la optimizaci&oacute;n de
+    bater&iacute;a de Android en cada tel&eacute;fono.</p>
+
+    <h2>&iquest;Lo vemos con tu operaci&oacute;n?</h2>
+    <p>Te mostramos la app y el panel con tus recintos y tus rondas, no con una demo gen&eacute;rica.
+    <a href="../#contacto">Escr&iacute;benos</a> y lo coordinamos.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="envoltorio">
+    <div class="pie-marca">
+      <!--
+        El wordmark va en curvas, no escrito: la guia lo prohibe explicitamente
+        porque las letras del nombre son una geometrica propia y el parecido no
+        calza. SentryCore es el producto y vive en la cabecera; aqui firma la
+        empresa que lo hace.
+      -->
+      <a class="marca marca-pie" href="https://voxtilabs.cl" aria-label="VoxTi Labs"><svg viewBox="0 0 1389 191" fill="none" aria-hidden="true" focusable="false"><g transform="translate(-72 -289)" fill-rule="evenodd"><path fill="var(--action)" d="M206.679 289.775C257.789 289.601 284.852 281.523 279.868 346.337C279.389 352.557 280.675 359.231 279.242 365.998C269.455 412.237 210.457 375.007 184.332 400.204C157.89 425.707 192.213 469.65 145.32 476.898C121.332 477.118 75.4512 484.333 73.3398 451.18C72.3606 435.806 70.1216 397.956 79.1191 385.837C94.2723 365.426 135.524 379.282 155.691 374.527C201.88 363.636 152.303 296.54 206.679 289.775Z"/><path fill="var(--text-muted)" d="M1245.1 295.369C1247.1 295.943 1249.03 296.479 1250.52 298.037C1253.42 301.074 1252.09 365.741 1251.98 374.784C1263.43 357.842 1280.99 348.359 1301.47 348.452C1316.91 348.402 1331.71 354.572 1342.55 365.568C1355.62 378.771 1362.09 396.632 1361.7 415C1361.25 436.396 1355.79 449.135 1340.93 463.894C1338.78 465.708 1336.56 467.421 1334.26 469.028C1312.75 484.017 1281.25 482.244 1262.19 464.006C1257.82 459.829 1255.34 456.224 1251.89 451.2C1252.12 458.003 1253.89 471.604 1248.8 476.24C1243.21 478.709 1239.55 474.777 1239.58 469.033C1239.86 412.931 1238.94 356.727 1239.69 300.67C1239.72 298.317 1243.34 296.41 1245.1 295.369Z M1291.87 360.875C1359.18 353.177 1370.79 452.731 1308.87 466.32C1240.86 475.546 1227.66 374.538 1291.87 360.875Z"/><path fill="var(--text)" d="M564.443 346.828C600.651 343.426 632.788 369.957 636.304 406.154C639.82 442.351 613.39 474.57 577.204 478.2C540.857 481.847 508.462 455.273 504.931 418.915C501.399 382.557 528.074 350.245 564.443 346.828Z M566.005 382.139C582.631 379.603 598.18 390.98 600.796 407.593C603.412 424.206 592.111 439.81 575.511 442.507C558.796 445.222 543.061 433.826 540.427 417.099C537.793 400.371 549.265 384.691 566.005 382.139Z"/><path fill="var(--text-muted)" d="M1140.78 348.952C1164.6 345.244 1184.58 355.628 1198.7 374.408C1198.77 367.287 1196.12 351.195 1204.5 349.27C1207.41 349.851 1211.13 351.554 1211.21 354.984C1212.06 393.237 1212.19 431.635 1211.72 469.899C1212.09 473.503 1209.31 476.903 1205.59 477.102C1196.63 477.581 1198.78 456.493 1198.59 450.339C1196.48 453.716 1193.93 457.029 1191.56 460.245C1183.65 469.411 1172.94 475.718 1161.09 478.192C1145.7 481.323 1129.1 477.215 1116.16 468.532C1102.08 459.004 1092.41 444.221 1089.33 427.5C1082.28 390.436 1102.89 355.902 1140.78 348.952Z M1146.59 360.27C1195.05 355.651 1214.43 413.848 1189.26 449C1180.81 460.799 1168.4 465.295 1154.42 467.15C1088.34 470.969 1080.32 368.056 1146.59 360.27Z"/><path fill="var(--text)" d="M367.363 294.198C379.819 294.817 382.523 298.542 386.937 308.714C394.087 325.192 425.548 437.738 430.95 442.303C437.052 438.58 469.67 320.292 478.015 304.305C479.792 300.898 482.572 298.118 485.981 296.343C490.793 293.853 496.529 293.579 501.629 295.334C506.314 296.908 510.158 300.318 512.28 304.781C517.054 315.029 510.061 329.244 506.298 339.625C496.129 367.099 487.038 395.455 476.951 423.017C472.174 434.076 468.632 451.261 462.253 461.049C447.973 482.962 408.101 481.823 397.379 456.995C392.468 445.623 389.11 434.779 385.294 423.705L363.816 360.862L354.472 333.062C348.861 316.403 342.695 298.068 367.363 294.198Z"/><path fill="var(--text)" d="M765.828 294.815C766.399 294.781 766.971 294.754 767.543 294.735C792.933 294.078 818.796 294.897 844.211 294.604C852.57 296.119 887.495 290.918 892.407 299.19C914.926 337.111 856.156 328.567 846.562 328.49L846.506 438.375C846.758 454.224 850.435 477.109 827.613 477.249C819.768 477.297 810.699 471.932 809.959 463.541C808.685 449.089 809.222 434.076 809.22 419.527L809.152 328.559C799.403 328.433 771.907 330.239 763.565 327.204C751.062 322.656 748.893 301.377 765.828 294.815Z"/><path fill="var(--text)" d="M661.726 347.411C678.988 346.182 692.025 371.417 701.51 384.632C709.625 373.945 718.786 359.001 729.022 350.634C739.054 342.434 751.536 349.608 753.331 362.031C753.796 365.329 753.329 368.692 751.983 371.739C749.592 377.167 726.73 405.459 721.428 412.506C730.807 424.292 760.742 453.871 753.882 469.016C751.977 473.222 746.456 475.781 742.172 477.062C740.399 477.169 738.619 477.104 736.859 476.868C725.172 475.26 708.592 450.294 700.776 440.203C698.213 443.935 695.603 447.635 692.947 451.302C686.23 460.626 676.959 476.438 664.708 478.232C661.002 478.775 657.364 477.899 654.385 475.606C650.711 472.777 647.973 468.731 647.516 464.047C646.414 452.745 673.275 421.823 681.169 412.262C676.621 405.464 670.511 397.787 665.233 391.449C654.773 378.89 635.228 356.166 661.726 347.411Z"/><path fill="var(--text)" d="M923.508 348.067C927.387 347.839 930.902 347.883 934.589 349.251C938.364 350.652 941.885 353.415 943.521 357.191C946.771 364.689 946.957 460.246 943.818 467.587C941.623 472.722 936.958 474.966 932.052 476.888C928.185 477.17 924.254 477.082 920.579 475.737C916.472 474.235 912.911 471.324 911.262 467.176C908.455 460.119 908.527 363.253 911.36 357.282C913.724 352.297 918.554 349.817 923.508 348.067Z"/><path fill="var(--text-muted)" d="M1411.98 348.984C1433.68 347.418 1452.3 356.854 1459.09 378.769C1460.17 382.221 1457.09 385.858 1453.78 386.573C1447.47 384.724 1443.64 371.282 1435.72 366.277C1422.56 357.968 1401.04 359.348 1392.08 372.56C1388.85 377.414 1387.7 383.355 1388.87 389.065C1392.25 406.003 1413.59 406.627 1427.11 410.353C1445.16 415.202 1463.64 425.531 1460.5 447.429C1457.63 467.41 1444.02 475.376 1425.73 478.473C1404.33 479.104 1384.75 474.536 1376.18 451.008C1374.44 446.227 1376.81 442.044 1382.17 441.314C1388.85 443.057 1390.44 455.711 1398.89 461.308C1406.85 467.292 1415.41 467.454 1424.75 466.457C1438.21 465.019 1451.47 454.462 1448 439.58C1442.4 415.644 1404.64 421.994 1388.5 409.077C1381.87 403.775 1378.17 399.12 1376.83 390.549C1373.28 366.577 1389.52 352.317 1411.98 348.984Z"/><path fill="var(--text-muted)" d="M1011.8 295.345C1014.83 295.405 1016.45 295.525 1018.75 297.474C1021.37 301.326 1020.44 347.537 1020.46 354.842L1020.53 463.673C1041.38 464.086 1062.36 463.449 1083.25 463.634C1094.37 463.733 1097.54 472.636 1088.88 476.557C1086.75 476.628 1084.56 476.616 1082.42 476.607C1060.83 476.52 1039.19 477.014 1017.61 476.48C1015.91 476.438 1009.89 475.842 1009.21 474.452C1007.93 471.799 1007.4 465.972 1007.26 462.815C1006.99 427.185 1007.16 391.339 1007.15 355.726L1007.13 318.027C1007.13 312.224 1007 305.881 1007.39 300.073C1007.52 298.048 1010.11 296.52 1011.8 295.345Z"/><path fill="var(--text)" d="M922.484 293.928C932.083 291.132 942.129 296.655 944.913 306.257C947.696 315.859 942.161 325.898 932.555 328.669C922.967 331.435 912.951 325.912 910.172 316.328C907.394 306.743 912.903 296.719 922.484 293.928Z"/></g></svg></a>
+      <p class="pie-razon">VOXTI TECNOLOGÍAS LABS SpA</p>
+      <p class="dato">78.478.274-3</p>
+      <address>
+        Apoquindo 6410, Of. 212, Piso 2<br>
+        Las Condes, Santiago<br>
+        Región Metropolitana, Chile
+      </address>
+    </div>
+
+    <!--
+      El convenio con Vigilab. El logo va en su propia caja clara y no suelto
+      sobre el fondo: es negro y rojo con fondo transparente, asi que en modo
+      noche el "VIGI" negro desapareceria. La caja no es decoracion, es lo que
+      lo hace legible en los dos modos.
+    -->
+    <div class="pie-convenio">
+      <span class="rotulo">En convenio con</span>
+      <a href="https://www.vigilab.cl/" rel="noopener" target="_blank">
+        <img src="../img/vigilab.png" alt="Vigilab, empresa de seguridad" width="900" height="256"
+             decoding="async" loading="lazy">
+      </a>
+      <p>Operación real en terreno: SentryCore se prueba donde se usa.</p>
+    </div>
+
+    <p class="dato pie-dominio">sentry.voxtilabs.cl</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var boton = document.getElementById('cambiarModo');
+  var raiz = document.documentElement;
+  var guardado = null;
+  try { guardado = localStorage.getItem('modo'); } catch (e) {}
+  var prefiereNoche = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  aplicar(guardado || (prefiereNoche ? 'noche' : 'dia'));
+  function aplicar(modo) {
+    raiz.setAttribute('data-mode', modo);
+    boton.textContent = modo === 'noche' ? 'Modo día' : 'Modo noche';
+    try { localStorage.setItem('modo', modo); } catch (e) {}
+  }
+  boton.addEventListener('click', function () {
+    aplicar(raiz.getAttribute('data-mode') === 'noche' ? 'dia' : 'noche');
+  });
+})();
+</script>
+
+<script>
+/* Arma los destinos de contacto en el navegador: el HTML servido no los trae. */
+(function () {
+  var d = function (s) { return atob(s).split('').reverse().join(''); };
+  var tel = d('MzkwOTIwNzM5NjU=');
+  var correo = d('bGMuc2JhbGl0eG92QHNlY2l2cmVz');
+  var msg = 'Hola, vi SentryCore en la web y quiero saber más.';
+  var asunto = 'Consulta por SentryCore';
+  var enWa = document.querySelectorAll('[data-wa]');
+  for (var i = 0; i < enWa.length; i++) {
+    enWa[i].href = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
+    enWa[i].target = '_blank';
+  }
+  var enMail = document.querySelectorAll('[data-mail]');
+  for (var j = 0; j < enMail.length; j++) {
+    enMail[j].href = 'mailto:' + correo + '?subject=' + encodeURIComponent(asunto);
+  }
+})();
+</script>
+</body>
+</html>
