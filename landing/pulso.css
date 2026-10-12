@@ -463,3 +463,31 @@ footer .envoltorio { align-items:start; gap:32px; flex-wrap:wrap; }
     letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint);
   }
 }
+
+/*
+ * Tablas de dos columnas en un telefono: se apilan, no se deslizan.
+ *
+ * Deslizar sirve para una tabla de datos cortos. Cuando las dos columnas son
+ * prosa —"lo que exige la ley" / "lo que hace el sistema"— deslizar deja cada
+ * frase cortada a la mitad y obliga a barrer el dedo renglon por renglon. Como
+ * la primera celda ya es el titulo de la fila, apilar no pierde nada: queda el
+ * titulo arriba y su explicacion debajo.
+ */
+@media (max-width:720px) {
+  .ficha-envoltorio:has(.ficha-par) { overflow-x:visible; }
+  .ficha-envoltorio:has(.ficha-par)::after { content:none; }
+  .ficha-envoltorio .ficha-par { min-width:0; border-radius:16px; }
+  .ficha-par thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .ficha-par, .ficha-par tbody, .ficha-par tr, .ficha-par td { display:block; width:100%; }
+  .ficha-par tr { padding:4px 0; border-bottom:1px solid var(--border); }
+  .ficha-par tr:last-child { border-bottom:none; }
+  .ficha-par td { border-bottom:none; padding:6px 18px; }
+  .ficha-par td:first-child {
+    padding-top:16px; font-family:Outfit, sans-serif; font-weight:700;
+    font-size:15.5px; letter-spacing:-.01em; color:var(--text);
+  }
+  .ficha-par td:last-child { padding-bottom:16px; }
+  /* El dato medido conserva su tipografia, pero alineado a la izquierda:
+     en una ficha apilada, a la derecha queda colgando de la nada. */
+  .ficha-par td.medida { text-align:left; }
+}
