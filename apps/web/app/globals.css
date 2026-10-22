@@ -629,6 +629,10 @@ label.guardia-boton-secundario { display: flex; align-items: center; justify-con
 .guardia-foto { display: grid; gap: .3rem; }
 /* Visible para lectores y enfocable con teclado, invisible en pantalla. */
 .guardia-invisible { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.company-guard-picker { display: flex; min-height: 100dvh; justify-content: center; }
+.company-guard-picker .login-panel { width: 100%; min-width: 0; }
+.company-guard-list { display: grid; gap: .75rem; max-height: 55dvh; overflow-y: auto; padding: .25rem; list-style: none; }
+.company-guard-list button { width: 100%; min-height: 3.5rem; height: auto; padding: .8rem 1rem; font-size: 1.1rem; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 
 .guardia-panico { margin-top: 1.8rem; border-top: .3rem solid var(--guardia-rojo); padding-top: 1rem; }
 .guardia-panico h3 { margin: 0 0 .5rem; color: var(--guardia-rojo); font-size: 1.25rem; }

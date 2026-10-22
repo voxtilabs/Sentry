@@ -25,6 +25,8 @@ import type { ExpoConfig } from 'expo/config';
 const perfilEas = process.env.EAS_BUILD_PROFILE ?? '';
 const perfilDeTienda = perfilEas === 'production' || perfilEas === 'preview';
 const paraTienda = perfilDeTienda || process.env.NODE_ENV === 'production';
+// Side-by-side USB verification without replacing the Play-signed application.
+const paqueteDePruebas = process.env.SENTRYCORE_QA_BUILD === '1';
 
 const assets = join(__dirname, 'assets');
 
@@ -68,7 +70,7 @@ const SPLASH_FONDO = '#FFFFFF';
 const ADAPTATIVO_FONDO = '#3D5AFE';
 
 const config: ExpoConfig = {
-  name: 'SentryCore',
+  name: paqueteDePruebas ? 'SentryCore pruebas' : 'SentryCore',
   slug: 'sentrycore',
   /**
    * Cuenta de Expo dueña del proyecto. Es la ORGANIZACION, no la cuenta
@@ -102,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.1.0',
+  version: '0.2.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',
@@ -187,7 +189,7 @@ const config: ExpoConfig = {
      * El andamiaje traia `cl.sentrycore.control`; esto lo cambia a la convencion de
      * la empresa. Cambiarlo hoy es gratis (nada publicado); manana no.
      */
-    package: 'com.voxtilabs.sentrycore',
+    package: paqueteDePruebas ? 'com.voxtilabs.sentrycore.qa' : 'com.voxtilabs.sentrycore',
 
     adaptiveIcon: {
       foregroundImage: asset('adaptive-icon-foreground.png'),

@@ -3,6 +3,7 @@ import { IsBoolean, IsUUID } from 'class-validator';
 import type { Request } from 'express';
 
 import type { AuthenticatedUser } from '../auth/auth.guard';
+import { UpdateCompanyCardDto } from '../auth/dto/company-card.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { AdminService } from './admin.service';
@@ -56,6 +57,14 @@ type Autenticado = Request & { user: AuthenticatedUser };
 @TenantScope()
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
+
+  @Get('company-card')
+  @Permissions('tenant:users:manage')
+  companyCard() { return this.admin.companyCard(); }
+
+  @Put('company-card')
+  @Permissions('tenant:users:manage')
+  setCompanyCard(@Body() input: UpdateCompanyCardDto) { return this.admin.setCompanyCard(input.cardUid); }
 
   @Get('users')
   @Permissions('tenant:users:manage')

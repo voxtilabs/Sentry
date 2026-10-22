@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   View,
 } from 'react-native';
@@ -191,6 +192,7 @@ export default function App() {
 }
 
 function AppShell({ portal }: { portal: URL }) {
+  const { fontScale } = useWindowDimensions();
   const webView = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -424,7 +426,7 @@ function AppShell({ portal }: { portal: URL }) {
         allowsBackForwardNavigationGestures={false}
         pullToRefreshEnabled={false}
         overScrollMode="never"
-        textZoom={100}
+        textZoom={Math.round(fontScale * 100)}
         style={styles.webView}
       />
 

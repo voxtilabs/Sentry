@@ -22,6 +22,10 @@ on:
         description: 'A que portal apunta la app'
         required: true
         default: 'https://test-sentrycore.voxtilabs.cl'
+      qa_package:
+        description: 'Instalar junto a la app de Play Store (paquete .qa)'
+        type: boolean
+        default: false
   # El gatillo por PR existe porque `workflow_dispatch` solo funciona cuando el
   # workflow ya vive en la rama POR DEFECTO — y la rama por defecto es `main`,
   # que despliega produccion: no se toca para conseguir un APK. Un PR que
@@ -102,6 +106,8 @@ jobs:
       - name: Generar el proyecto Android
         env:
           NODE_ENV: production
+          SENTRYCORE_QA_BUILD: ${{ inputs.qa_package && '1' || '0' }}
+          EXPO_PUBLIC_DEPURABLE: '1'
           EXPO_PUBLIC_WEB_URL: ${{ inputs.portal || 'https://test-sentrycore.voxtilabs.cl' }}
         run: npx expo prebuild --platform android --clean --no-install
 
@@ -122,6 +128,8 @@ jobs:
       - name: Construir el APK
         working-directory: apps/mobile/android
         env:
+          SENTRYCORE_QA_BUILD: ${{ inputs.qa_package && '1' || '0' }}
+          EXPO_PUBLIC_DEPURABLE: '1'
           EXPO_PUBLIC_WEB_URL: ${{ inputs.portal || 'https://test-sentrycore.voxtilabs.cl' }}
         run: ./gradlew :app:assembleRelease --no-daemon --console=plain
 

@@ -16,6 +16,7 @@ import { QueryFailedError } from 'typeorm';
 
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
+import { readCompanyCard, writeCompanyCard } from '../auth/company-card-management';
 import { createAuthActionToken } from '../auth/auth-action-token';
 import { MailService } from '../auth/mail.service';
 import { filasDe } from '../consent/sql-result';
@@ -159,6 +160,8 @@ export const SQL_ASIGNAR_TARJETA_NFC_ADMIN =
 
 @Injectable()
 export class AdminService {
+  companyCard() { return readCompanyCard(this.tenantContext.manager); }
+  setCompanyCard(cardUid: string) { return writeCompanyCard(this.tenantContext.manager, cardUid); }
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly auth: AuthService,

@@ -77,6 +77,14 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),
+  publicEndpoint(AuthController, 'companyCard'),
+  publicEndpoint(AuthController, 'selectCompanyGuard'),
+  secured(PlatformController, 'companyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(PlatformController, 'setCompanyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(AdminController, 'companyCard', ['tenant:users:manage'], ['ADMIN'], true),
+  secured(AdminController, 'setCompanyCard', ['tenant:users:manage'], ['ADMIN'], true),
+  secured(SupervisorController, 'companyCard', ['shifts:manage'], ['SUPERVISOR'], true),
+  secured(SupervisorController, 'setCompanyCard', ['shifts:manage'], ['SUPERVISOR'], true),
   // Ingreso del guardia con codigo de empresa + seis digitos. Publico como el
   // resto de los ingresos: la credencial es el codigo, y su bloqueo va por
   // empresa + IP porque hasta que acierta no hay identidad.

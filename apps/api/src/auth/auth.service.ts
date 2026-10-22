@@ -15,6 +15,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 
 import { CodeLoginDto } from './dto/code-login.dto';
+import type { SelectCompanyGuardDto } from './dto/company-card.dto';
 import { lookupDeCodigo, pepperDeCodigo } from './login-code';
 import { DataSource, type QueryRunner } from 'typeorm';
 
@@ -404,6 +405,66 @@ export class AuthService {
     }
 
     return this.createSession(selected, device);
+  }
+
+  /** The card authorizes a company picker, never an administrator session. */
+  async companyCard(cardUid: string, sourceIp: string, device: string) {
+    const uid = normalizarUidNfc(cardUid);
+    if (this.redis.status === 'wait') await this.redis.connect();
+    const ipHash = createHash('sha256').update(sourceIp).digest('hex');
+    // Independent rate limit: a personal card can legitimately fall through
+    // this endpoint on every login and must never spend its password/PIN budget.
+    const attempts = await this.redis.eval(
+      `local n = redis.call('INCR', KEYS[1]);
+       if n == 1 then redis.call('EXPIRE', KEYS[1], 60) end; return n`,
+      1, `auth:company-card-rate:${ipHash}`,
+    );
+    if (Number(attempts) > 60) throw new HttpException('Espera un minuto y vuelve a acercar la tarjeta', HttpStatus.TOO_MANY_REQUESTS);
+    const rows = await this.companyCardGuards(uid);
+    if (!rows.length) {
+      throw new UnauthorizedException('Tarjeta de empresa no reconocida o sin guardias activos');
+    }
+    const ticket = randomBytes(32).toString('base64url');
+    const key = this.companyTicketKey(ticket);
+    await this.redis.set(key, JSON.stringify({ uid, tenantId: rows[0]!.tenant_id,
+      binding: this.companyTicketBinding(sourceIp, device) }), 'EX', 300);
+    return { ticket, tenantName: rows[0]!.tenant_name, tenantSlug: rows[0]!.tenant_slug,
+      guards: rows.map((row) => ({ id: row.user_id, name: row.guard_name })) };
+  }
+
+  async selectCompanyGuard(input: SelectCompanyGuardDto, sourceIp: string, device: string) {
+    if (this.redis.status === 'wait') await this.redis.connect();
+    const key = this.companyTicketKey(input.ticket);
+    const serialized = await this.redis.get(key);
+    if (!serialized) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+    const ticket = JSON.parse(serialized) as { uid: string; tenantId: string; binding: string };
+    if (ticket.binding !== this.companyTicketBinding(sourceIp, device)) {
+      throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+    }
+    // Recheck card, tenant, membership and active user at selection time.
+    const rows = await this.companyCardGuards(ticket.uid);
+    const guard = rows.find((row) => row.user_id === input.guardId && row.tenant_id === ticket.tenantId);
+    if (!guard) throw new UnauthorizedException('Guardia no disponible para esta empresa');
+    const consumed = await this.redis.eval(
+      `if redis.call('GET', KEYS[1]) == ARGV[1] then
+         redis.call('DEL', KEYS[1]); return 1 end; return 0`, 1, key, serialized,
+    );
+    if (Number(consumed) !== 1) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+    return this.createSession(guard, device);
+  }
+
+  private companyTicketKey(ticket: string) {
+    return `auth:company-card:${createHash('sha256').update(ticket).digest('hex')}`;
+  }
+
+  private companyTicketBinding(ip: string, device: string) {
+    return createHash('sha256').update(JSON.stringify([ip, device])).digest('hex');
+  }
+
+  private companyCardGuards(uid: string) {
+    return this.dataSource.query<Array<AuthIdentityRow & { guard_name: string }>>(
+      'SELECT * FROM authenticate_company_card($1)', [uid],
+    );
   }
 
   /**

@@ -305,7 +305,9 @@ export function construirMapaRecorrido(entrada: EntradaMapa): MapaRecorrido {
   // solo paso — a 133 km/h. Dibujados, convertian el plano en una maraña de
   // rayas rectas que cruzaban manzanas enteras.
   const trazaSinSaltos = quitarSaltos(trazaValida);
-  const trazaDibujable = suavizar(submuestrear(trazaSinSaltos, maxPuntosTraza));
+  // Keep measured positions. Averaging neighbours moved corners and even
+  // blended positions across GPS gaps, drawing paths that were never measured.
+  const trazaDibujable = submuestrear(trazaSinSaltos, maxPuntosTraza);
   const trazaDescartadaPorSalto = trazaValida.length - trazaSinSaltos.length;
 
   // Escaneos con anomalia de posicion. Los que no dejaron coordenada se cuentan
@@ -475,31 +477,6 @@ function quitarSaltos(
   // Si el criterio se comio casi todo, la ronda probablemente fue en vehiculo:
   // mejor dibujar el recorrido crudo que uno inventado con cuatro puntos.
   return salida.length >= 3 ? salida : [...posiciones];
-}
-
-/**
- * Media movil de tres: le saca el temblor a la linea sin inventar recorrido.
- *
- * Cada posicion pasa a ser el promedio de sus vecinas REALES, asi que el
- * trazado sigue pasando por donde paso el guardia; solo deja de vibrar por el
- * ruido del GPS, que a 30 metros de error hace zigzaguear una linea recta.
- */
-function suavizar(
-  posiciones: readonly { coord: Coordenada; instante: Date }[],
-): { coord: Coordenada; instante: Date }[] {
-  if (posiciones.length < 3) return [...posiciones];
-  return posiciones.map((actual, i) => {
-    if (i === 0 || i === posiciones.length - 1) return actual;
-    const previa = posiciones[i - 1]!.coord;
-    const siguiente = posiciones[i + 1]!.coord;
-    return {
-      instante: actual.instante,
-      coord: {
-        lat: (previa.lat + actual.coord.lat * 2 + siguiente.lat) / 4,
-        lng: (previa.lng + actual.coord.lng * 2 + siguiente.lng) / 4,
-      },
-    };
-  });
 }
 
 /**

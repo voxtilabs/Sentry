@@ -27,6 +27,7 @@ import { Permissions } from './decorators/permissions.decorator';
 import { TenantScope } from './decorators/tenant-scope.decorator';
 import { LoginDto } from './dto/login.dto';
 import { CodeLoginDto } from './dto/code-login.dto';
+import { CompanyCardDto, SelectCompanyGuardDto } from './dto/company-card.dto';
 import { NfcLoginDto } from './dto/nfc-login.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { clearSessionCookies, setSessionCookies } from './session-cookies';
@@ -119,6 +120,23 @@ export class AuthController {
       expiresIn: result.expiresIn,
       user: result.user,
     };
+  }
+
+  @Post('company-card')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  companyCard(@Body() input: CompanyCardDto, @Req() request: Request) {
+    return this.auth.companyCard(input.cardUid, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+  }
+
+  @Post('company-card/select')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  async selectCompanyGuard(@Body() input: SelectCompanyGuardDto, @Req() request: Request,
+    @Res({ passthrough: true }) response: Response) {
+    const result = await this.auth.selectCompanyGuard(input, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+    setSessionCookies(response, result);
+    return { user: result.user };
   }
 
   @Post('logout')

@@ -2,12 +2,20 @@ import {
   IsEmail,
   IsIn,
   IsString,
+  IsOptional,
   Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizarUidNfc } from '../../admin/uid-nfc';
 
 export class CreateTenantDto {
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? normalizarUidNfc(value) : value)
+  @IsString()
+  @Matches(/^[0-9A-F]{4,64}$/)
+  loginCardUid?: string;
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
   @MinLength(3)
   @MaxLength(48)

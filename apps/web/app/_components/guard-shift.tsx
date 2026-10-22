@@ -1090,6 +1090,7 @@ function Ronda({
       {vista === 'ronda' && !fotoDePunto && puntoConTareas ? (
         <GuardTareasPunto
           apiUrl={apiUrl}
+          {...(puente.fase === 'listo' ? { pedirPermisoCamara: puente.pedirPermiso } : {})}
           checkpointId={puntoConTareas.checkpointId}
           clientScanId={puntoConTareas.clientScanId}
           estado={tareas}
@@ -1245,6 +1246,7 @@ function Ronda({
           />
           <GuardEventForm
             enviando={enviandoNovedad}
+            {...(puente.fase === 'listo' ? { pedirPermisoCamara: puente.pedirPermiso } : {})}
             onReportar={(entrada) => void reportar(entrada)}
             {...(mensajeNovedad ? { mensaje: mensajeNovedad } : {})}
           />

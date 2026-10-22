@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { parseCheckpointTasksCsv } from './checkpoint-tasks-csv';
 
 import {
   borradorDesdeApi,
@@ -246,6 +247,7 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
         </div>
         <span className="status-pill">{tareas.length} tareas</span>
       </div>
+      <p className="form-note">Las tareas sin turno específico también se muestran al escanear cada punto en las rondas voluntarias.</p>
 
       {!recintos.length ? (
         <div className="dashboard-empty">
@@ -305,6 +307,26 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
               </select>
             </label>
           </div>
+          <label className="guardia-campo">Importar tareas por punto desde CSV
+            <input type="file" accept=".csv,text/csv" disabled={guardando || !recinto}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file || !recinto) return;
+                void file.text().then((text) => {
+                  const result = parseCheckpointTasksCsv(text, recinto.checkpoints);
+                  if (result.errors.length) {
+                    setEstado({ texto: result.errors.join(' '), tono: 'aviso' });
+                    return;
+                  }
+                  setTareas(result.tasks);
+                  if (!nombre) setNombre(`Tareas por punto · ${recinto.name}`);
+                  setTurnoId('');
+                  setEstado({ texto: `${result.tasks.length} tareas listas para revisar y guardar. ${result.skipped} filas de otras etiquetas omitidas.`, tono: 'ok' });
+                }).catch(() => setEstado({ texto: 'No pudimos leer el CSV.', tono: 'aviso' }));
+                event.target.value = '';
+              }} />
+          </label>
+          <p className="form-note">Columnas: id (UID NFC), tarea. Solo se cargan las etiquetas del recinto seleccionado. Revisa la lista antes de guardar.</p>
 
           {recinto ? (
             <p className="tareas-turno-zona">

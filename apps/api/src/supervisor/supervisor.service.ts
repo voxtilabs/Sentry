@@ -11,6 +11,7 @@ import { QueryFailedError } from 'typeorm';
 
 import { generarCodigo, lookupDeCodigo, pepperDeCodigo } from '../auth/login-code';
 import { normalizarUidNfc } from '../admin/uid-nfc';
+import { readCompanyCard, writeCompanyCard } from '../auth/company-card-management';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { AuditService } from '../audit/audit.service';
 import { RulesService } from '../rules/rules.service';
@@ -75,6 +76,20 @@ export const SQL_ASIGNAR_TARJETA_NFC_SUPERVISOR = `UPDATE users
 
 @Injectable()
 export class SupervisorService {
+  private async assertCompanyCardSupervisor(supervisorId: string) {
+    const sites = await this.tenantContext.manager.query<Array<{ site_id: string }>>(
+      'SELECT site_id FROM supervisor_sites WHERE supervisor_id = $1 LIMIT 1', [supervisorId],
+    );
+    if (!sites.length) throw new ForbiddenException('No tienes recintos asignados');
+  }
+  async companyCard(supervisorId: string) {
+    await this.assertCompanyCardSupervisor(supervisorId);
+    return readCompanyCard(this.tenantContext.manager);
+  }
+  async setCompanyCard(supervisorId: string, cardUid: string) {
+    await this.assertCompanyCardSupervisor(supervisorId);
+    return writeCompanyCard(this.tenantContext.manager, cardUid);
+  }
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly rules: RulesService,

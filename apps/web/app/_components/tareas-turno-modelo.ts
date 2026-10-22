@@ -30,6 +30,7 @@ export type TipoRespuesta = 'ok_falla' | 'texto' | 'numero';
 export interface PuntoDelRecinto {
   readonly id: string;
   readonly name: string;
+  readonly tagUids?: readonly string[];
 }
 
 export interface TurnoDelRecinto {

@@ -6,6 +6,7 @@ import {
   ConsentimientoTrabajador,
 } from '../../_components/consentimiento-carga';
 import { CrashReportsSummary } from '../../_components/crash-reports-summary';
+import { CompanyCardSettings } from '../../_components/company-card-settings';
 import { DashboardShell, type MarcaDelShell } from '../../_components/dashboard-shell';
 import { EnviosPanel } from '../../_components/envios-panel';
 import { FuncionesConfiguracion } from '../../_components/funciones-configuracion';
@@ -242,6 +243,7 @@ export default async function RoleDashboard({
   } else if (isSupervisor && view === 'planificacion') {
     panel = (
       <div className="panel-view" data-view="planificacion">
+        <CompanyCardSettings apiUrl={publicApiUrl()} role="supervisor" />
         <SupervisorSchedule apiUrl={publicApiUrl()} />
         <RouteEditor
           sites={routeEditorSites}
@@ -290,6 +292,7 @@ export default async function RoleDashboard({
   } else if (!isSupervisor && view === 'personas') {
     panel = (
       <div className="panel-view" data-view="personas">
+        <CompanyCardSettings apiUrl={publicApiUrl()} role="admin" />
         <AdminManagement
           users={users}
           sites={sites}
