@@ -48,3 +48,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Fuentes del módulo OCR local (no son el proyecto generado por Expo).
+!apps/mobile/modules/sentry-ocr/android/
+!apps/mobile/modules/sentry-ocr/android/**

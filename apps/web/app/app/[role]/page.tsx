@@ -127,7 +127,7 @@ export default async function RoleDashboard({
             antes, y un aviso que se pasa de largo con la rueda del mouse no es
             aviso previo. */}
         {guardView === 'turno' ? (
-          <ConsentimientoTrabajador apiUrl={publicApiUrl()}>
+          <>
           {/* Dos pantallas, una sola montada a la vez. GuardHome es la antesala:
               resumen del turno y el boton de iniciar. GuardShift es la ronda en
               terreno — escaneo NFC, fotos, novedades, panico, sincronizacion.
@@ -139,11 +139,11 @@ export default async function RoleDashboard({
               useGuardBridge, que abre su propio cliente del puente nativo, y dos
               handshakes compiten por los mismos mensajes de escaneo. */}
           {data.patrol && data.patrol.status !== 'pendiente' ? (
-            <GuardShift data={data} apiUrl={publicApiUrl()} />
+            <ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardShift data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador>
           ) : (
             <GuardHome data={data} apiUrl={publicApiUrl()} visitorContext={visitorContext} />
           )}
-          </ConsentimientoTrabajador>
+          </>
         ) : guardView === 'puntos' ? (
           <GuardPoints data={data} />
         ) : (

@@ -1,5 +1,6 @@
 'use client';
 
+import { ConsentimientoTrabajador } from './consentimiento-carga';
 import { Visits, type VisitsContext } from './visits';
 import { useRouter } from 'next/navigation';
 
@@ -212,6 +213,8 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
   if (!data.hasAssignment || !data.patrol || !data.shift) {
     return (
       <>
+      {visitsButton}
+      <ConsentimientoTrabajador apiUrl={apiUrl}>
       {/*
         * La divulgacion destacada va DELANTE del dialogo de Android (rechazo de
         * Play del 02-10-2026). Se monta en las dos vistas de esta pantalla
@@ -245,7 +248,6 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
             </label>
           </div>
         ) : null}
-        {visitsButton}
         <h2>No tienes una ronda asignada</h2>
         <p>{data.message ?? 'Cuando te asignen una ronda, aparecerá aquí automáticamente.'}</p>
 
@@ -357,6 +359,7 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
 
         <ConnectionStatus pendingItems={data.synchronization.pendingItems} />
       </section>
+      </ConsentimientoTrabajador>
       </>
     );
   }
@@ -417,6 +420,8 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
 
   return (
     <>
+      {visitsButton}
+      <ConsentimientoTrabajador apiUrl={apiUrl}>
       {/* Misma divulgacion que en la vista sin ronda: el guardia puede ingresar
           en cualquiera de las dos y el dialogo del sistema no puede adelantarse
           al texto en ninguna. */}
@@ -460,7 +465,6 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
           </div>
         ) : null}
 
-        {visitsButton}
         <span className="eyebrow">Tu tarea ahora</span>
         <h2>Ronda en {patrol.siteName}</h2>
         <p className="guard-site" style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1e293b' }}>
@@ -486,6 +490,7 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
         </div>
 
       </section>
+      </ConsentimientoTrabajador>
     </>
   );
 }
