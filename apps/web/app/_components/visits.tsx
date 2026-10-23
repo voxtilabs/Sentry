@@ -15,6 +15,8 @@ interface VehicleCheck {
   lookupId:string;plate:string;source:string|null;checkedAt:string;
   detailsStatus:string;make:string|null;model:string|null;color:string|null;ownerName:string|null;
   stolenStatus:string;finesStatus:string;finesCount:number|null;finesTotal:number|null;
+  community?:{source:string;status:'reportado'|'sin_reporte'|'sin_registro'|'no_disponible';checkedAt:string;
+    make:string|null;model:string|null;color:string|null};
 }
 interface Visit {
   id:string;clientVisitId:string;givenNames:string;familyNames:string;run:string;
@@ -57,13 +59,11 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   const [destination,setDestination]=useState('');
   const [informed,setInformed]=useState(false);
   const [plate,setPlate]=useState('');
-  const [make,setMake]=useState('');
-  const [model,setModel]=useState('');
-  const [color,setColor]=useState('');
   const [candidates,setCandidates]=useState<readonly string[]>([]);
   const [check,setCheck]=useState<VehicleCheck>();
   const [visits,setVisits]=useState<Visit[]>([]);
   const [busy,setBusy]=useState(false);
+  const [lookingUp,setLookingUp]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const [pendingSync,setPendingSync]=useState<PendingSync>();
@@ -105,6 +105,24 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   },[bridge.conexion.enLinea,sincronizarCola,load,pendingSync]);
   useEffect(()=>()=>{cancelarOcr();cancelarConsultaPublica();},[cancelarOcr,cancelarConsultaPublica]);
 
+  useEffect(()=>{
+    const normalized=normalizarPatente(plate);
+    setLookingUp(false);
+    if(step!=='vehicle'||!normalized||!bridge.conexion.enLinea)return;
+    let cancelled=false;
+    const controller=new AbortController();
+    setLookingUp(true);
+    // Una sola consulta al terminar la lectura/corrección, sin formularios externos.
+    const timer=setTimeout(()=>{
+      setError('');
+      void json<VehicleCheck>(`${apiUrl}/visits/guard/vehicle`,{...post({siteId,plate:normalized}),signal:controller.signal})
+        .then(result=>{if(!cancelled)setCheck(result);})
+        .catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:'No se pudo completar la consulta automática');})
+        .finally(()=>{if(!cancelled)setLookingUp(false);});
+    },350);
+    return()=>{cancelled=true;clearTimeout(timer);controller.abort();};
+  },[apiUrl,siteId,plate,step,bridge.conexion.enLinea]);
+
   async function read(kind:'identity'|'plate') {
     setError('');
     if(!bridge.soportaVisitas) {setError('Actualiza SentryCore para leer con la cámara. Puedes escribir los datos manualmente.');return;}
@@ -134,29 +152,6 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
     setStep('vehicle-question');setNotice('');
   }
 
-  async function lookup() {
-    setBusy(true);setError('');setCheck(undefined);
-    try {
-      const result=await json<VehicleCheck>(`${apiUrl}/visits/guard/vehicle`,post({siteId,plate}));
-      setCheck(result);setPlate(result.plate);
-      setMake(result.make??'');setModel(result.model??'');setColor(result.color??'');
-    } catch(e) {setError(e instanceof Error?e.message:'No se pudo consultar el vehículo. Puedes registrar la patente y completar lo observado.');}
-    finally {setBusy(false);}
-  }
-
-  async function publicLookup() {
-    const normalized=normalizarPatente(plate);
-    if(!normalized) {setError('Revisa la patente antes de consultar.');return;}
-    if(!bridge.soportaVisitas) {setError('Actualiza la app para usar la consulta asistida dentro de SentryCore.');return;}
-    setBusy(true);setError('');
-    try {
-      const publicResult=await bridge.consultarVehiculoPublico(normalized);
-      const result=await json<VehicleCheck>(`${apiUrl}/visits/guard/public-check`,post({siteId,...publicResult,...(check?{previousCheckId:check.lookupId}:{})}));
-      setCheck(result);setPlate(normalized);
-    } catch(e) {setError(e instanceof Error?e.message:'La consulta pública no se completó');}
-    finally {setBusy(false);}
-  }
-
   async function save(vehicle:boolean) {
     if(vehicle&&!normalizarPatente(plate)) {setError('Revisa la patente antes de registrar.');return;}
     if(!context) {setError('Carga el registro con conexión antes de guardar visitas.');return;}
@@ -164,8 +159,8 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
     clientId.current ||= crypto.randomUUID();enteredAt.current ||= new Date().toISOString();
     const body={clientVisitId:clientId.current,siteId,expectedActorId:context.actorId,expectedTenantId:context.tenantId,
       givenNames,familyNames,run,enteredAt:enteredAt.current,arrivesInVehicle:vehicle,visitorInformed:true,
-      originCompany,destination,...(vehicle?{plate,vehicleMake:make,vehicleModel:model,vehicleColor:color,
-        ...(check?.plate===plate?{vehicleCheckId:check.lookupId}:{})}:{})};
+      originCompany,destination,...(vehicle?{plate:normalizarPatente(plate),
+        ...(check?.plate===normalizarPatente(plate)?{vehicleCheckId:check.lookupId}:{})}:{})};
     try {
       let offline=false;
       try {await json(`${apiUrl}/visits/guard`,post(body));}
@@ -206,7 +201,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
 
   function reset() {
     clientId.current='';enteredAt.current='';setGivenNames('');setFamilyNames('');setRun('');setPlate('');
-    setMake('');setModel('');setColor('');setCheck(undefined);setCandidates([]);setOriginCompany('');setDestination('');
+    setCheck(undefined);setCandidates([]);setOriginCompany('');setDestination('');
     setInformed(false);setStep('identity');setNotice('');setError('');
   }
 
@@ -233,20 +228,15 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         <button className="primary-button" disabled={busy} onClick={()=>{setStep('vehicle');void read('plate');}}>Sí, leer patente</button>
         <button className="secondary-button" disabled={busy} onClick={()=>void save(false)}>No, registrar visita</button>
         <button className="text-button" disabled={busy} onClick={()=>setStep('identity')}>Corregir datos</button></div>:null}
-      {step==='vehicle'?<div className="visits-step"><h3>Vehículo de la visita</h3>
-        <button className="secondary-button" disabled={busy} onClick={()=>void read('plate')}>Leer patente con la cámara</button>
-        <label>Patente<input autoComplete="off" required maxLength={10} value={plate} onChange={e=>{setPlate(e.target.value.toUpperCase());setCheck(undefined);setMake('');setModel('');setColor('');}}/></label>
+      {step==='vehicle'?<div className="visits-step"><h3>Ficha del vehículo {plate?`· ${plate}`:''}</h3>
+        <button className="secondary-button" disabled={busy||lookingUp} onClick={()=>void read('plate')}>Repetir escaneo de patente</button>
+        <details><summary>Corregir patente leída</summary><label>Patente<input autoComplete="off" required maxLength={10} value={plate} onChange={e=>{setPlate(e.target.value.toUpperCase());setCheck(undefined);}}/></label></details>
         {candidates.length>1?<label>Patentes reconocidas<select value={plate} onChange={e=>{setPlate(e.target.value);setCheck(undefined);}}>{candidates.map(p=><option key={p}>{p}</option>)}</select></label>:null}
-        <button className="secondary-button" disabled={busy||!plate||!bridge.conexion.enLinea} onClick={()=>void lookup()}>{busy?'Procesando…':'Confirmar patente y consultar'}</button>
-        <button className="secondary-button" disabled={busy||!plate||!bridge.conexion.enLinea} onClick={()=>void publicLookup()}>Consultar robo gratis en Auto Seguro</button>
-        {check?<VehicleResult check={check}/>:<p>La consulta necesita conexión. Puedes registrar la patente y completar las características observadas.</p>}
-        <label>Marca (observada si no hay consulta)<input maxLength={80} value={make} onChange={e=>setMake(e.target.value)}/></label>
-        <label>Modelo<input maxLength={120} value={model} onChange={e=>setModel(e.target.value)}/></label>
-        <label>Color<input maxLength={80} value={color} onChange={e=>setColor(e.target.value)}/></label>
-        <button className="primary-button" disabled={busy||!plate} onClick={()=>void save(true)}>Registrar visita con vehículo</button>
+        {lookingUp?<p role="status">Consultando antecedentes del vehículo…</p>:check?<VehicleResult check={check}/>:<p>{normalizarPatente(plate)?'Antecedentes no disponibles. La patente puede registrarse igualmente.':'Escanea la patente para obtener la ficha del vehículo.'}</p>}
+        <button className="primary-button" disabled={busy||lookingUp||!normalizarPatente(plate)} onClick={()=>void save(true)}>Registrar visita con vehículo</button>
         <button className="text-button" disabled={busy} onClick={()=>setStep('vehicle-question')}>Volver a la pregunta</button>
       </div>:null}
-      {step==='done'?<button className="primary-button" onClick={reset}>Registrar otra visita</button>:null}
+      {step==='done'?<>{check?<VehicleResult check={check}/>:null}<button className="primary-button" onClick={reset}>Registrar otra visita</button></>:null}
       {notice?<p className="visits-notice" role="status">{notice}</p>:null}
       {error?<p className="visits-error" role="alert">{error}</p>:null}
       <div className="visits-heading"><h3>Últimas visitas del recinto</h3><button type="button" className="text-button" disabled={busy||!bridge.conexion.enLinea} onClick={()=>void load().catch(()=>setError('No se pudo actualizar el listado'))}>Actualizar</button></div>
@@ -258,13 +248,15 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
 function VehicleResult({check}:{check:VehicleCheck}) {
   const stolen:Record<string,string>={sin_encargo:'Sin encargo informado por la fuente',con_encargo:'Con encargo informado por la fuente',recuperado:'Recuperado según la fuente',encargo_parcial:'Encargo parcial informado por la fuente',placas_con_encargo:'Placas con encargo según la fuente',no_consultado:'No consultado'};
   return <div className="visits-vehicle-result">
+    <p>Marca: {check.make??check.community?.make??'No disponible'}</p>
+    <p>Modelo: {check.model??check.community?.model??'No disponible'}</p>
+    <p>Color: {check.color??check.community?.color??'No disponible'}</p>
     <p>Propietario registral: {check.ownerName??'No disponible'}</p>
-    <p>Encargo por robo: {stolen[check.stolenStatus]??'No consultado'}</p>
+    <p>Robo (registro oficial): {stolen[check.stolenStatus]??'No consultado'}</p>
     <p>Multas: {check.finesStatus==='consultado'?`${check.finesCount??'Cantidad no disponible'} informadas${check.finesTotal===null?'':` · $${check.finesTotal.toLocaleString('es-CL')}`}`:'No consultadas'}</p>
-    {check.source?<p>Fuente: {check.source} · {time(check.checkedAt)}. Puede contener desfases.</p>:<p>Consulta automática no disponible. Puedes verificar en los portales públicos.</p>}
-    <p><a href="https://www.autoseguro.gob.cl/" target="_blank" rel="noreferrer">Consultar robo en Auto Seguro</a></p>
-    <p><a href="https://www.prt.cl/Paginas/RevisionTecnica.aspx" target="_blank" rel="noreferrer">Consultar revisión técnica en PRT</a></p>
-    <p><a href="https://www.chileatiende.gob.cl/fichas/3370" target="_blank" rel="noreferrer">Consultar certificado del Registro Civil</a></p>
+    {check.source?<p>Fuente de la ficha: {check.source} · {time(check.checkedAt)}. Puede contener desfases.</p>:null}
+    {check.community?<><p>Reporte comunitario: {{reportado:'Vehículo reportado como robado',sin_reporte:'Sin reporte de robo en esta fuente',sin_registro:'Vehículo sin registros en esta fuente',no_disponible:'No disponible'}[check.community.status]}</p>
+      <p>Fuente: {check.community.source} · {time(check.community.checkedAt)}. No reemplaza la consulta del registro oficial.</p></>:null}
   </div>;
 }
 

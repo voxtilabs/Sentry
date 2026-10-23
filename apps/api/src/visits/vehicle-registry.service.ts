@@ -1,4 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { normalizarPatente } from './identity';
+
+export interface CommunityVehicleReport {
+  source:'CIPAT / Mi Barrio (reporte comunitario)';
+  status:'reportado'|'sin_reporte'|'sin_registro'|'no_disponible';
+  checkedAt:string;
+  make:string|null;model:string|null;color:string|null;
+}
 
 export interface VehicleCheckResult {
   source: string | null;
@@ -12,6 +20,7 @@ export interface VehicleCheckResult {
   finesStatus: 'consultado' | 'no_consultado';
   finesCount: number | null;
   finesTotal: number | null;
+  community?:CommunityVehicleReport;
 }
 
 const object = (v: unknown): Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
@@ -21,6 +30,32 @@ const string = (v: unknown, max = 160): string | null => typeof v === 'string' &
 @Injectable()
 export class VehicleRegistryService {
   async lookup(plate: string): Promise<VehicleCheckResult> {
+    const [details,community]=await Promise.all([this.details(plate),this.community(plate)]);
+    return {...details,community};
+  }
+
+  private async community(plate:string):Promise<CommunityVehicleReport> {
+    const report:CommunityVehicleReport={source:'CIPAT / Mi Barrio (reporte comunitario)',
+      status:'no_disponible',checkedAt:new Date().toISOString(),make:null,model:null,color:null};
+    // CIPAT documenta seis caracteres. No transformar una patente de moto en otra.
+    if(plate.length!==6)return report;
+    try {
+      const response=await fetch(`https://www.cipat.cl/api/lookup?patente=${encodeURIComponent(plate)}`,{
+        headers:{Accept:'application/json'},signal:AbortSignal.timeout(10_000),redirect:'error',
+      });
+      if(!response.ok)return report;
+      const data=object(await response.json());
+      if(data.found===false) {report.status='sin_registro';return report;}
+      const vehicle=object(data.vehicle);
+      if(data.found!==true||normalizarPatente(typeof vehicle.patente==='string'?vehicle.patente:'')!==plate
+        ||typeof vehicle.is_stolen!=='boolean')return report;
+      report.status=vehicle.is_stolen?'reportado':'sin_reporte';
+      report.make=string(vehicle.marca,80);report.model=string(vehicle.modelo,120);report.color=string(vehicle.color,80);
+    }catch { /* No disponible nunca equivale a ausencia de denuncias. */ }
+    return report;
+  }
+
+  private async details(plate:string):Promise<VehicleCheckResult> {
     const result: VehicleCheckResult = {
       source: null, checkedAt: new Date().toISOString(), detailsStatus: 'no_disponible',
       make: null, model: null, color: null, ownerName: null, stolenStatus: 'no_consultado',
