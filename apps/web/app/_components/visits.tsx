@@ -20,6 +20,7 @@ interface Visit {
   id:string;clientVisitId:string;givenNames:string;familyNames:string;run:string;
   enteredAt:string;exitedAt:string|null;plate:string|null;vehicleCheck?:VehicleCheck;
 }
+type PendingSync = {kind:'visit';clientVisitId:string}|{kind:'exit';visitId:string};
 
 async function json<T>(url:string,init?:RequestInit):Promise<T> {
   const response=await fetch(url,{...init,credentials:'include'});
@@ -65,21 +66,43 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
+  const [pendingSync,setPendingSync]=useState<PendingSync>();
   const clientId=useRef<string>('');
   const enteredAt=useRef<string>('');
   const formRef=useRef<HTMLFormElement>(null);
 
   const load=useCallback(async()=>{
-    if(!siteId) return;
-    setVisits(await json<Visit[]>(`${apiUrl}/visits/guard/sites/${siteId}`));
+    if(!siteId) return [];
+    const rows=await json<Visit[]>(`${apiUrl}/visits/guard/sites/${siteId}`);
+    setVisits(rows);
+    return rows;
   },[apiUrl,siteId]);
 
   useEffect(()=>{setVisits([]);void load().catch(()=>undefined);},[load]);
   useEffect(()=>{
     if(!bridge.conexion.enLinea) return;
-    // La cola cifrada y el servidor comparten clientVisitId: reintentar es seguro.
-    void sincronizarCola().then(()=>load()).catch(()=>undefined);
-  },[bridge.conexion.enLinea,sincronizarCola,load]);
+    let cancelled=false;
+    let retry:ReturnType<typeof setTimeout>|undefined;
+    const refresh=async()=>{
+      try {
+        // Android puede anunciar conexión antes de que la red ya responda.
+        // Confirmamos la fila en el servidor, no solo que terminó el envío.
+        await sincronizarCola();
+        const rows=await load();
+        const confirmed=pendingSync&&rows.some(v=>pendingSync.kind==='visit'
+          ? v.clientVisitId===pendingSync.clientVisitId
+          : v.id===pendingSync.visitId&&Boolean(v.exitedAt));
+        if(!cancelled&&confirmed) {
+          setPendingSync(undefined);
+          setNotice(pendingSync.kind==='visit'?'Visita sincronizada.':'Salida sincronizada.');
+          return;
+        }
+      } catch { /* La cola conserva la operación y su reintento. */ }
+      if(!cancelled&&pendingSync) retry=setTimeout(()=>void refresh(),5_000);
+    };
+    void refresh();
+    return()=>{cancelled=true;if(retry)clearTimeout(retry);};
+  },[bridge.conexion.enLinea,sincronizarCola,load,pendingSync]);
   useEffect(()=>()=>{cancelarOcr();cancelarConsultaPublica();},[cancelarOcr,cancelarConsultaPublica]);
 
   async function read(kind:'identity'|'plate') {
@@ -152,6 +175,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         if(!bridge.soportaVisitas) throw new Error('Necesitas conexión o actualizar la app para guardar visitas sin señal.');
         await bridge.encolarSync({apiUrl:new URL(apiUrl,window.location.origin).href.replace(/\/$/,''),
           portalOrigin:window.location.origin,operation:{type:'visit',clientId:clientId.current,payload:body,queuedAt:new Date().toISOString()}});
+        setPendingSync({kind:'visit',clientVisitId:clientId.current});
         offline=true;
       }
       setNotice(offline?'Visita guardada en la cola cifrada del teléfono. Pendiente de sincronizar cuando vuelva la conexión.':'Visita registrada.');
@@ -173,6 +197,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         if(!bridge.soportaVisitas)throw new Error('Necesitas conexión para registrar esta salida.');
         await bridge.encolarSync({apiUrl:new URL(apiUrl,window.location.origin).href.replace(/\/$/,''),portalOrigin:window.location.origin,
           operation:{type:'visit-exit',clientId:crypto.randomUUID(),payload:body,queuedAt:new Date().toISOString()}});
+        setPendingSync({kind:'exit',visitId:visit.id});
         setNotice('Salida guardada en la cola cifrada. Pendiente de sincronizar.');
       }
     } catch(e) {setError(e instanceof Error?e.message:'No se pudo registrar la salida');}
