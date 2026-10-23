@@ -1,7 +1,5 @@
 'use client';
 
-import { ConsentimientoTrabajador } from './consentimiento-carga';
-import { Visits, type VisitsContext } from './visits';
 import { useRouter } from 'next/navigation';
 
 import { DivulgacionUbicacion } from './divulgacion-ubicacion';
@@ -102,12 +100,11 @@ const time = new Intl.DateTimeFormat('es-CL', {
   timeZone: 'America/Santiago',
 });
 
-export function GuardHome({ data, apiUrl, visitorContext = null }: { data: GuardHomeData; apiUrl: string; visitorContext?: VisitsContext | null }) {
+export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: string }) {
   const router = useRouter();
   const puente = useGuardBridge(apiUrl);
   const guardarRutaOffline = puente.guardarRutaOffline;
   const [starting, setStarting] = useState(false);
-  const [showVisits, setShowVisits] = useState(false);
   const [error, setError] = useState<string>();
   const rutasVoluntarias = data.voluntaryRoutes ?? [];
   const [rutaElegida, setRutaElegida] = useState<string>('');
@@ -207,14 +204,9 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
     }).catch(() => undefined);
   }, [data, guardarRutaOffline]);
 
-  if (showVisits) return <Visits apiUrl={apiUrl} context={visitorContext} initialSiteId={data.selectedSiteId} bridge={puente} onClose={()=>setShowVisits(false)}/>;
-  const visitsButton = visitorContext?.sites.length ? <button type="button" className="secondary-button guard-visits-button" onClick={()=>setShowVisits(true)}>REGISTRAR VISITAS</button> : null;
-
   if (!data.hasAssignment || !data.patrol || !data.shift) {
     return (
       <>
-      {visitsButton}
-      <ConsentimientoTrabajador apiUrl={apiUrl}>
       {/*
         * La divulgacion destacada va DELANTE del dialogo de Android (rechazo de
         * Play del 02-10-2026). Se monta en las dos vistas de esta pantalla
@@ -359,7 +351,6 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
 
         <ConnectionStatus pendingItems={data.synchronization.pendingItems} />
       </section>
-      </ConsentimientoTrabajador>
       </>
     );
   }
@@ -420,8 +411,6 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
 
   return (
     <>
-      {visitsButton}
-      <ConsentimientoTrabajador apiUrl={apiUrl}>
       {/* Misma divulgacion que en la vista sin ronda: el guardia puede ingresar
           en cualquiera de las dos y el dialogo del sistema no puede adelantarse
           al texto en ninguna. */}
@@ -490,7 +479,6 @@ export function GuardHome({ data, apiUrl, visitorContext = null }: { data: Guard
         </div>
 
       </section>
-      </ConsentimientoTrabajador>
     </>
   );
 }

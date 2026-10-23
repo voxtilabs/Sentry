@@ -12,7 +12,7 @@ import { EnviosPanel } from '../../_components/envios-panel';
 import { FuncionesConfiguracion } from '../../_components/funciones-configuracion';
 import { MarcaConfiguracion } from '../../_components/marca-configuracion';
 import { marcaDelTenant } from '../../_lib/marca-del-tenant';
-import { VisitsManagement, type VisitsContext } from '../../_components/visits';
+import { GuardHomeEntrance, VisitsManagement, type VisitsContext } from '../../_components/visits';
 import { GuardHome, type GuardHomeData } from '../../_components/guard-home';
 import { GuardBottomNav } from '../../_components/guard-bottom-nav';
 import { GuardPoints } from '../../_components/guard-points';
@@ -141,7 +141,7 @@ export default async function RoleDashboard({
           {data.patrol && data.patrol.status !== 'pendiente' ? (
             <ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardShift data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador>
           ) : (
-            <GuardHome data={data} apiUrl={publicApiUrl()} visitorContext={visitorContext} />
+            <GuardHomeEntrance apiUrl={publicApiUrl()} context={visitorContext} initialSiteId={data.selectedSiteId}><ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardHome data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador></GuardHomeEntrance>
           )}
           </>
         ) : guardView === 'puntos' ? (

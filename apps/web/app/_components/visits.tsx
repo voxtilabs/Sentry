@@ -1,8 +1,8 @@
 'use client';
 
 import { normalizarPatente, normalizarRun } from '@sentrycore/shared';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { PuenteGuardia } from './use-guard-bridge';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useGuardBridge, type PuenteGuardia } from './use-guard-bridge';
 
 export interface VisitsContext {
   sites: Array<{id:string;name:string;branchName:string}>;
@@ -31,6 +31,17 @@ async function json<T>(url:string,init?:RequestInit):Promise<T> {
 }
 const post=(body:unknown):RequestInit=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const time=(value:string)=>new Date(value).toLocaleString('es-CL',{dateStyle:'short',timeStyle:'short'});
+
+/** La portería no depende de aceptar geolocalización para una ronda. */
+export function GuardHomeEntrance({children,context,initialSiteId,apiUrl}:{children:ReactNode;context:VisitsContext|null;initialSiteId?:string;apiUrl:string}) {
+  const [open,setOpen]=useState(false);
+  if(open)return <StandaloneVisits context={context} initialSiteId={initialSiteId} apiUrl={apiUrl} onClose={()=>setOpen(false)}/>;
+  return <>{context?.sites.length?<button type="button" className="secondary-button guard-visits-button" onClick={()=>setOpen(true)}>REGISTRAR VISITAS</button>:null}{children}</>;
+}
+function StandaloneVisits(props:{context:VisitsContext|null;initialSiteId?:string;apiUrl:string;onClose:()=>void}) {
+  const bridge=useGuardBridge(props.apiUrl);
+  return <Visits {...props} bridge={bridge}/>;
+}
 
 export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   apiUrl:string;context:VisitsContext|null;initialSiteId?:string;bridge:PuenteGuardia;onClose:()=>void;
