@@ -1,0 +1,43 @@
+Prueba local de consulta automática de Auto Seguro
+
+Es una herramienta de investigación, separada del registro de visitas en producción.
+No cambia GPS, puntos, rondas, migraciones ni el APK/AAB. El adaptador del servidor
+todavía no llama a esta herramienta. No demuestra una tasa de éxito garantizada.
+
+Requiere Python 3.11, git y un escritorio gráfico Linux disponible en DISPLAY.
+En un servidor sin escritorio hace falta un display virtual para Chrome.
+
+Preparación dentro de una carpeta privada, fuera del repositorio:
+
+  python3.11 -m venv .venv
+  .venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch==2.6.0+cpu torchvision==0.21.0+cpu
+  .venv/bin/pip install -r /ruta/sentrycore/scripts/research/autoseguro/requirements.txt
+  .venv/bin/python -m patchright install chromium
+
+Ejecutar lookup.py con --plate, --output y, si corresponde, --browser-executable.
+--cache-dir permite conservar el perfil anónimo del navegador y los modelos entre
+consultas. Usar una carpeta privada dedicada; nunca un perfil personal de Chrome.
+El primer arranque descarga los modelos; los siguientes reutilizan la caché.
+Los pesos YOLO pueden descargarse en el directorio de trabajo: ejecutar siempre
+desde la carpeta privada, no desde el repositorio.
+
+El informe JSON contiene la patente consultada y se crea con permisos 0600. No se
+debe subir a GitHub. No se imprime el token CAPTCHA, cookies, CSRF ni imágenes.
+Un fallo o un formato desconocido conserva stolenStatus=no_consultado. Solo se
+informa un estado conocido después del POST aceptado, con código de éxito y
+coincidencia de la patente consultada. Esto no obtiene titularidad ni multas.
+
+Proyectos evaluados y usados:
+https://github.com/Vinyzu/recognizer
+  Referencia: 8a002c4574a1158ca4fa8519279427fce3614c97; licencia GPL-3.0.
+  Se importa como dependencia. No se incluyen sus fuentes, pesos ni datasets.
+https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python
+  Patchright 1.64.2; licencia Apache-2.0.
+
+El adaptador observa respuestas sin reemplazar peticiones y lee el token auténtico
+del textarea de Google, compartido entre contextos JavaScript. Ese ajuste evita un
+falso negativo de la lectura de grecaptcha en el contexto aislado de Patchright.
+No usa servicios de CAPTCHA de pago, proxies contratados ni claves de terceros.
+
+En las pruebas del 22-10-2026 hubo intentos fallidos y también una respuesta oficial
+aceptada. Ver docs/decisions/139-control-acceso-visitantes.md para el alcance.

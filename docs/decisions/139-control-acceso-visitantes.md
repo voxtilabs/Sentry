@@ -166,13 +166,13 @@ Revisión de fuentes y pruebas realizadas el 22-10-2026. No hay búsqueda masiva
 
 | Fuente | Consulta gratuita y datos | Automatización y límites comprobados |
 |---|---|---|
-| [Auto Seguro](https://www.autoseguro.gob.cl/) | Encargos por patente/VIN/motor; información orientativa del servicio público | Formulario con reCAPTCHA v2. Prueba con navegador automático normal: marcar la casilla produjo un desafío de imágenes, sin token válido. La vista asistida inicial fue retirada del flujo del guardia por solicitud explícita: no se le exige resolver CAPTCHA ni visitar portales. No hay una integración oficial automática gratuita verificada. |
+| [Auto Seguro](https://www.autoseguro.gob.cl/) | Encargos por patente/VIN/motor; información orientativa del servicio público | Formulario con reCAPTCHA v2. La investigación posterior consiguió una consulta automática local aceptada por el servidor con herramientas gratuitas; ver la sección de pruebas de CAPTCHA. Todavía no está conectada al adaptador de producción. La vista asistida inicial fue retirada del flujo del guardia: no se le exige resolver CAPTCHA ni visitar portales. |
 | [CIPAT / Mi Barrio](https://www.cipat.cl/) | Consulta gratuita de reportes comunitarios por patente | El mismo endpoint del formulario público `/api/lookup?patente=...` respondió HTTP 200 sin clave ni CAPTCHA. Se integra automáticamente. `found:false` significa **sin registro en CIPAT**, nunca libre de encargo oficial. Una respuesta positiva exige coincidencia de patente y un booleano `is_stolen`. Se conservan únicamente estado, marca, modelo y color; no teléfonos, texto libre ni datos de denunciantes. |
 | [PRT / MTT](https://www.prt.cl/Paginas/RevisionTecnica.aspx) | Revisión técnica y datos del vehículo; [ChileAtiende confirma gratuidad](https://www.chileatiende.gob.cl/fichas/86124) | Formulario público con CAPTCHA; la conexión HTTPS desde el entorno de trabajo falló por certificado. No se debilita TLS para producción. |
 | [Consulta pública de multas del Registro Civil](https://consultamultas.srcei.cl/ConsultaMultas/consultaMultasExterna.do) | Estado de multas, distinto del certificado pagado; [enlace institucional](https://www.colina.cl/transito/permisos-de-circulacion/links-de-interes/) | La prueba respondió HTTP 200 con “Request Rejected”, sin datos. No confundir ese HTML con cero multas. |
 | [AutoSign](https://autosign.cl/fact/) | Ficha gratuita: marca, modelo, año, color y otros datos; anuncia dueño registral | Adaptador del formulario público con sesión y CSRF normales. Dos consultas de ejemplo respondieron HTTP 500. El adaptador no inventa datos ni certifica titularidad. |
 | [Calistoweb](https://auto.calistoweb.cl/) | Historial de revisión técnica y ficha | Formulario con reCAPTCHA v3. Prueba con navegador real y flujo normal: HTTP 200, `success:false`, “reCAPTCHA verification failed”. No se omite ni falsea su validación. |
-| [Patentes Chile](https://www.patentechile.com/consultar-patente/) | Anuncia consultas gratuitas de propietarios y características | Acceso de prueba bloqueado HTTP 403. Su [página de contacto](https://www.patentechile.com/contacto/) excluye expresamente proporcionar API y bases de datos a terceros. |
+| [Patentes Chile](https://www.patentechile.com/) | Anuncia consultas gratuitas de propietarios y características | Chrome visible y Patchright devolvieron HTTP 403. Se pulsó automáticamente la casilla de Cloudflare, pero continuó el bloqueo. El POST público `/resultados`, descrito en proyectos de GitHub, también respondió 403. No se obtuvieron datos. Su [página de contacto](https://www.patentechile.com/contacto/) excluye proporcionar API y bases de datos a terceros. |
 | [AutoRiesgo](https://autoriesgo.cl/api) | Vista previa gratuita parcial en su web | El endpoint documentado sin clave devolvió HTTP 403 y exige API comercial para uso programático. [Términos](https://autoriesgo.cl/terminos): no extraer automáticamente la web en lugar de la API. No se integra el servicio de pago. |
 | [Boostr](https://boostr.cl/precios) | Prueba de 5 consultas/día, 30 días; requiere clave | No es una fuente gratuita permanente. [Documentación](https://docs.boostr.cl/reference/car-plate) distingue ficha básica y extendida. Sin clave contratada ni prueba activada. |
 | [GetAPI](https://getapi.cl/docs/) | Datos vehiculares y robo según plan | Endpoints documentados requieren `X-Api-Key`; no hay clave ni servicio de pago activado. También se probó el endpoint histórico `chile.getapi.cl/v1/vehicles/plate/...` sin clave: HTTP 401. |
@@ -194,4 +194,50 @@ Las características observadas por el guardia se distinguen de las consultas de
 
 La lectura de patente dispara la consulta automáticamente; no hay botón para abrir Auto Seguro, CAPTCHA, enlaces externos ni campos obligatorios de marca, modelo o color. El guardia ve la ficha y registra el ingreso. Se conserva la posibilidad de repetir el escaneo o corregir una lectura equivocada. La falta de señal o de respuesta de un proveedor no impide registrar la patente y nunca se representa como cero multas ni como ausencia de encargo.
 
-Este ajuste automatiza las fuentes accesibles, pero **no equivale a haber resuelto el CAPTCHA de Auto Seguro** ni a haber obtenido titularidad, multas y encargo oficial en todas las consultas. Esos límites se mantienen visibles en el informe. Las respuestas comunitarias se separan del registro oficial.
+El adaptador desplegado automatiza las fuentes accesibles, pero **todavía no incorpora la prueba local de Auto Seguro** ni obtiene titularidad, multas y encargo oficial en todas las consultas. Esos límites se mantienen visibles en el informe. Las respuestas comunitarias se separan del registro oficial.
+
+### Pruebas de proyectos gratuitos para CAPTCHA
+
+Investigación adicional del 22-10-2026, con una patente autorizada por su titular.
+Los informes, capturas, perfiles y modelos se mantienen fuera del repositorio.
+
+- [JacobLinCool/recaptcha-solver](https://github.com/JacobLinCool/recaptcha-solver),
+  versión 0.3.0, MIT: Vosk local y ffmpeg. Resolvió el desafío de audio del demo de
+  Google en 3,3 segundos y obtuvo un token. Auto Seguro no entregó audio y mostró
+  la advertencia de consultas automatizadas; allí terminó con `No Audio Found`.
+  Se abrió antes la casilla como adaptación al [problema de selector #10](https://github.com/JacobLinCool/recaptcha-solver/issues/10).
+- [Vinyzu/recognizer](https://github.com/Vinyzu/recognizer), referencia
+  `8a002c4574a1158ca4fa8519279427fce3614c97`, GPL-3.0: YOLO, CLIP y CLIPSeg
+  locales en CPU. Pasaron las dos referencias ensayadas de bicicletas y escaleras.
+  El automatismo original no obtuvo token dentro de tres intentos. Al observar
+  respuestas sin reemplazar peticiones, un ensayo normal resolvió imágenes y
+  emitió token en unos 70 segundos; otro agotó seis intentos sin token.
+- Con [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python) 1.64.2,
+  Chrome visible y un perfil anónimo dedicado, se completó el formulario oficial:
+  token real, POST aceptado, `IsResponse=true`, `Cod=0`, búsqueda por patente y
+  coincidencia de la patente solicitada. El resultado conocido fue
+  `CodTipoEncargo=0`. Esa consulta reutilizó el perfil y tardó unos 12 segundos
+  en la fase del CAPTCHA; no requirió resolver nuevas imágenes en ese intento.
+  La herramienta reproducible volvió a completar la consulta con un perfil
+  anónimo nuevo en unos 11 segundos totales, validando otra respuesta oficial.
+  Esto prueba viabilidad local, no disponibilidad ni latencia garantizadas.
+- [CaptchaFree](https://github.com/theriley106/CaptchaFree), MIT, y
+  [Buster](https://github.com/dessant/buster), GPL-3.0, también admiten voz local
+  mediante Whisper. Se revisó su código; no se ejecutaron. Necesitan que el sitio
+  ofrezca el audio. Cambiar el reconocedor no resuelve la ausencia de ese archivo.
+- [CaptchaBreaker](https://github.com/DHRlabs/CaptchaBreaker) tiene OCR local de
+  texto, pero su propia evaluación declara aproximadamente 7% de coincidencia
+  exacta en captchas distorsionados reales. Su vía de imágenes avanzada requiere
+  configurar un proveedor de visión externo; no se validó como alternativa local.
+
+La prueba reproducible está en `scripts/research/autoseguro/`. Lee el token emitido
+por Google desde el DOM compartido: el contexto JavaScript aislado de Patchright
+no expone los globals `grecaptcha` ni los de la respuesta oficial. La validación
+de esa respuesta se ejecuta explícitamente en el contexto principal. No se crean
+tokens ni se reemplaza la página oficial. Se distingue la emisión del CAPTCHA de
+la aceptación de la consulta. La prueba no modifica código ni datos de producción.
+
+Para incorporarla al flujo del guardia falta una integración de servidor con cola,
+límites de concurrencia, tiempo máximo y estados pendientes/no consultados. Las
+pruebas de reCAPTCHA v2 no acreditan compatibilidad con v3 o Turnstile. Tampoco
+obtienen por sí mismas dueño, marca, modelo, color o multas de otra plataforma.
