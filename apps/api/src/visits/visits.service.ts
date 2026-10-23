@@ -6,14 +6,15 @@ import { TenantContextService } from '../database/tenant-context/tenant-context.
 import { RulesService } from '../rules/rules.service';
 import { normalizarPatente, normalizarRun } from './identity';
 import type { ExitVisitDto, RegisterVisitDto, VehicleLookupDto, PublicVehicleCheckDto } from './visits.dto';
-import { VehicleRegistryService, type VehicleCheckResult } from './vehicle-registry.service';
+import { emptyVehicleCheck, type VehicleCheckResult } from './vehicle-registry.service';
+import { VehicleLookupJobs, VehicleLookupProcessor } from './vehicle-lookup.jobs';
 
 export const VISITOR_NOTICE = 'El recinto registra nombre, RUN, destino, hora de ingreso y salida y, si corresponde, patente y características del vehículo para controlar el acceso. La lectura del carnet se realiza en el teléfono; no se guarda su fotografía ni su número de documento. Puedes solicitar acceso, corrección o eliminación de tus datos a la administración del recinto.';
 
 @Injectable()
 export class VisitsService {
   constructor(private readonly context: TenantContextService, private readonly rules: RulesService,
-    private readonly vehicles: VehicleRegistryService) {}
+    private readonly vehicleJobs: VehicleLookupJobs,private readonly vehicleProcessor:VehicleLookupProcessor) {}
 
   async sites(actorId: string, role: Role) {
     const rows = await this.context.manager.query<Array<{ id: string; name: string; branchName: string }>>(
@@ -47,8 +48,11 @@ export class VisitsService {
        v.family_names AS "familyNames",v.run,v.entered_at_device AS "enteredAt",
        v.entered_at_server AS "receivedAt",v.exited_at_device AS "exitedAt",v.plate,
        v.vehicle_make AS "vehicleMake",v.vehicle_model AS "vehicleModel",v.vehicle_color AS "vehicleColor",
-       v.destination,v.origin_company AS "originCompany",c.result AS "vehicleCheck"
+       v.destination,v.origin_company AS "originCompany",COALESCE(done.result,c.result) AS "vehicleCheck"
        FROM visitor_sessions v LEFT JOIN visitor_vehicle_checks c ON c.tenant_id=v.tenant_id AND c.id=v.vehicle_check_id
+       LEFT JOIN visitor_vehicle_checks done ON done.tenant_id=c.tenant_id
+         AND done.id=NULLIF(c.result->>'lookupResultId','')::uuid
+         AND done.guard_id=c.guard_id AND done.site_id=c.site_id AND done.plate=c.plate
        WHERE v.site_id=$1 AND v.created_at >= now()-make_interval(days=>$2)
        ORDER BY v.entered_at_device DESC,v.id DESC LIMIT 100`, [siteId, rules.visitorRetentionDays]);
   }
@@ -134,12 +138,39 @@ export class VisitsService {
     const rows = await this.context.manager.query<Array<{ id: string; result: VehicleCheckResult }>>(
       `SELECT id,result FROM visitor_vehicle_checks WHERE site_id=$1 AND plate=$2 AND guard_id=$3
        AND created_at>now()-interval '5 minutes' ORDER BY created_at DESC LIMIT 1`, [input.siteId,plate,actorId]);
-    if (rows[0]) return { lookupId: rows[0].id,plate,...rows[0].result };
-    const result = await this.vehicles.lookup(plate);
+    if (rows[0]) return this.lookupStatus(actorId,rows[0].id);
+    const tenantId=this.context.tenantId;
+    if(!tenantId)throw new ForbiddenException('Se requiere una sesión de empresa');
     const id = randomUUID();
+    const resultId=randomUUID();
+    const result:VehicleCheckResult={...emptyVehicleCheck(),lookupPending:true,lookupResultId:resultId,
+      officialCheck:{source:'Auto Seguro',status:'pendiente',checkedAt:null}};
     await this.context.manager.query(
       'INSERT INTO visitor_vehicle_checks(id,tenant_id,site_id,guard_id,plate,result) VALUES($1,app_tenant_id(),$2,$3,$4,$5::jsonb)',
       [id,input.siteId,actorId,plate,JSON.stringify(result)]);
+    const data={tenantId,actorId,lookupId:id,resultId,plate};
+    this.context.afterCommit(async()=>{
+      try {await this.vehicleJobs.enqueue(data);}
+      catch {await this.vehicleProcessor.finish(data,{...emptyVehicleCheck(),lookupPending:false,
+        officialCheck:{source:'Auto Seguro',status:'no_disponible',checkedAt:null}});}
+    });
     return { lookupId:id,plate,...result };
+  }
+
+  async lookupStatus(actorId:string,id:string) {
+    const rows=await this.context.manager.query<Array<{id:string;site_id:string;plate:string;result:VehicleCheckResult}>>(
+      'SELECT id,site_id,plate,result FROM visitor_vehicle_checks WHERE id=$1 AND guard_id=$2',[id,actorId]);
+    const original=rows[0];
+    if(!original)throw new NotFoundException('No encontramos la consulta vehicular');
+    await this.ensureSite(original.site_id,actorId,'GUARDIA');
+    if(original.result.lookupResultId) {
+      const completed=await this.context.manager.query<Array<{id:string;result:VehicleCheckResult}>>(
+        'SELECT id,result FROM visitor_vehicle_checks WHERE id=$1 AND site_id=$2 AND guard_id=$3 AND plate=$4',
+        [original.result.lookupResultId,original.site_id,actorId,original.plate]);
+      if(completed[0])return {lookupId:completed[0].id,plate:original.plate,...completed[0].result};
+    }
+    const progress=original.result.lookupPending&&this.context.tenantId
+      ? await this.vehicleJobs.progress(id,this.context.tenantId):null;
+    return {lookupId:id,plate:original.plate,...original.result,...progress};
   }
 }

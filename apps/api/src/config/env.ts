@@ -17,6 +17,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().url(),
   SCAN_SYNC_QUEUE_NAME: z.string().min(1).default('scan-sync'),
   SCAN_SYNC_LAG_ALERT_SECONDS: z.coerce.number().int().positive().default(300),
+  VEHICLE_LOOKUP_WORKER_URL: z.union([z.literal(''), z.string().url()]).default(''),
+  VEHICLE_LOOKUP_WORKER_TOKEN: z.string().default(''),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET debe tener al menos 32 caracteres'),
   JWT_ACCESS_TTL: z.string().default('15m'),
@@ -154,6 +156,9 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   }
 
   const env = parsed.data;
+  if (env.VEHICLE_LOOKUP_WORKER_URL && env.VEHICLE_LOOKUP_WORKER_TOKEN.length < 32) {
+    throw new Error('VEHICLE_LOOKUP_WORKER_URL requiere una credencial interna de al menos 32 caracteres');
+  }
 
   // Coherencia entre el driver de correo y sus credenciales: si no se valida
   // aca, el error aparece recien cuando alguien no recibe su invitacion.

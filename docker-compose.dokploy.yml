@@ -216,6 +216,8 @@ services:
       # Mailpit en la maquina de alguien, no para un contenedor desplegado. Sin
       # esta linea vale `false` siempre, que es como tiene que ser.
       MAIL_BLOCKED_DOMAINS: ${MAIL_BLOCKED_DOMAINS:-}
+      VEHICLE_LOOKUP_WORKER_URL: ${VEHICLE_LOOKUP_WORKER_URL:-}
+      VEHICLE_LOOKUP_WORKER_TOKEN: ${VEHICLE_LOOKUP_WORKER_TOKEN:-}
     volumes:
       - evidence_data:/data/evidence
     depends_on:
@@ -232,6 +234,27 @@ services:
     networks:
       - internal
       - dokploy-network
+
+  vehicle-lookup:
+    image: ${VEHICLE_LOOKUP_IMAGE:-sentrycore-vehicle-lookup:2026-10-22}
+    build:
+      context: .
+      dockerfile: services/vehicle-lookup/Dockerfile
+    profiles: ["vehicle-lookup"]
+    restart: unless-stopped
+    init: true
+    environment:
+      VEHICLE_LOOKUP_WORKER_TOKEN: ${VEHICLE_LOOKUP_WORKER_TOKEN:-}
+    volumes:
+      - vehicle_lookup_data:/data
+    mem_limit: 3g
+    cpus: 2
+    pids_limit: 256
+    shm_size: 256m
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
 
   # Bandeja de correo de PRUEBAS: captura todo, nada sale a internet.
   # Solo existe con COMPOSE_PROFILES=staging; produccion usa SMTP real.
@@ -281,10 +304,11 @@ networks:
   # La crea Dokploy al instalarse. `external` significa "ya existe, no la crees".
   dokploy-network:
     external: true
-  # Sin salida a internet: aca viven postgres y redis.
+  # Red de backend sin puertos publicados; el navegador necesita salida HTTPS.
   internal:
 
 volumes:
+  vehicle_lookup_data:
   evidence_data:
   postgres_data:
   redis_data:

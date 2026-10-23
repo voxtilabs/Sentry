@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prueba local de Auto Seguro; no forma parte del servidor de producción."""
+"""Consulta pública de Auto Seguro, usada por la prueba local y el worker privado."""
 
 import argparse
 import asyncio
@@ -38,7 +38,7 @@ async def consult(args):
     from recognizer.agents.playwright import AsyncChallenger
 
     report = {
-        'plate': args.plate, 'source': 'Auto Seguro (consulta pública automática de prueba)',
+        'plate': args.plate, 'source': 'Auto Seguro (consulta pública automática)',
         'checkedAt': datetime.now(timezone.utc).isoformat(),
         'stolenStatus': 'no_consultado', 'tokenIssued': False,
         'formSubmitted': False, 'officialResponseValidated': False,

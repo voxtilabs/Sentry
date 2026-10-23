@@ -15,6 +15,9 @@ interface VehicleCheck {
   lookupId:string;plate:string;source:string|null;checkedAt:string;
   detailsStatus:string;make:string|null;model:string|null;color:string|null;ownerName:string|null;
   stolenStatus:string;finesStatus:string;finesCount:number|null;finesTotal:number|null;
+  year?:number|null;lookupPending?:boolean;
+  officialCheck?:{source:string;status:'pendiente'|'consultado'|'no_disponible';checkedAt:string|null};
+  inspection?:{source:string;date:string|null;expiresAt:string|null;result:string|null};
   community?:{source:string;status:'reportado'|'sin_reporte'|'sin_registro'|'no_disponible';checkedAt:string;
     make:string|null;model:string|null;color:string|null};
 }
@@ -61,6 +64,8 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   const [plate,setPlate]=useState('');
   const [candidates,setCandidates]=useState<readonly string[]>([]);
   const [check,setCheck]=useState<VehicleCheck>();
+  const lastCheck=useRef<VehicleCheck|undefined>(undefined);
+  useEffect(()=>{lastCheck.current=check;},[check]);
   const [visits,setVisits]=useState<Visit[]>([]);
   const [busy,setBusy]=useState(false);
   const [lookingUp,setLookingUp]=useState(false);
@@ -109,19 +114,33 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   useEffect(()=>{
     const normalized=normalizarPatente(plate);
     setLookingUp(false);
-    if(step!=='vehicle'||!normalized||!bridge.conexion.enLinea)return;
+    if(!['vehicle','done'].includes(step)||!normalized||!bridge.conexion.enLinea)return;
+    const previous=lastCheck.current;
+    if(step==='done'&&(!previous?.lookupPending||previous.plate!==normalized))return;
     let cancelled=false;
     const controller=new AbortController();
+    let poll:ReturnType<typeof setTimeout>|undefined;
+    const until=Date.now()+180_000;
     setLookingUp(true);
-    // Una sola consulta al terminar la lectura/corrección, sin formularios externos.
-    const timer=setTimeout(()=>{
-      setError('');
-      void json<VehicleCheck>(`${apiUrl}/visits/guard/vehicle`,{...post({siteId,plate:normalized}),signal:controller.signal})
-        .then(result=>{if(!cancelled)setCheck(result);})
-        .catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:'No se pudo completar la consulta automática');})
-        .finally(()=>{if(!cancelled)setLookingUp(false);});
-    },350);
-    return()=>{cancelled=true;clearTimeout(timer);controller.abort();};
+    // El servidor ejecuta y conserva el resultado incluso si esta vista se cierra.
+    async function update(id?:string) {
+      try {
+        const result=await json<VehicleCheck>(id?`${apiUrl}/visits/guard/vehicle/${id}`:`${apiUrl}/visits/guard/vehicle`,
+          id?{signal:controller.signal}:{...post({siteId,plate:normalized}),signal:controller.signal});
+        if(cancelled)return;
+        setCheck(result);
+        if(result.lookupPending&&Date.now()<until) {
+          poll=setTimeout(()=>void update(result.lookupId),2000);
+          return;
+        }
+        if(result.lookupPending)setNotice('La consulta continúa en el servidor. Puedes registrar la visita y revisar el informe después.');
+        setLookingUp(false);
+      }catch(e) {
+        if(!cancelled) {setError(e instanceof Error?e.message:'No se pudo completar la consulta automática');setLookingUp(false);}
+      }
+    }
+    const timer=setTimeout(()=>{setError('');void update(step==='done'?previous?.lookupId:undefined);},350);
+    return()=>{cancelled=true;clearTimeout(timer);if(poll)clearTimeout(poll);controller.abort();};
   },[apiUrl,siteId,plate,step,bridge.conexion.enLinea]);
 
   async function read(kind:'identity'|'plate') {
@@ -233,8 +252,9 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         <button className="secondary-button" disabled={busy||lookingUp} onClick={()=>void read('plate')}>Repetir escaneo de patente</button>
         <details><summary>Corregir patente leída</summary><label>Patente<input autoComplete="off" required maxLength={10} value={plate} onChange={e=>{setPlate(e.target.value.toUpperCase());setCheck(undefined);}}/></label></details>
         {candidates.length>1?<label>Patentes reconocidas<select value={plate} onChange={e=>{setPlate(e.target.value);setCheck(undefined);}}>{candidates.map(p=><option key={p}>{p}</option>)}</select></label>:null}
-        {lookingUp?<p role="status">Consultando antecedentes del vehículo…</p>:check?<VehicleResult check={check}/>:<p>{normalizarPatente(plate)?'Antecedentes no disponibles. La patente puede registrarse igualmente.':'Escanea la patente para obtener la ficha del vehículo.'}</p>}
-        <button className="primary-button" disabled={busy||lookingUp||!normalizarPatente(plate)} onClick={()=>void save(true)}>Registrar visita con vehículo</button>
+        {lookingUp?<p role="status">Consultando antecedentes del vehículo…</p>:null}
+        {check?<VehicleResult check={check}/>:!lookingUp?<p>{normalizarPatente(plate)?'Antecedentes no disponibles. La patente puede registrarse igualmente.':'Escanea la patente para obtener la ficha del vehículo.'}</p>:null}
+        <button className="primary-button" disabled={busy||(lookingUp&&!check)||!normalizarPatente(plate)} onClick={()=>void save(true)}>Registrar visita con vehículo</button>
         <button className="text-button" disabled={busy} onClick={()=>setStep('vehicle-question')}>Volver a la pregunta</button>
       </div>:null}
       {step==='done'?<>{check?<VehicleResult check={check}/>:null}<button className="primary-button" onClick={reset}>Registrar otra visita</button></>:null}
@@ -251,11 +271,14 @@ function VehicleResult({check}:{check:VehicleCheck}) {
   return <div className="visits-vehicle-result">
     <p>Marca: {check.make??check.community?.make??'No disponible'}</p>
     <p>Modelo: {check.model??check.community?.model??'No disponible'}</p>
+    {check.year?<p>Año: {check.year}</p>:null}
     <p>Color: {check.color??check.community?.color??'No disponible'}</p>
     <p>Propietario registral: {check.ownerName??'No disponible'}</p>
-    <p>Robo (registro oficial): {stolen[check.stolenStatus]??'No consultado'}</p>
+    <p>Robo (registro oficial): {check.officialCheck?.status==='pendiente'?'Consultando…':stolen[check.stolenStatus]??'No consultado'}</p>
+    {check.officialCheck?.status==='consultado'&&check.officialCheck.checkedAt?<p>Fuente del encargo: {check.officialCheck.source} · {time(check.officialCheck.checkedAt)}.</p>:null}
     <p>Multas: {check.finesStatus==='consultado'?`${check.finesCount??'Cantidad no disponible'} informadas${check.finesTotal===null?'':` · $${check.finesTotal.toLocaleString('es-CL')}`}`:'No consultadas'}</p>
     {check.source?<p>Fuente de la ficha: {check.source} · {time(check.checkedAt)}. Puede contener desfases.</p>:null}
+    {check.inspection?<p>Última revisión técnica: {check.inspection.date??'Fecha no disponible'} · resultado {check.inspection.result??'no disponible'} · vencimiento {check.inspection.expiresAt??'no disponible'}. Fuente: {check.inspection.source}.</p>:null}
     {check.community?<><p>Reporte comunitario: {{reportado:'Vehículo reportado como robado',sin_reporte:'Sin reporte de robo en esta fuente',sin_registro:'Vehículo sin registros en esta fuente',no_disponible:'No disponible'}[check.community.status]}</p>
       <p>Fuente: {check.community.source} · {time(check.community.checkedAt)}. No reemplaza la consulta del registro oficial.</p></>:null}
   </div>;
@@ -265,6 +288,7 @@ function VisitList({visits,exit,disabled}:{visits:Visit[];exit?:(visit:Visit)=>v
   return visits.length?<ul className="visits-list">{visits.map(visit=><li key={visit.id}>
     <strong>{visit.givenNames} {visit.familyNames}</strong><span>{visit.run}{visit.plate?` · ${visit.plate}`:''}</span>
     <span>Ingreso: {time(visit.enteredAt)}</span><span>{visit.exitedAt?`Salida: ${time(visit.exitedAt)}`:'En el recinto'}</span>
+    {visit.vehicleCheck?<details><summary>Informe del vehículo{visit.vehicleCheck.lookupPending?' · En consulta':''}</summary><VehicleResult check={visit.vehicleCheck}/></details>:null}
     {exit&&!visit.exitedAt?<button className="secondary-button" disabled={disabled} onClick={()=>exit(visit)}>Registrar salida</button>:null}
   </li>)}</ul>:<p>No hay visitas sincronizadas para mostrar.</p>;
 }

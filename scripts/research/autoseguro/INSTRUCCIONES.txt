@@ -1,8 +1,9 @@
 Prueba local de consulta automática de Auto Seguro
 
-Es una herramienta de investigación, separada del registro de visitas en producción.
-No cambia GPS, puntos, rondas, migraciones ni el APK/AAB. El adaptador del servidor
-todavía no llama a esta herramienta. No demuestra una tasa de éxito garantizada.
+La misma herramienta se ejecuta en el servicio privado de consultas vehiculares.
+La instalación local permite reproducir una consulta fuera de producción.
+No cambia GPS, puntos, rondas ni el APK/AAB. No garantiza una tasa de éxito.
+Ver services/vehicle-lookup/README.md para cola, despliegue y perfil CPU del VPS.
 
 Requiere Python 3.11, git y un escritorio gráfico Linux disponible en DISPLAY.
 En un servidor sin escritorio hace falta un display virtual para Chrome.

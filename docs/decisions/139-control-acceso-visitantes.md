@@ -166,7 +166,7 @@ Revisión de fuentes y pruebas realizadas el 22-10-2026. No hay búsqueda masiva
 
 | Fuente | Consulta gratuita y datos | Automatización y límites comprobados |
 |---|---|---|
-| [Auto Seguro](https://www.autoseguro.gob.cl/) | Encargos por patente/VIN/motor; información orientativa del servicio público | Formulario con reCAPTCHA v2. La investigación posterior consiguió una consulta automática local aceptada por el servidor con herramientas gratuitas; ver la sección de pruebas de CAPTCHA. Todavía no está conectada al adaptador de producción. La vista asistida inicial fue retirada del flujo del guardia: no se le exige resolver CAPTCHA ni visitar portales. |
+| [Auto Seguro](https://www.autoseguro.gob.cl/) | Encargos por patente/VIN/motor; información orientativa del servicio público | Formulario con reCAPTCHA v2. La investigación posterior consiguió una consulta automática local aceptada por el servidor con herramientas gratuitas; ver la sección de pruebas de CAPTCHA. La integración posterior usa un servicio privado y cola en el servidor; ver `services/vehicle-lookup/README.md`. La vista asistida inicial fue retirada del flujo del guardia: no se le exige resolver CAPTCHA ni visitar portales. |
 | [CIPAT / Mi Barrio](https://www.cipat.cl/) | Consulta gratuita de reportes comunitarios por patente | El mismo endpoint del formulario público `/api/lookup?patente=...` respondió HTTP 200 sin clave ni CAPTCHA. Se integra automáticamente. `found:false` significa **sin registro en CIPAT**, nunca libre de encargo oficial. Una respuesta positiva exige coincidencia de patente y un booleano `is_stolen`. Se conservan únicamente estado, marca, modelo y color; no teléfonos, texto libre ni datos de denunciantes. |
 | [PRT / MTT](https://www.prt.cl/Paginas/RevisionTecnica.aspx) | Revisión técnica y datos del vehículo; [ChileAtiende confirma gratuidad](https://www.chileatiende.gob.cl/fichas/86124) | Formulario público con CAPTCHA; la conexión HTTPS desde el entorno de trabajo falló por certificado. No se debilita TLS para producción. |
 | [Consulta pública de multas del Registro Civil](https://consultamultas.srcei.cl/ConsultaMultas/consultaMultasExterna.do) | Estado de multas, distinto del certificado pagado; [enlace institucional](https://www.colina.cl/transito/permisos-de-circulacion/links-de-interes/) | La prueba respondió HTTP 200 con “Request Rejected”, sin datos. No confundir ese HTML con cero multas. |
@@ -194,7 +194,7 @@ Las características observadas por el guardia se distinguen de las consultas de
 
 La lectura de patente dispara la consulta automáticamente; no hay botón para abrir Auto Seguro, CAPTCHA, enlaces externos ni campos obligatorios de marca, modelo o color. El guardia ve la ficha y registra el ingreso. Se conserva la posibilidad de repetir el escaneo o corregir una lectura equivocada. La falta de señal o de respuesta de un proveedor no impide registrar la patente y nunca se representa como cero multas ni como ausencia de encargo.
 
-El adaptador desplegado automatiza las fuentes accesibles, pero **todavía no incorpora la prueba local de Auto Seguro** ni obtiene titularidad, multas y encargo oficial en todas las consultas. Esos límites se mantienen visibles en el informe. Las respuestas comunitarias se separan del registro oficial.
+La API encola las consultas fuera de la transacción de la petición. Publica la ficha básica y añade el resultado de Auto Seguro cuando el servicio privado termina. La visita se puede registrar mientras tanto; conserva el resultado aunque se cierre la app. No obtiene titularidad, color ni multas en todas las consultas. Esos límites se mantienen visibles y las respuestas comunitarias se separan del registro oficial.
 
 ### Pruebas de proyectos gratuitos para CAPTCHA
 
@@ -235,9 +235,36 @@ por Google desde el DOM compartido: el contexto JavaScript aislado de Patchright
 no expone los globals `grecaptcha` ni los de la respuesta oficial. La validación
 de esa respuesta se ejecuta explícitamente en el contexto principal. No se crean
 tokens ni se reemplaza la página oficial. Se distingue la emisión del CAPTCHA de
-la aceptación de la consulta. La prueba no modifica código ni datos de producción.
+la aceptación de la consulta. La ejecución local guarda evidencia privada. La misma herramienta es invocada por el worker privado, con límites y sin datos sensibles en logs.
 
-Para incorporarla al flujo del guardia falta una integración de servidor con cola,
-límites de concurrencia, tiempo máximo y estados pendientes/no consultados. Las
-pruebas de reCAPTCHA v2 no acreditan compatibilidad con v3 o Turnstile. Tampoco
+La integración de servidor añade cola, límites de concurrencia, tiempo máximo y
+estados pendientes/no consultados. Las pruebas de reCAPTCHA v2 no acreditan compatibilidad con v3 o Turnstile. Tampoco
 obtienen por sí mismas dueño, marca, modelo, color o multas de otra plataforma.
+
+
+### Fuentes adicionales y ejecución desde el VPS (23-10-2026)
+
+- [Restart](https://api.restart.cl/docs): API pública sin clave, límite documentado
+  de cinco solicitudes cada diez segundos por IP. El endpoint
+  `/v1/vehiculos-revisiones/:patente` devolvió marca, modelo, año y cuatro revisiones
+  para la patente autorizada. Se integra con un espaciado mínimo de 2,2 segundos,
+  coincidencia exacta de patente y selección de la fecha más reciente. No se
+  conservan números de certificado ni otros identificadores de su respuesta.
+- [Venpu](https://venpu.cl/cuanto-vale-mi-auto): su formulario gratuito sin registro
+  devolvió marca, modelo y año. Comprobado como alternativa de consulta, sin
+  incorporarlo como dependencia del adaptador. No aporta propietario ni multas.
+- [PatentesChile.cl](https://patenteschile.cl/), distinto de PatenteChile.com:
+  su formulario llama a `/api/consulta`. Respondió 200 con `encontrado:false` para
+  la patente autorizada; no equivale a inexistencia del vehículo. No se integra.
+- [Patente al Día](https://patentealdia.cl/): la consulta básica solicita cuenta.
+  No se registran cuentas ni se compran informes. PatentesChile.com (plural)
+  redirigió a un dominio estacionado, sin datos.
+
+El perfil CPU del contenedor usa YOLO11n-seg y omite las clases no soportadas por
+ese modelo dentro del límite de intentos. La prueba local tardó unos catorce
+segundos y la ejecutada desde el servidor unos quince segundos: ambas obtuvieron
+token, enviaron el formulario y validaron la respuesta oficial para la misma
+patente autorizada. No se infiere fiabilidad estadística de estas dos muestras.
+La API exige esos indicadores y una fecha reciente antes de publicar el estado.
+El proceso no usa sesiones ni cookies del teléfono, servicios de pago o claves
+externas. Los informes de prueba y la patente se conservan fuera de GitHub.

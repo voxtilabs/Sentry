@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { normalizarPatente } from './identity';
 
 export interface CommunityVehicleReport {
@@ -21,7 +22,18 @@ export interface VehicleCheckResult {
   finesCount: number | null;
   finesTotal: number | null;
   community?:CommunityVehicleReport;
+  year?:number|null;
+  inspection?:{source:string;date:string|null;expiresAt:string|null;result:string|null};
+  lookupPending?:boolean;
+  lookupResultId?:string;
+  officialCheck?:{source:string;status:'pendiente'|'consultado'|'no_disponible';checkedAt:string|null};
 }
+
+export const emptyVehicleCheck = ():VehicleCheckResult => ({
+  source:null,checkedAt:new Date().toISOString(),detailsStatus:'no_disponible',
+  make:null,model:null,color:null,ownerName:null,stolenStatus:'no_consultado',
+  finesStatus:'no_consultado',finesCount:null,finesTotal:null,
+});
 
 const object = (v: unknown): Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const string = (v: unknown, max = 160): string | null => typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null;
@@ -29,9 +41,81 @@ const string = (v: unknown, max = 160): string | null => typeof v === 'string' &
 /** Formulario público gratuito, misma sesión y CSRF que una consulta manual. */
 @Injectable()
 export class VehicleRegistryService {
-  async lookup(plate: string): Promise<VehicleCheckResult> {
-    const [details,community]=await Promise.all([this.details(plate),this.community(plate)]);
-    return {...details,community};
+  private restartGate:Promise<void>=Promise.resolve();
+  private restartNext=0;
+  constructor(@Optional() private readonly config?:ConfigService) {}
+
+  async lookup(plate: string, progress?:(result:VehicleCheckResult)=>Promise<void>): Promise<VehicleCheckResult> {
+    const official=this.official(plate);
+    const [details,community,revisions]=await Promise.all([this.details(plate),this.community(plate),this.revisions(plate)]);
+    const basic:VehicleCheckResult={...details,community,
+      ...(revisions?{make:details.make??revisions.make,model:details.model??revisions.model,
+        year:revisions.year,inspection:revisions.inspection,detailsStatus:'consultado',
+        source:[details.source,revisions.source].filter(Boolean).join(' + ')}:{})};
+    if(progress) await progress({...basic,lookupPending:true,
+      officialCheck:{source:'Auto Seguro',status:this.config?.get('VEHICLE_LOOKUP_WORKER_URL')?'pendiente':'no_disponible',checkedAt:null}});
+    return {...basic,...await official,lookupPending:false};
+  }
+
+  private async revisions(plate:string) {
+    // El proveedor documenta 5 solicitudes cada 10 segundos por IP, sin clave.
+    this.restartGate=this.restartGate.then(async()=>{
+      await new Promise(resolve=>setTimeout(resolve,Math.max(0,this.restartNext-Date.now())));
+      this.restartNext=Date.now()+2200;
+    });
+    await this.restartGate;
+    try {
+      const response=await fetch(`https://api.restart.cl/v1/vehiculos-revisiones/${encodeURIComponent(plate)}`,{
+        headers:{Accept:'application/json'},signal:AbortSignal.timeout(10_000),redirect:'error',
+      });
+      if(!response.ok)return null;
+      const data=object(await response.json());
+      const rows=(Array.isArray(data.data)?data.data:[]).map(value=>object(object(value).attributes))
+        .filter(value=>normalizarPatente(typeof value.ppu==='string'?value.ppu:'')===plate
+          && typeof value.fecha_revision==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value.fecha_revision)
+          && Number.isFinite(Date.parse(value.fecha_revision)))
+        .sort((a,b)=>String(b.fecha_revision).localeCompare(String(a.fecha_revision)));
+      const car=rows[0];
+      if(!car)return null;
+      const year=Number(car.ano_fabricacion);
+      return {source:'Restart / PRT (historial de revisiones técnicas)',
+        make:string(car.marca,80),model:string(car.modelo,120),
+        year:Number.isInteger(year)&&year>=1900&&year<=new Date().getUTCFullYear()+1?year:null,
+        inspection:{source:'Restart / PRT',date:string(car.fecha_revision,10),
+          expiresAt:typeof car.fecha_vencimiento==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(car.fecha_vencimiento)?car.fecha_vencimiento:null,
+          result:string(car.resultado,30)}};
+    }catch{return null;}
+  }
+
+  private async official(plate:string):Promise<Pick<VehicleCheckResult,'stolenStatus'|'officialCheck'>> {
+    const unavailable:Pick<VehicleCheckResult,'stolenStatus'|'officialCheck'>={stolenStatus:'no_consultado',
+      officialCheck:{source:'Auto Seguro',status:'no_disponible',checkedAt:null}};
+    const base=this.config?.get<string>('VEHICLE_LOOKUP_WORKER_URL')?.replace(/\/$/,'');
+    const token=this.config?.get<string>('VEHICLE_LOOKUP_WORKER_TOKEN');
+    if(!base||!token)return unavailable;
+    try {
+      const headers={Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json'};
+      let response=await fetch(`${base}/lookups`,{method:'POST',headers,body:JSON.stringify({plate}),
+        signal:AbortSignal.timeout(5000),redirect:'error'});
+      const until=Date.now()+180_000;
+      while(response.ok) {
+        const data=object(await response.json());
+        if(data.plate!==plate)return unavailable;
+        if(data.state==='completed') {
+          const result=object(data.result);
+          const date=typeof result.checkedAt==='string'?Date.parse(result.checkedAt):NaN;
+          if(result.plate!==plate||result.officialResponseValidated!==true||result.tokenIssued!==true
+            ||result.formSubmitted!==true||!['sin_encargo','con_encargo','encargo_parcial'].includes(String(result.stolenStatus))
+            ||!Number.isFinite(date)||Math.abs(Date.now()-date)>10*60_000)return unavailable;
+          return {stolenStatus:result.stolenStatus as VehicleCheckResult['stolenStatus'],
+            officialCheck:{source:'Auto Seguro (consulta pública automática)',status:'consultado',checkedAt:new Date(date).toISOString()}};
+        }
+        if(!['queued','running'].includes(String(data.state))||Date.now()>until)return unavailable;
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        response=await fetch(`${base}/lookups/${encodeURIComponent(plate)}`,{headers,signal:AbortSignal.timeout(5000),redirect:'error'});
+      }
+    }catch { /* El servicio no disponible no certifica ausencia de encargo. */ }
+    return unavailable;
   }
 
   private async community(plate:string):Promise<CommunityVehicleReport> {

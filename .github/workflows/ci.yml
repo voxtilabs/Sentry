@@ -104,6 +104,17 @@ jobs:
       - name: Tests
         run: npm test
 
+  vehicle-worker:
+    name: límites del servicio vehicular
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Dependencia del control de procesos
+        run: python3 -m pip install psutil==7.0.0
+      - name: Autenticación, entradas, deduplicación y cola
+        run: python3 -m unittest discover -s services/vehicle-lookup -p 'test_*.py'
+
   compose:
     name: validar docker-compose
     runs-on: ubuntu-latest

@@ -24,6 +24,8 @@ export class VisitsGuardController {
   publicCheck(@Body() input: PublicVehicleCheckDto,@Req() req: UserRequest) { return this.visits.recordPublicCheck(req.user.sub,input); }
   @Post('vehicle') @Permissions('visitors:register')
   lookup(@Body() input: VehicleLookupDto,@Req() req: UserRequest) { return this.visits.lookup(req.user.sub,input); }
+  @Get('vehicle/:lookupId') @Permissions('visitors:register')
+  lookupStatus(@Param('lookupId',ParseUUIDPipe) id:string,@Req() req:UserRequest) {return this.visits.lookupStatus(req.user.sub,id);}
 }
 
 @Controller('visits/management')

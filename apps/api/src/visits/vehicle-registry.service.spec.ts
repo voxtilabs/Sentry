@@ -1,4 +1,5 @@
 import { VehicleRegistryService } from './vehicle-registry.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('consulta vehicular pública automática',()=>{
   const original=global.fetch;
@@ -42,5 +43,35 @@ describe('consulta vehicular pública automática',()=>{
   it.each([{found:true,vehicle:{patente:'ZZZZ99',is_stolen:true}}, {found:true,vehicle:{patente:'ABCD12',is_stolen:'false'}}, {message:'Request rejected'}])('una respuesta ajena o incompleta no valida antecedentes: %j',async community=>{
     sources({status:'unavailable'},community);
     expect((await new VehicleRegistryService().lookup('ABCD12')).community?.status).toBe('no_disponible');
+  });
+  it('usa la revisión más reciente de la patente y descarta certificados y números de serie',async()=>{
+    global.fetch=jest.fn(async(url:string)=>url.startsWith('https://api.restart.cl/')?Response.json({data:[
+      {attributes:{ppu:'ZZZZ99',marca:'OTRO',fecha_revision:'2027-01-01'}},
+      {attributes:{ppu:'ABCD12',marca:'MARCA',modelo:'MODELO ANTERIOR',ano_fabricacion:2017,fecha_revision:'2024-07-01'}},
+      {attributes:{ppu:'ABCD12',marca:'MARCA',modelo:'MODELO ACTUAL',ano_fabricacion:2017,fecha_revision:'2026-07-02',fecha_vencimiento:'2027-06-30',resultado:'A',num_certificado:'no-conservar',vin:'no-conservar'}},
+    ]}):new Response('',{status:503})) as typeof fetch;
+    const result=await new VehicleRegistryService().lookup('ABCD12');
+    expect(result).toMatchObject({make:'MARCA',model:'MODELO ACTUAL',year:2017,
+      inspection:{date:'2026-07-02',expiresAt:'2027-06-30',result:'A'},stolenStatus:'no_consultado'});
+    expect(JSON.stringify(result)).not.toMatch(/no-conservar|OTRO|ANTERIOR/);
+  });
+  function official(result:unknown) {
+    const config=new ConfigService({VEHICLE_LOOKUP_WORKER_URL:'http://vehicle-lookup:8090',VEHICLE_LOOKUP_WORKER_TOKEN:'test-only-internal-key-0123456789'});
+    global.fetch=jest.fn(async(url:string)=>url.startsWith('http://vehicle-lookup:8090/')
+      ?Response.json({plate:'ABCD12',state:'completed',result}):new Response('',{status:503})) as typeof fetch;
+    return new VehicleRegistryService(config);
+  }
+  it('solo acepta el estado oficial después de un formulario validado para la misma patente',async()=>{
+    const result=await official({plate:'ABCD12',officialResponseValidated:true,tokenIssued:true,formSubmitted:true,
+      checkedAt:new Date().toISOString(),stolenStatus:'con_encargo'}).lookup('ABCD12');
+    expect(result).toMatchObject({stolenStatus:'con_encargo',officialCheck:{status:'consultado'},lookupPending:false});
+  });
+  it.each([
+    {plate:'ZZZZ99'}, {officialResponseValidated:false}, {tokenIssued:false}, {formSubmitted:false},
+    {stolenStatus:'sin_reporte'}, {checkedAt:'invalid'}, {checkedAt:'2000-01-01T00:00:00.000Z'},
+  ])('un token o resultado incompleto no equivale a ausencia de encargo: %j',async change=>{
+    const result=await official({plate:'ABCD12',officialResponseValidated:true,tokenIssued:true,formSubmitted:true,
+      checkedAt:new Date().toISOString(),stolenStatus:'sin_encargo',...change}).lookup('ABCD12');
+    expect(result).toMatchObject({stolenStatus:'no_consultado',officialCheck:{status:'no_disponible'}});
   });
 });

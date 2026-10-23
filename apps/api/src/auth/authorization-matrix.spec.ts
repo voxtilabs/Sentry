@@ -76,7 +76,7 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
  * verdad ejecutable de rol × endpoint.
  */
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
-  ...['context','list','register','exit','lookup','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
+  ...['context','list','register','exit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
   ...['context','list'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),
