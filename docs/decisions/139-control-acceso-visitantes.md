@@ -1,6 +1,6 @@
 # ADR 0139 — Control de acceso de visitantes en portería y recepción
 
-- **Estado: ACEPTADA.**
+- **Estado: ACTUALIZADA por solicitud explícita de producto del 22-10-2026.**
 - **Fecha:** 2026-08-18
 - **Issue:** #139
 - **Hito:** Planificado para Fase 2 (M4) como módulo Add-on de pago
@@ -144,3 +144,42 @@ Cuando se inicie el desarrollo de M4, se ejecutarán los siguientes pasos técni
    - `visitors:manage` (ADMIN)
 3. **Submódulo Móvil Dedicado:** Implementación en Expo/React Native de un modo "Portería" alternativo al modo "Ronda", permitiendo lectura de códigos de barra por hardware o cámara ligera y teclado numérico asistido para RUT.
 4. **Feature Gate:** Integración con `packages/shared/src/rules.ts` en `featureFlagsSchema` bajo la clave `visitorAccess: z.boolean().default(false)`.
+
+
+## 8. Incorporación solicitada el 22 de octubre de 2026
+
+La solicitud explícita de incorporar visitas sustituye el aplazamiento descrito arriba. Las evaluaciones de rendimiento anteriores son antecedentes de diseño, no mediciones de esta implementación. No se modifica la captura GPS ni la configuración de puntos al incorporar este módulo.
+
+El guardia encuentra **REGISTRAR VISITAS** antes de iniciar una ronda, conserva el recinto seleccionado y puede registrar entradas y salidas. El ADMIN consulta su empresa; el SUPERVISOR, solo sus recintos asignados. El módulo usa tablas independientes de las rondas, RLS forzada y claves foráneas compuestas por empresa.
+
+### Carnet y operación sin señal
+
+Se usa el modelo latino de [ML Kit incluido en Android](https://developers.google.com/ml-kit/vision/text-recognition/v2/android), sin subir imágenes a un OCR externo. La cámara genera una imagen temporal privada que se elimina al terminar la lectura, incluso si falla. Al portal solo llegan nombres, apellidos y RUN; nunca imagen, serie del documento, texto OCR completo, firma, fechas ni MRZ. El guardia informa a la visita y revisa/corrige los campos. Se valida el dígito verificador del RUN.
+
+Excluir el número de documento no hace que el registro deje de tratar datos personales. El responsable del recinto debe definir la finalidad y base jurídica y atender derechos. La [Ley 21.719](https://www.bcn.cl/leychile/navegar?i=1209272) entra en vigor el 1 de diciembre de 2026; hasta entonces continúa el régimen vigente de la Ley 19.628.
+
+La cola usa la base SQLCipher existente del teléfono, sin respaldo de identidad en localStorage. El identificador de la operación evita duplicados al reconectar y se comprueban empresa y guardia de origen para impedir reasignaciones al cambiar de sesión. Los teléfonos anteriores conservan las rondas y el registro manual con conexión; las funciones nuevas requieren protocolo minor 6. Retención configurable `visitorRetentionDays`: 30 días por defecto, 1–90 días, con purga del worker existente.
+
+### Fuentes vehiculares investigadas
+
+Revisión de fuentes y pruebas realizadas el 22-10-2026. No hay búsqueda masiva de patentes ni servicios de pago activados. Una fuente caída, bloqueada o incompleta produce **no consultado**, nunca un resultado limpio.
+
+| Fuente | Consulta gratuita y datos | Automatización y límites comprobados |
+|---|---|---|
+| [Auto Seguro](https://www.autoseguro.gob.cl/) | Encargos por patente/VIN/motor; información orientativa del servicio público | Formulario con reCAPTCHA v2. Vista aislada en la app: completa patente, espera CAPTCHA válido, envía formulario normal y recupera el resultado de la misma patente. No se fabrican tokens ni se omite el CAPTCHA. |
+| [PRT / MTT](https://www.prt.cl/Paginas/RevisionTecnica.aspx) | Revisión técnica y datos del vehículo; [ChileAtiende confirma gratuidad](https://www.chileatiende.gob.cl/fichas/86124) | Formulario público con CAPTCHA; la conexión HTTPS desde el entorno de trabajo falló por certificado. No se debilita TLS para producción. |
+| [Consulta pública de multas del Registro Civil](https://consultamultas.srcei.cl/ConsultaMultas/consultaMultasExterna.do) | Estado de multas, distinto del certificado pagado; [enlace institucional](https://www.colina.cl/transito/permisos-de-circulacion/links-de-interes/) | La prueba respondió HTTP 200 con “Request Rejected”, sin datos. No confundir ese HTML con cero multas. |
+| [AutoSign](https://autosign.cl/fact/) | Ficha gratuita: marca, modelo, año, color y otros datos; anuncia dueño registral | Adaptador del formulario público con sesión y CSRF normales. Dos consultas de ejemplo respondieron HTTP 500. El adaptador no inventa datos ni certifica titularidad. |
+| [Calistoweb](https://auto.calistoweb.cl/) | Historial de revisión técnica y ficha | Formulario con reCAPTCHA v3. Prueba con navegador real y flujo normal: HTTP 200, `success:false`, “reCAPTCHA verification failed”. No se omite ni falsea su validación. |
+| [Patentes Chile](https://www.patentechile.com/consultar-patente/) | Anuncia consultas gratuitas de propietarios y características | Acceso de prueba bloqueado HTTP 403. Su [página de contacto](https://www.patentechile.com/contacto/) excluye expresamente proporcionar API y bases de datos a terceros. |
+| [AutoRiesgo](https://autoriesgo.cl/api) | Vista previa gratuita parcial en su web | El endpoint documentado sin clave devolvió HTTP 403 y exige API comercial para uso programático. [Términos](https://autoriesgo.cl/terminos): no extraer automáticamente la web en lugar de la API. No se integra el servicio de pago. |
+| [Boostr](https://boostr.cl/precios) | Prueba de 5 consultas/día, 30 días; requiere clave | No es una fuente gratuita permanente. [Documentación](https://docs.boostr.cl/reference/car-plate) distingue ficha básica y extendida. Sin clave contratada ni prueba activada. |
+| [GetAPI](https://getapi.cl/docs/) | Datos vehiculares y robo según plan | Endpoints documentados requieren `X-Api-Key`; no hay clave ni servicio de pago activado. |
+| [ImpulsaVehículo](https://vehiculos.impulsacv.cl/faq) | Anuncia gratis PRT, robo y TAG | Consulta web solicita correo y usa Turnstile. No se encontró API pública documentada ni se entregan correos personales al sitio. |
+| [Rutificador en Chile](https://rutificadorenchile.cl/rutificador-patente/) | Anuncia ficha gratuita de marca, modelo, año y color | No acredita una API pública utilizable. Su propia página remite al CAV para la titularidad. |
+| [Datika](https://www.datika.cl/) | Ficha técnica gratuita por correo | Informe completo pagado. No aporta consulta automática gratuita documentada para la app. |
+| [PlacApi](https://placapi.com/api-consulta-vehicular-chile) y [Verifik](https://verifik.gitbook.io/verifik/verifik-es/validacion-de-vehiculo/chile/informacion-del-vehiculo) | APIs documentadas de ficha vehicular | Requieren cuenta/credencial y consumo comercial; no se activan. |
+
+El [CAV oficial](https://www.chileatiende.gob.cl/fichas/3370) identifica al titular y es pagado. El [certificado de multas](https://www.chileatiende.gob.cl/fichas/3439) también es pagado y no reemplaza todas las clases de antecedentes. No se compran certificados desde la app.
+
+Las características observadas por el guardia se distinguen de las consultas de fuente. Un resultado leído desde el formulario público en el teléfono queda atribuido como **consulta asistida en teléfono**, con fecha y actor; no es una certificación firmada por el organismo ni una garantía contra adulteración del dispositivo.

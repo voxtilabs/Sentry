@@ -6,6 +6,7 @@ import {
   type Role,
 } from '@sentrycore/shared';
 
+import { VisitsGuardController, VisitsManagementController } from '../visits/visits.controller';
 import { AdminController } from '../admin/admin.controller';
 import { HorarioHabilController } from '../admin/horario-habil.controller';
 import { PuntosSupervisorController } from '../admin/puntos-supervisor.controller';
@@ -75,6 +76,8 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
  * verdad ejecutable de rol × endpoint.
  */
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
+  ...['context','list','register','exit','lookup','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
+  ...['context','list'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),
   publicEndpoint(AuthController, 'companyCard'),
@@ -429,6 +432,8 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
 ] as const;
 
 const CONTROLLERS = [
+  VisitsGuardController,
+  VisitsManagementController,
   AuthController,
   AdminController,
   HorarioHabilController,

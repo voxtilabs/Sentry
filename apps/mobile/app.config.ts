@@ -104,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.2.0',
+  version: '0.3.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',
@@ -147,7 +147,7 @@ const config: ExpoConfig = {
       'expo-camera',
       {
         cameraPermission:
-          'SentryCore usa la camara para fotografiar el estado de los accesos criticos durante la ronda.',
+          'SentryCore usa la cámara para registrar evidencias de rondas y leer localmente nombre y RUN de visitas y patentes de vehículos.',
         // Sin audio: la evidencia es una foto fija. Dejarlo en true agrega
         // RECORD_AUDIO al manifiesto y convierte la revision de Play en una
         // conversacion sobre grabacion de audio en el trabajo que no queremos

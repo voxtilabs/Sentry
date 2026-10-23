@@ -1,5 +1,6 @@
 'use client';
 
+import { Visits, type VisitsContext } from './visits';
 import { useRouter } from 'next/navigation';
 
 import { DivulgacionUbicacion } from './divulgacion-ubicacion';
@@ -100,11 +101,12 @@ const time = new Intl.DateTimeFormat('es-CL', {
   timeZone: 'America/Santiago',
 });
 
-export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: string }) {
+export function GuardHome({ data, apiUrl, visitorContext = null }: { data: GuardHomeData; apiUrl: string; visitorContext?: VisitsContext | null }) {
   const router = useRouter();
   const puente = useGuardBridge(apiUrl);
   const guardarRutaOffline = puente.guardarRutaOffline;
   const [starting, setStarting] = useState(false);
+  const [showVisits, setShowVisits] = useState(false);
   const [error, setError] = useState<string>();
   const rutasVoluntarias = data.voluntaryRoutes ?? [];
   const [rutaElegida, setRutaElegida] = useState<string>('');
@@ -204,6 +206,9 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
     }).catch(() => undefined);
   }, [data, guardarRutaOffline]);
 
+  if (showVisits) return <Visits apiUrl={apiUrl} context={visitorContext} initialSiteId={data.selectedSiteId} bridge={puente} onClose={()=>setShowVisits(false)}/>;
+  const visitsButton = visitorContext?.sites.length ? <button type="button" className="secondary-button guard-visits-button" onClick={()=>setShowVisits(true)}>REGISTRAR VISITAS</button> : null;
+
   if (!data.hasAssignment || !data.patrol || !data.shift) {
     return (
       <>
@@ -240,6 +245,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
             </label>
           </div>
         ) : null}
+        {visitsButton}
         <h2>No tienes una ronda asignada</h2>
         <p>{data.message ?? 'Cuando te asignen una ronda, aparecerá aquí automáticamente.'}</p>
 
@@ -454,6 +460,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
           </div>
         ) : null}
 
+        {visitsButton}
         <span className="eyebrow">Tu tarea ahora</span>
         <h2>Ronda en {patrol.siteName}</h2>
         <p className="guard-site" style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1e293b' }}>

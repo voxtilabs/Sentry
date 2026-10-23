@@ -1,0 +1,11 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'cl.voxtilabs.sentryocr'
+version = '1.0.0'
+android { namespace 'cl.voxtilabs.sentryocr' }
+dependencies {
+  // Modelo latino incluido: funciona desde el primer uso en modo avión.
+  implementation 'com.google.mlkit:text-recognition:16.0.1'
+}

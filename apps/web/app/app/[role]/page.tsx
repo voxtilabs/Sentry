@@ -12,6 +12,7 @@ import { EnviosPanel } from '../../_components/envios-panel';
 import { FuncionesConfiguracion } from '../../_components/funciones-configuracion';
 import { MarcaConfiguracion } from '../../_components/marca-configuracion';
 import { marcaDelTenant } from '../../_lib/marca-del-tenant';
+import { VisitsManagement, type VisitsContext } from '../../_components/visits';
 import { GuardHome, type GuardHomeData } from '../../_components/guard-home';
 import { GuardBottomNav } from '../../_components/guard-bottom-nav';
 import { GuardPoints } from '../../_components/guard-points';
@@ -104,9 +105,10 @@ export default async function RoleDashboard({
   if (role === 'guardia') {
     const guardView = resolveGuardView(firstParameter(query.vista));
     const siteId = firstParameter(query.siteId);
-    const [data, sessions] = await Promise.all([
+    const [data, sessions, visitorContext] = await Promise.all([
       loadGuardHome(siteId),
       guardView === 'sesiones' ? loadSessions() : Promise.resolve([]),
+      loadVisitsContext(),
     ]);
     const subtitle = data.hasAssignment && data.patrol
       ? `Tu turno en ${data.patrol.siteName}.`
@@ -139,7 +141,7 @@ export default async function RoleDashboard({
           {data.patrol && data.patrol.status !== 'pendiente' ? (
             <GuardShift data={data} apiUrl={publicApiUrl()} />
           ) : (
-            <GuardHome data={data} apiUrl={publicApiUrl()} />
+            <GuardHome data={data} apiUrl={publicApiUrl()} visitorContext={visitorContext} />
           )}
           </ConsentimientoTrabajador>
         ) : guardView === 'puntos' ? (
@@ -278,6 +280,8 @@ export default async function RoleDashboard({
         />
       </div>
     );
+  } else if (view === 'visitas') {
+    panel = <VisitsManagement apiUrl={publicApiUrl()} />;
   } else if (view === 'informes') {
     panel = (
       <div className="panel-view" data-view="informes">
@@ -416,6 +420,16 @@ function Metric({
 
 function publicApiUrl() {
   return process.env.NEXT_PUBLIC_API_URL ?? '/api';
+}
+
+async function loadVisitsContext(): Promise<VisitsContext | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('sentrycore_access');
+  if (!token) return null;
+  try {
+    const response = await fetch(`${process.env.API_INTERNAL_URL ?? publicApiUrl()}/visits/guard/context`, { headers: { cookie: `sentrycore_access=${token.value}` }, cache: 'no-store' });
+    return response.ok ? await response.json() as VisitsContext : null;
+  } catch { return null; }
 }
 
 async function loadGuardHome(siteId?: string): Promise<GuardHomeData> {

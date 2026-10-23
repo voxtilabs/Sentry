@@ -73,6 +73,8 @@ export const PERMISSIONS = [
    * guardia. La firma del equipo es lo unico que ambos comparten.
    */
   'device:signing-key:enroll',
+  'visitors:register',
+  'visitors:read',
   'patrols:monitor',
   'patrols:execute',
   'reports:read',
@@ -92,6 +94,7 @@ export const ROLE_PERMISSIONS = {
   ],
   ADMIN: [
     'account:sessions:manage',
+    'visitors:read',
     'tenant:dashboard:read',
     'tenant:users:manage',
     'tenant:sites:manage',
@@ -102,6 +105,7 @@ export const ROLE_PERMISSIONS = {
     'reports:read',
   ],
   SUPERVISOR: [
+    'visitors:read',
     'account:sessions:manage',
     'tenant:dashboard:read',
     'routes:manage',
@@ -118,6 +122,7 @@ export const ROLE_PERMISSIONS = {
     'incidents:create',
   ],
   GUARDIA: [
+    'visitors:register',
     'account:sessions:manage',
     'patrols:execute',
     'device:signing-key:enroll',

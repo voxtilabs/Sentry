@@ -55,6 +55,10 @@ export class ErrorEscaneo extends Error {
 }
 
 export interface ManejadoresNativos {
+  readonly consultarVehiculoPublico?: (plate: string) => Promise<import('./protocol').ResultadoConsultaPublicaPayload>;
+  readonly cancelarConsultaPublica?: () => void;
+  readonly escanearOcr?: (kind: 'identity' | 'plate') => Promise<import('./protocol').ResultadoOcrPayload>;
+  readonly cancelarOcr?: () => void;
   readonly capacidades: () => Promise<CapacidadesDispositivo>;
   /** Rechaza con `ErrorEscaneo`. El timeout lo aplica quien implementa. */
   readonly escanearNfc: (peticion: EscaneoNfcPayload) => Promise<ResultadoEscaneoPayload>;
@@ -366,6 +370,24 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     }
 
     switch (mensaje.type) {
+      case 'vehicle.public.start':
+        if (!manejadores.consultarVehiculoPublico) { responderErrorPuente(mensaje.id); return; }
+        void manejadores.consultarVehiculoPublico(mensaje.payload.plate)
+          .then(result => enviar(armarSobre('vehicle.public.result', result, { replyTo: mensaje.id, prefijo: 'veh' })))
+          .catch(() => responderErrorPuente(mensaje.id));
+        return;
+      case 'vehicle.public.cancel':
+        manejadores.cancelarConsultaPublica?.();
+        return;
+      case 'ocr.scan.start':
+        if (!manejadores.escanearOcr) { responderErrorPuente(mensaje.id); return; }
+        void manejadores.escanearOcr(mensaje.payload.kind)
+          .then(result => enviar(armarSobre('ocr.scan.result', result, { replyTo: mensaje.id, prefijo: 'ocr' })))
+          .catch(() => responderErrorPuente(mensaje.id));
+        return;
+      case 'ocr.scan.cancel':
+        manejadores.cancelarOcr?.();
+        return;
       case 'hello':
         void atenderHola(mensaje.id, mensaje.payload);
         return;
@@ -500,6 +522,6 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     // El WebView se remonta al reintentar, y con el se va el portal que pidio
     // la traza: el watcher NO puede sobrevivirlo — quedaria muestreando sin
     // nadie que suba los puntos, y ademas fuera del control de la ronda.
-    detener: () => manejadores.detenerTraza(),
+    detener: () => { manejadores.detenerTraza(); manejadores.cancelarOcr?.(); manejadores.cancelarConsultaPublica?.(); },
   };
 }

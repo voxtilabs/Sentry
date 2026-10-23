@@ -104,6 +104,13 @@ const MINOR_CON_TRAZA = 5;
 export type FasePuente = 'conectando' | 'sin-puente' | 'listo' | 'incompatible';
 
 export interface PuenteGuardia {
+  consultarVehiculoPublico: ReturnType<typeof crearClientePuente>['consultarVehiculoPublico'];
+  cancelarConsultaPublica: () => void;
+  soportaVisitas: boolean;
+  escanearOcr: ReturnType<typeof crearClientePuente>['escanearOcr'];
+  cancelarOcr: () => void;
+  encolarSync: ReturnType<typeof crearClientePuente>['encolarSync'];
+  sincronizarCola: ReturnType<typeof crearClientePuente>['sincronizarCola'];
   fase: FasePuente;
   /** `true` solo cuando el shell saludó y el equipo tiene antena. */
   puedeEscanear: boolean;
@@ -172,6 +179,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
   const [puedeEscanear, setPuedeEscanear] = useState(false);
   const [puedeEscanearQr, setPuedeEscanearQr] = useState(false);
   const [soportaTraza, setSoportaTraza] = useState(false);
+  const [soportaVisitas, setSoportaVisitas] = useState(false);
   const [sinAntenaNfc, setSinAntenaNfc] = useState(false);
   const [soportaRutaOffline, setSoportaRutaOffline] = useState(false);
   // Marca del EQUIPO (api de Android + version de la app), sin datos de la
@@ -221,6 +229,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
 
       setFase('listo');
       setSoportaRutaOffline(estado.info.protocolo.minor >= 1);
+      setSoportaVisitas(estado.info.protocolo.minor >= 6);
       const { dispositivo } = estado.info;
 
       /*
@@ -454,6 +463,13 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
   const posponerDivulgacion = useCallback(() => setDivulgacionPendiente(false), []);
 
   return {
+    consultarVehiculoPublico: cliente.consultarVehiculoPublico,
+    cancelarConsultaPublica: cliente.cancelarConsultaPublica,
+    soportaVisitas,
+    escanearOcr: cliente.escanearOcr,
+    cancelarOcr: cliente.cancelarOcr,
+    encolarSync: cliente.encolarSync,
+    sincronizarCola: cliente.sincronizarCola,
     divulgacionPendiente,
     continuarTrasDivulgacion,
     posponerDivulgacion,

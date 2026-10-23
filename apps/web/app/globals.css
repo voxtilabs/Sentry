@@ -1357,3 +1357,20 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .divulgacion-pie {
   margin: 1rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--text-muted, #6E7488);
 }
+.guard-visits-button { width: 100%; max-width: 340px; margin-block: 1rem; min-height: 48px; }
+.visits-panel { width: 100%; max-width: 680px; margin-inline: auto; padding: 1rem; color: var(--text-primary, #172033); }
+.visits-panel form, .visits-step { display: flex; flex-direction: column; gap: 1rem; margin-block: 1rem; }
+.visits-panel label { display: flex; flex-direction: column; gap: .4rem; font-weight: 600; }
+.visits-panel input:not([type=checkbox]), .visits-panel select { width: 100%; min-width: 0; min-height: 48px; padding: .65rem; font: inherit; color: inherit; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+.visits-panel .visits-checkbox { display: flex; flex-direction: row; align-items: flex-start; gap: .75rem; font-weight: 400; }
+.visits-checkbox input { margin-top: .3rem; width: 24px; height: 24px; flex-shrink: 0; }
+.visits-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-block: 1rem; }
+.visits-heading h2, .visits-heading h3 { margin: 0; }
+.visits-list { padding: 0; list-style: none; }
+.visits-list li { display: flex; flex-direction: column; gap: .4rem; padding-block: 1rem; border-bottom: 1px solid #dbe1e8; overflow-wrap: anywhere; }
+.visits-list button { align-self: flex-start; margin-top: .5rem; min-height: 48px; }
+.visits-panel button { min-height: 48px; white-space: normal; }
+.visits-panel p { overflow-wrap: anywhere; line-height: 1.5; }
+.visits-notice { padding: .75rem; border-left: 3px solid #2563eb; background: #eff6ff; }
+.visits-error { color: #b91c1c; font-weight: 600; }
+.visits-vehicle-result { padding-block: .5rem; border-block: 1px solid #dbe1e8; }

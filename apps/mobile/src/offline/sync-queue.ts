@@ -1,7 +1,7 @@
 import { abrirBaseOperativa } from './route-store';
 
 export interface OperacionSyncNativa {
-  readonly type: 'scan' | 'event';
+  readonly type: 'scan' | 'event' | 'visit' | 'visit-exit';
   readonly clientId: string;
   readonly patrolId?: string;
   readonly payload: Record<string, unknown>;

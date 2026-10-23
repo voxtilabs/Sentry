@@ -272,7 +272,7 @@ test('agregar los mensajes qr.* es aditivo: un portal del minor 0 sigue entrando
   assert.equal(verificarCompatibilidad({ major: 1, minMinor: 4 }).ok, true);
   // MINOR 5 = la familia track.* (#280): un portal que la exige entra en esta app.
   assert.equal(verificarCompatibilidad({ major: 1, minMinor: 5 }).ok, true);
-  const futuro = verificarCompatibilidad({ major: 1, minMinor: 6 });
+  const futuro = verificarCompatibilidad({ major: 1, minMinor: 7 });
   assert.equal(futuro.ok ? undefined : futuro.motivo, 'app-antigua');
 });
 

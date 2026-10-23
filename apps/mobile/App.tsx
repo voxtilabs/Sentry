@@ -1,8 +1,11 @@
+import { crearConsultaPublica, VistaConsultaPublica } from './src/visits/public-vehicle';
+import { crearCamaraOcr, VistaCamaraOcr } from './src/visits/ocr-camera';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -216,9 +219,11 @@ function AppShell({ portal }: { portal: URL }) {
   // puente resuelve el escaneo con una promesa y un componente que se desmonta
   // no puede resolverla. `VistaCamaraQr` solo la mira.
   const camaraQr = useMemo(crearCamaraQr, []);
+  const camaraOcr = useMemo(crearCamaraOcr, []);
+  const consultaPublica = useMemo(crearConsultaPublica, []);
   const manejadores = useMemo(
-    () => crearManejadoresNfc(puertoNfcAndroid, camaraQr.lector),
-    [camaraQr],
+    () => ({ ...crearManejadoresNfc(puertoNfcAndroid, camaraQr.lector), escanearOcr: camaraOcr.scan, cancelarOcr: camaraOcr.cancel, consultarVehiculoPublico: consultaPublica.start, cancelarConsultaPublica: consultaPublica.cancel }),
+    [camaraQr, camaraOcr, consultaPublica],
   );
   const puente = useMemo(() => crearPuenteNativo({
     portalOrigen: portal.origin,
@@ -336,6 +341,9 @@ function AppShell({ portal }: { portal: URL }) {
       if (target.origin === portal.origin) {
         setUrlActual(navigation.url);
         return true;
+      }
+      if (target.protocol === 'https:' && ['www.autoseguro.gob.cl','www.prt.cl','www.chileatiende.gob.cl'].includes(target.hostname)) {
+        void Linking.openURL(target.href).catch(()=>undefined);
       }
       return false;
     } catch {
@@ -493,6 +501,8 @@ function AppShell({ portal }: { portal: URL }) {
       {/* Va sobre el WebView: mientras se lee el QR, la vista previa tapa la
           pantalla del guardia y se cierra sola al terminar o al cancelar. */}
       <VistaCamaraQr camara={camaraQr} />
+      <VistaCamaraOcr camera={camaraOcr} />
+      <VistaConsultaPublica consulta={consultaPublica} />
 
       {bloqueo ? (
         <View accessibilityRole="alert" style={styles.overlay}>

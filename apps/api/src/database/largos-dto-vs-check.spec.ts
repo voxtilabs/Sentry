@@ -56,6 +56,8 @@ type Cobertura =
  * migracion, no cuando la API devuelva 500 en produccion.
  */
 const COBERTURA: Record<string, Cobertura> = {
+  '1792706402000-VisitorAccess.ts:given_names': { via: 'dto', archivo: 'visits/visits.dto.ts', campo: 'givenNames' },
+  '1792706402000-VisitorAccess.ts:family_names': { via: 'dto', archivo: 'visits/visits.dto.ts', campo: 'familyNames' },
   '1722438000000-EnableTenantRls.ts:reason': {
     via: 'servicio',
     donde: 'platform-data/support-access.service.ts:52',

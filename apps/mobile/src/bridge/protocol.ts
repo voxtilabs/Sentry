@@ -58,7 +58,8 @@ export const PUENTE = 'sentrycore.bridge' as const;
  * que ningun telefono instalado se rompe mientras el parque se actualiza.
  */
 export const PROTOCOLO_MAJOR = 1;
-export const PROTOCOLO_MINOR = 5;
+/** MINOR 6: OCR local y operaciones de visitas; los shells anteriores conservan sus funciones. */
+export const PROTOCOLO_MINOR = 6;
 
 /**
  * Versiones mayores que este shell todavia entiende. Se agrega la anterior al
@@ -171,7 +172,7 @@ export interface EncolarSyncPayload {
   readonly apiUrl: string;
   readonly portalOrigin: string;
   readonly operation: {
-    readonly type: 'scan' | 'event';
+    readonly type: 'scan' | 'event' | 'visit' | 'visit-exit';
     readonly clientId: string;
     readonly patrolId?: string;
     readonly payload: Record<string, unknown>;
@@ -212,7 +213,26 @@ export interface PuntoDeTrazaPayload {
   readonly accuracyM?: number;
 }
 
+export interface ResultadoConsultaPublicaPayload {
+  readonly source: 'autoseguro';
+  readonly plate: string;
+  readonly stolenStatus: 'sin_encargo' | 'con_encargo' | 'encargo_parcial';
+  readonly checkedAt: string;
+}
+
+export interface ResultadoOcrPayload {
+  readonly kind: 'identity' | 'plate';
+  readonly givenNames?: string;
+  readonly familyNames?: string;
+  readonly run?: string;
+  readonly plates?: readonly string[];
+}
+
 export type MensajePortal =
+  | Sobre<'vehicle.public.start', { readonly plate: string }>
+  | Sobre<'vehicle.public.cancel', Record<string, never>>
+  | Sobre<'ocr.scan.start', { readonly kind: 'identity' | 'plate' }>
+  | Sobre<'ocr.scan.cancel', Record<string, never>>
   | Sobre<'hello', HolaPayload>
   | Sobre<'nfc.scan.start', EscaneoNfcPayload>
   | Sobre<'nfc.scan.cancel', Record<string, never>>
@@ -230,6 +250,10 @@ export type MensajePortal =
   | Sobre<'track.stop', Record<string, never>>;
 
 export const TIPOS_PORTAL: readonly MensajePortal['type'][] = [
+  'vehicle.public.start',
+  'vehicle.public.cancel',
+  'ocr.scan.start',
+  'ocr.scan.cancel',
   'hello',
   'nfc.scan.start',
   'nfc.scan.cancel',
@@ -410,6 +434,8 @@ export interface ErrorPuentePayload {
 }
 
 export type MensajeShell =
+  | Sobre<'vehicle.public.result', ResultadoConsultaPublicaPayload>
+  | Sobre<'ocr.scan.result', ResultadoOcrPayload>
   | Sobre<'ready', ListoPayload>
   | Sobre<'incompatible', IncompatiblePayload>
   | Sobre<'nfc.scan.result', ResultadoEscaneoPayload>
@@ -427,6 +453,8 @@ export type MensajeShell =
   | Sobre<'error', ErrorPuentePayload>;
 
 export const TIPOS_SHELL: readonly MensajeShell['type'][] = [
+  'vehicle.public.result',
+  'ocr.scan.result',
   'ready',
   'incompatible',
   'nfc.scan.result',
@@ -570,6 +598,10 @@ function clavesPermitidas(valor: Record<string, unknown>, claves: readonly strin
 function payloadPortalValido(type: string, payload: unknown): boolean {
   if (!esRegistro(payload)) return false;
   switch (type) {
+    case 'vehicle.public.start':
+      return clavesPermitidas(payload,['plate']) && typeof payload['plate'] === 'string' && /^[A-Z0-9]{5,6}$/.test(payload['plate']);
+    case 'ocr.scan.start':
+      return clavesPermitidas(payload, ['kind']) && (payload['kind'] === 'identity' || payload['kind'] === 'plate');
     case 'hello': {
       const requiere = payload['requiere'];
       return clavesPermitidas(payload, ['portalBuild', 'requiere']) &&
@@ -587,6 +619,8 @@ function payloadPortalValido(type: string, payload: unknown): boolean {
         Number(payload['timeoutMs']) <= 120_000 &&
         (payload['titulo'] === undefined ||
           (typeof payload['titulo'] === 'string' && payload['titulo'].length <= 120));
+    case 'vehicle.public.cancel':
+    case 'ocr.scan.cancel':
     case 'nfc.scan.cancel':
     case 'qr.scan.cancel':
     case 'offline.route.clear':
@@ -643,7 +677,7 @@ function payloadPortalValido(type: string, payload: unknown): boolean {
           !clavesPermitidas(operacion, ['type', 'clientId', 'patrolId', 'payload', 'queuedAt'])) {
         return false;
       }
-      return (operacion['type'] === 'scan' || operacion['type'] === 'event') &&
+      return (['scan', 'event', 'visit', 'visit-exit'].includes(String(operacion['type']))) &&
         esUuid(operacion['clientId']) &&
         (operacion['patrolId'] === undefined || esUuid(operacion['patrolId'])) &&
         (operacion['type'] !== 'scan' || esUuid(operacion['patrolId'])) &&
@@ -665,6 +699,17 @@ const PERMISOS: readonly Permiso[] = [
 function payloadShellValido(type: string, payload: unknown): boolean {
   if (!esRegistro(payload)) return false;
   switch (type) {
+    case 'vehicle.public.result':
+      return clavesPermitidas(payload,['source','plate','stolenStatus','checkedAt']) && payload['source'] === 'autoseguro' &&
+        typeof payload['plate'] === 'string' && /^[A-Z0-9]{5,6}$/.test(payload['plate']) &&
+        ['sin_encargo','con_encargo','encargo_parcial'].includes(String(payload['stolenStatus'])) && esFecha(payload['checkedAt']);
+    case 'ocr.scan.result':
+      return clavesPermitidas(payload, ['kind','givenNames','familyNames','run','plates']) &&
+        (payload['kind'] === 'identity' || payload['kind'] === 'plate') &&
+        (payload['givenNames'] === undefined || esTexto(payload['givenNames'],120)) &&
+        (payload['familyNames'] === undefined || esTexto(payload['familyNames'],120)) &&
+        (payload['run'] === undefined || (typeof payload['run'] === 'string' && /^[0-9]{6,8}-[0-9K]$/.test(payload['run']))) &&
+        (payload['plates'] === undefined || (Array.isArray(payload['plates']) && payload['plates'].length <= 8 && payload['plates'].every(p => typeof p === 'string' && /^[A-Z0-9]{5,6}$/.test(p))));
     case 'ready':
       return esRegistro(payload['protocolo']) && esRegistro(payload['app']) &&
         esRegistro(payload['dispositivo']) && Array.isArray(payload['majorsSoportados']);
