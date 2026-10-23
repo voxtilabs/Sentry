@@ -87,7 +87,8 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
       try {
         // Android puede anunciar conexión antes de que la red ya responda.
         // Confirmamos la fila en el servidor, no solo que terminó el envío.
-        await sincronizarCola();
+        // El worker de Android puede haberla enviado aunque el puente falle.
+        await sincronizarCola().catch(()=>undefined);
         const rows=await load();
         const confirmed=pendingSync&&rows.some(v=>pendingSync.kind==='visit'
           ? v.clientVisitId===pendingSync.clientVisitId
