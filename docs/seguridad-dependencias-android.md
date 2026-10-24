@@ -40,3 +40,18 @@ avisos de Expo/RN que ya estaban documentados:
 Esto es una excepción documentada del control, no una corrección de esos dos
 avisos ni una afirmación de cero vulnerabilidades. Revisar y retirar las
 excepciones cuando los mantenedores publiquen versiones compatibles.
+
+## Revisión adicional del 24-10-2026
+
+La auditoría empezó a señalar también **zod 3.25.76**, dependencia de Expo CLI
+(`^3.25.76`), por [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5),
+actualizado el 23 de octubre. El aviso de agotamiento de memoria con colecciones
+grandes se corrige en **4.6.6**, fuera del rango de Expo 57. Una actualización
+dirigida no encontró parche dentro de Zod 3; no se fuerza una versión mayor.
+
+Se documenta la excepción para el CLI de compilación: el código móvil no importa
+Zod para los datos de las visitas; el CLI valida la configuración local del
+proyecto. Esto no corrige el defecto de la biblioteca ni exime a otros servicios
+que acepten colecciones no confiables. Retirar esta excepción cuando Expo admita
+la versión corregida o exista un backport compatible. La auditoría conserva su
+rechazo de paquetes nuevos no revisados.

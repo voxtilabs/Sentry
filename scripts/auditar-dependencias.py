@@ -44,6 +44,7 @@ HEREDADOS = {
     'metro-file-map': 'arrastra micromatch/braces en el bundler; Metro no se publica en producción',
     'node-forge': 'GHSA-86w9-cpqp-85rv sin parche; certificados de Expo CLI, no del login de la app',
     '@expo/code-signing-certificates': 'arrastra node-forge sin parche en Expo CLI',
+    'zod': 'GHSA-mrhx-c7xc-m3w5: Expo CLI exige Zod 3; parche en 4.6.6 es cambio mayor; valida configuración local de build',
 }
 
 
