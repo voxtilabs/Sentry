@@ -48,13 +48,37 @@ export class VehicleRegistryService {
   async lookup(plate: string, progress?:(result:VehicleCheckResult)=>Promise<void>): Promise<VehicleCheckResult> {
     const official=this.official(plate);
     const [details,community,revisions]=await Promise.all([this.details(plate),this.community(plate),this.revisions(plate)]);
-    const basic:VehicleCheckResult={...details,community,
+    let basic:VehicleCheckResult={...details,community,
       ...(revisions?{make:details.make??revisions.make,model:details.model??revisions.model,
         year:revisions.year,inspection:revisions.inspection,detailsStatus:'consultado',
         source:[details.source,revisions.source].filter(Boolean).join(' + ')}:{})};
+    if(!basic.make||!basic.model||!basic.color||!basic.year) {
+      const fallback=await this.venpu(plate);
+      if(fallback)basic={...basic,make:basic.make??fallback.make,model:basic.model??fallback.model,
+        color:basic.color??fallback.color,year:basic.year??fallback.year,detailsStatus:'consultado',
+        source:[basic.source,fallback.source].filter(Boolean).join(' + ')};
+    }
     if(progress) await progress({...basic,lookupPending:true,
       officialCheck:{source:'Auto Seguro',status:this.config?.get('VEHICLE_LOOKUP_WORKER_URL')?'pendiente':'no_disponible',checkedAt:null}});
     return {...basic,...await official,lookupPending:false};
+  }
+
+  /** Mismo GET público que usa Venpu; no solicita informes, cuentas ni claves. */
+  private async venpu(plate:string) {
+    try {
+      const response=await fetch(`https://venpu-backend-production-b8c4.up.railway.app/v1/public/patente/${encodeURIComponent(plate)}`,{
+        headers:{Accept:'application/json'},signal:AbortSignal.timeout(10_000),redirect:'error',
+      });
+      if(!response.ok)return null;
+      const value=object(await response.json());const car=object(value.data);
+      if(value.type!=='success'||normalizarPatente(typeof car.patent==='string'?car.patent:'')!==plate)return null;
+      const make=string(car.brand,80),model=string(car.model,120),color=string(car.color,80);
+      const year=Number(car.year);
+      const validYear=Number.isInteger(year)&&year>=1900&&year<=new Date().getUTCFullYear()+1?year:null;
+      if(!make&&!model&&!color&&!validYear)return null;
+      // No inferir titularidad, multas, revisión técnica o encargo de esta ficha.
+      return {source:'Venpu (consulta pública de patente)',make,model,color,year:validYear};
+    }catch{return null;}
   }
 
   private async revisions(plate:string) {

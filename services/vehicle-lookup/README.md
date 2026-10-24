@@ -7,9 +7,21 @@ la evidencia inicial. Una visita registrada durante la consulta conserva el enla
 al resultado aunque el teléfono cierre la vista o pierda conexión.
 
 Fuentes: Restart (`https://api.restart.cl/docs`, API gratuita sin clave, límite
-documentado de 5 consultas/10 segundos/IP), AutoSign y CIPAT. CIPAT es comunitario,
+documentado de 5 consultas/10 segundos/IP), AutoSign, Venpu y CIPAT. CIPAT es comunitario,
 no acredita ausencia de encargo oficial. Restart aporta marca, modelo, año y la
 revisión más reciente; se descartan certificados y otros identificadores.
+
+Si falta marca, modelo, color o año, la API consulta el GET público de la ficha de
+Venpu (`/v1/public/patente/:patente`), el mismo que usa su formulario. Solo completa
+los campos ausentes y exige coincidencia de patente. No requiere registro ni clave;
+un 429 o un fallo conserva lo ya obtenido. Se descartan otros identificadores y no
+se atribuyen multas, titularidad ni encargos a esta fuente. El origen actual del
+servicio público es `https://venpu-backend-production-b8c4.up.railway.app`.
+
+Los encargos oficiales activos, parciales o de placas se muestran en rojo con un
+fondo pulsante. El texto permanece visible; `prefers-reduced-motion` conserva el
+aviso rojo y elimina la animación. Un reporte comunitario no se convierte en un
+encargo del registro oficial.
 
 Este servicio privado ejecuta el formulario público de Auto Seguro con Patchright,
 Chrome y reCognizer local. Solo se acepta un estado oficial después de obtener un

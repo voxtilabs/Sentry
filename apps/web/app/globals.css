@@ -1374,3 +1374,19 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .visits-notice { padding: .75rem; border-left: 3px solid #2563eb; background: #eff6ff; }
 .visits-error { color: #b91c1c; font-weight: 600; }
 .visits-vehicle-result { padding-block: .5rem; border-block: 1px solid #dbe1e8; }
+.visits-theft-alert {
+  color: #7f1d1d;
+  background-color: #fff1f2;
+  border: 2px solid #b91c1c;
+  border-radius: 6px;
+  padding: .85rem;
+  font-weight: 700;
+  animation: visits-theft-pulse 1.6s ease-in-out infinite;
+}
+@keyframes visits-theft-pulse {
+  0%, 100% { background-color: #fff1f2; }
+  50% { background-color: #fca5a5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visits-theft-alert { animation: none; background-color: #fee2e2; }
+}

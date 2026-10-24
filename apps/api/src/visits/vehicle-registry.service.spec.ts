@@ -61,6 +61,37 @@ describe('consulta vehicular pública automática',()=>{
       ?Response.json({plate:'ABCD12',state:'completed',result}):new Response('',{status:503})) as typeof fetch;
     return new VehicleRegistryService(config);
   }
+  function fallback(car:unknown,status=200) {
+    global.fetch=jest.fn(async(url:string)=>url.startsWith('https://venpu-backend-production-b8c4.up.railway.app/')
+      ?Response.json(car,{status}):new Response('',{status:503})) as typeof fetch;
+    return new VehicleRegistryService();
+  }
+  it('completa una ficha ausente en PRT con la consulta pública de Venpu, sin atribuirle encargos o titularidad',async()=>{
+    const result=await fallback({type:'success',data:{patent:'ABCD12',brand:'MARCA',model:'MODELO',year:2017,color:'BLANCO',ownerName:'no-conservar',vin:'no-conservar',stolen:true}}).lookup('ABCD12');
+    expect(result).toMatchObject({make:'MARCA',model:'MODELO',year:2017,color:'BLANCO',source:'Venpu (consulta pública de patente)',
+      ownerName:null,stolenStatus:'no_consultado',finesStatus:'no_consultado'});
+    expect(JSON.stringify(result)).not.toContain('no-conservar');
+  });
+  it.each([
+    {type:'success',data:{patent:'ZZZZ99',brand:'OTRO'}},
+    {type:'error',data:{patent:'ABCD12',brand:'MARCA'}},
+    {type:'success',data:{patent:'ABCD12',year:'sin año'}},
+  ])('no mezcla otra patente ni respuestas incompletas con la visita: %j',async value=>{
+    expect(await fallback(value).lookup('ABCD12')).toMatchObject({make:null,model:null,detailsStatus:'no_disponible'});
+  });
+  it('un límite de consultas en la fuente alternativa conserva el estado no disponible',async()=>{
+    expect(await fallback({type:'error'},429).lookup('ABCD12')).toMatchObject({make:null,stolenStatus:'no_consultado'});
+  });
+  it('la fuente alternativa conserva las características ya obtenidas y no modifica el resultado oficial',async()=>{
+    const config=new ConfigService({VEHICLE_LOOKUP_WORKER_URL:'http://vehicle-lookup:8090',VEHICLE_LOOKUP_WORKER_TOKEN:'test-only-key-01234567890123456789'});
+    global.fetch=jest.fn(async(url:string)=>{
+      if(url.startsWith('http://vehicle-lookup:8090/'))return Response.json({plate:'ABCD12',state:'completed',result:{plate:'ABCD12',officialResponseValidated:true,tokenIssued:true,formSubmitted:true,checkedAt:new Date().toISOString(),stolenStatus:'con_encargo'}});
+      if(url.startsWith('https://api.restart.cl/'))return Response.json({data:[{attributes:{ppu:'ABCD12',marca:'MARCA PRT',modelo:'MODELO PRT',ano_fabricacion:2017,fecha_revision:'2026-07-02'}}]});
+      if(url.startsWith('https://venpu-backend-production-b8c4.up.railway.app/'))return Response.json({type:'success',data:{patent:'ABCD12',brand:'OTRA MARCA',model:'OTRO MODELO',year:2018,color:'BLANCO'}});
+      return new Response('',{status:503});
+    }) as typeof fetch;
+    expect(await new VehicleRegistryService(config).lookup('ABCD12')).toMatchObject({make:'MARCA PRT',model:'MODELO PRT',year:2017,color:'BLANCO',stolenStatus:'con_encargo',officialCheck:{status:'consultado'}});
+  });
   it('solo acepta el estado oficial después de un formulario validado para la misma patente',async()=>{
     const result=await official({plate:'ABCD12',officialResponseValidated:true,tokenIssued:true,formSubmitted:true,
       checkedAt:new Date().toISOString(),stolenStatus:'con_encargo'}).lookup('ABCD12');

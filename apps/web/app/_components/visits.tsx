@@ -266,15 +266,19 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   </section>;
 }
 
-function VehicleResult({check}:{check:VehicleCheck}) {
+export function VehicleResult({check}:{check:VehicleCheck}) {
   const stolen:Record<string,string>={sin_encargo:'Sin encargo informado por la fuente',con_encargo:'Con encargo informado por la fuente',recuperado:'Recuperado según la fuente',encargo_parcial:'Encargo parcial informado por la fuente',placas_con_encargo:'Placas con encargo según la fuente',no_consultado:'No consultado'};
+  const hasEncargo=['con_encargo','encargo_parcial','placas_con_encargo'].includes(check.stolenStatus);
   return <div className="visits-vehicle-result">
     <p>Marca: {check.make??check.community?.make??'No disponible'}</p>
     <p>Modelo: {check.model??check.community?.model??'No disponible'}</p>
     {check.year?<p>Año: {check.year}</p>:null}
     <p>Color: {check.color??check.community?.color??'No disponible'}</p>
     <p>Propietario registral: {check.ownerName??'No disponible'}</p>
-    <p>Robo (registro oficial): {check.officialCheck?.status==='pendiente'?'Consultando…':stolen[check.stolenStatus]??'No consultado'}</p>
+    <p className={hasEncargo?'visits-theft-alert':undefined} role={hasEncargo?'alert':undefined}>
+      {hasEncargo?<strong>ALERTA DE ENCARGO · </strong>:null}
+      Robo (registro oficial): {check.officialCheck?.status==='pendiente'?'Consultando…':stolen[check.stolenStatus]??'No consultado'}
+    </p>
     {check.officialCheck?.status==='consultado'&&check.officialCheck.checkedAt?<p>Fuente del encargo: {check.officialCheck.source} · {time(check.officialCheck.checkedAt)}.</p>:null}
     <p>Multas: {check.finesStatus==='consultado'?`${check.finesCount??'Cantidad no disponible'} informadas${check.finesTotal===null?'':` · $${check.finesTotal.toLocaleString('es-CL')}`}`:'No consultadas'}</p>
     {check.source?<p>Fuente de la ficha: {check.source} · {time(check.checkedAt)}. Puede contener desfases.</p>:null}

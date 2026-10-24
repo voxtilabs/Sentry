@@ -252,7 +252,9 @@ obtienen por sí mismas dueño, marca, modelo, color o multas de otra plataforma
   conservan números de certificado ni otros identificadores de su respuesta.
 - [Venpu](https://venpu.cl/cuanto-vale-mi-auto): su formulario gratuito sin registro
   devolvió marca, modelo y año. Comprobado como alternativa de consulta, sin
-  incorporarlo como dependencia del adaptador. No aporta propietario ni multas.
+  incorporarlo inicialmente como dependencia del adaptador. La integración posterior
+  usa el GET público del formulario como respaldo de marca, modelo, año y color;
+  no aporta propietario ni multas.
 - [PatentesChile.cl](https://patenteschile.cl/), distinto de PatenteChile.com:
   su formulario llama a `/api/consulta`. Respondió 200 con `encontrado:false` para
   la patente autorizada; no equivale a inexistencia del vehículo. No se integra.
