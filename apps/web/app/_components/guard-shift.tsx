@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { DivulgacionUbicacion } from './divulgacion-ubicacion';
 import { GuardCheckpointList, type FaseEscaneo } from './guard-checkpoint-list';
 import {
   motivoQrInvalido,
@@ -40,6 +41,7 @@ import {
 import {
   aplicarVeredictos,
   cargarEstadoRonda,
+  CLAVE_SALTADOS,
   estadoInicial,
   guardarEstadoRonda,
   marcarFotoPuntoSubida,
@@ -50,6 +52,7 @@ import {
   registrarCierre,
   registrarEscaneo,
   registrarNovedad,
+  sePuedeSaltar,
   siguientePunto,
   type CierreRonda,
   type EstadoRonda,
@@ -76,7 +79,7 @@ import {
   leerFoto,
   listarPendientes,
 } from './guard-photo-store';
-import { nuevoUuid } from './guard-storage';
+import { escribirJson, leerJson, nuevoUuid } from './guard-storage';
 import {
   ErrorEscaneoPortal,
   useGuardBridge,
@@ -118,6 +121,11 @@ export interface GuardShiftData {
     /** Zona horaria del RECINTO, que manda la API. Ver guard-photo.ts. */
     timezone?: string;
     routeName: string;
+    /**
+     * Recorrido libre (#231): sin puntos, asi que nada lo cierra solo. El
+     * guardia lo termina desde esta pantalla, que es la que ve mientras anda.
+     */
+    isFreeRoam?: boolean;
     estimatedDurationMin: number;
     completedCheckpointCount: number;
     checkpoints: PuntoRuta[];
@@ -183,6 +191,12 @@ function SinAsignacion({ apiUrl, mensaje }: { apiUrl: string; mensaje?: string }
   const puente = useGuardBridge(apiUrl);
   return (
     <>
+      {puente.divulgacionPendiente ? (
+        <DivulgacionUbicacion
+          onContinuar={puente.continuarTrasDivulgacion}
+          onPosponer={puente.posponerDivulgacion}
+        />
+      ) : null}
       <SyncEstado apiUrl={apiUrl} conexion={puente.conexion} />
       <section className="empty-assignment">
         <span className="empty-icon" aria-hidden="true">
@@ -215,6 +229,98 @@ function Ronda({
   const puente = useGuardBridge(apiUrl);
   const [estado, setEstado] = useState<EstadoRonda>(() => estadoInicial(patrol.id));
   const [vista, setVista] = useState<Vista>('ronda');
+  const [cerrandoLibre, setCerrandoLibre] = useState(false);
+  const [confirmandoCierre, setConfirmandoCierre] = useState(false);
+  const [pausando, setPausando] = useState(false);
+  const enPausa = patrol.status === 'pausada';
+
+  /**
+   * Pausar y reanudar la ronda (#231).
+   *
+   * La pausa DETIENE el registro de la posicion: el servidor rechaza las
+   * posiciones de una ronda que no esta en curso, asi que no depende de que el
+   * telefono deje de mandarlas. Y queda constancia: el informe muestra cuanto
+   * estuvo detenida y el supervisor la ve pausada en el monitoreo.
+   */
+  async function cambiarPausa(accion: 'pause' | 'resume') {
+    setPausando(true);
+    setErrorLibre(undefined);
+    try {
+      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/${accion}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!respuesta.ok) {
+        const datos = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(datos?.message ?? 'No pudimos cambiar la ronda');
+      }
+      window.location.assign('/app/guardia');
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cambiar la ronda');
+      setPausando(false);
+    }
+  }
+  const [motivoCierre, setMotivoCierre] = useState('');
+
+  /**
+   * Terminar la ronda sin haber marcado todos los puntos (#231).
+   *
+   * Pide confirmacion porque no se deshace: la ronda queda `incompleta` con el
+   * cumplimiento REAL y eso es lo que ve el supervisor en el informe. Es una
+   * salida para el guardia al que se le cerro una reja, no un atajo para
+   * terminar el turno sin recorrer.
+   */
+  async function terminarSinCompletar() {
+    setCerrandoLibre(true);
+    setErrorLibre(undefined);
+    try {
+      const cuerpo = motivoCierre.trim().length >= 3 ? { reason: motivoCierre.trim() } : {};
+      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/finish-early`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+      });
+      if (!respuesta.ok) {
+        const datos = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(datos?.message ?? 'No pudimos cerrar la ronda');
+      }
+      window.location.assign('/app/guardia');
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar la ronda');
+      setCerrandoLibre(false);
+    }
+  }
+  const [errorLibre, setErrorLibre] = useState<string>();
+
+  /**
+   * Terminar el recorrido libre.
+   *
+   * Una ronda normal se cierra sola al marcar su punto de cierre. Un recorrido
+   * libre no tiene puntos: sin esto quedaria abierto hasta vencer a las 12
+   * horas, impidiendole al guardia empezar otra ronda y —lo que importa—
+   * dejando la traza registrando su posicion despues de que volvio a su puesto.
+   */
+  async function terminarRecorridoLibre() {
+    setCerrandoLibre(true);
+    setErrorLibre(undefined);
+    try {
+      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/free-roam/finish`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!respuesta.ok) {
+        const cuerpo = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(cuerpo?.message ?? 'No pudimos cerrar el recorrido');
+      }
+      window.location.assign('/app/guardia');
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar el recorrido');
+      setCerrandoLibre(false);
+    }
+  }
   /*
    * La traza en vivo (#280): mientras la ronda este abierta, el shell muestrea
    * y este portal sube las posiciones. `Ronda` solo se monta con la ronda en
@@ -222,6 +328,16 @@ function Ronda({
    * desmontaje o un shell viejo apagan el grifo sin tocar nada mas.
    */
   useTrazaEnVivo({ puente, apiUrl, patrolId: patrol.id, activa: estado.cierre === undefined });
+  /*
+   * Los puntos que el guardia dejo para despues (reporte de terreno del
+   * 21-09-2026). Se guardan aparte del estado de la ronda —no son un hecho de
+   * terreno, son una decision de recorrido— y por ronda, porque la de manana
+   * empieza de cero. Sobreviven a que el WebView se recargue: si no, el
+   * telefono lo mandaria de vuelta al pasillo que acaba de dejar.
+   */
+  const [saltados, setSaltados] = useState<string[]>(() =>
+    leerJson<string[]>(`${CLAVE_SALTADOS}:${patrol.id}`, []),
+  );
   const [fase, setFase] = useState<FaseEscaneo>('inactivo');
   const [anuncio, setAnuncio] = useState('');
   const [errorEscaneo, setErrorEscaneo] = useState<string>();
@@ -451,7 +567,26 @@ function Ronda({
     [actualizar, actualizarTareas, apiUrl, idsDeEscaneo, patrol.id, refrescarFotosPendientes],
   );
 
-  const siguiente = siguientePunto(puntos, estado.puntos);
+  const siguiente = siguientePunto(puntos, estado.puntos, saltados);
+  const puedeSaltar = sePuedeSaltar(puntos, estado.puntos, saltados, siguiente);
+
+  /** Deja este punto para el final y manda al guardia al que tiene delante. */
+  function dejarParaDespues() {
+    if (siguiente === undefined || !puedeSaltar) return;
+    const conEste = saltados.includes(siguiente.id) ? saltados : [...saltados, siguiente.id];
+    setSaltados(conEste);
+    escribirJson(`${CLAVE_SALTADOS}:${patrol.id}`, conEste);
+    setErrorEscaneo(undefined);
+    setAnuncio(
+      `${siguiente.name} queda pendiente para el final. Sigue con el punto que tienes delante.`,
+    );
+  }
+  /*
+   * Cuantos le quedan, para decirselo de frente al confirmar el cierre. Se usa
+   * `puntosFaltantes`, que ya es de donde sale el resto de la pantalla: con un
+   * calculo propio el aviso podria decir un numero y la lista mostrar otro.
+   */
+  const puntosPendientes = puntosFaltantes(puntos, estado.puntos).length;
   // El panel de tareas se apaga solo cuando ya no queda ninguna por responder,
   // así el guardia no tiene que cerrarlo a mano para seguir.
   const tareasEnPantalla =
@@ -874,14 +1009,54 @@ function Ronda({
         </p>
       ) : null}
 
+      {/*
+        * Ronda PAUSADA (#231). El aviso va arriba de todo y es imposible de
+        * pasar por alto: mientras esta pausada NO se registra por donde va el
+        * guardia, y creerse que si es el error caro.
+        */}
+      {enPausa ? (
+        <section className="ronda-pausada" role="status">
+          <h2>Ronda pausada</h2>
+          <p>
+            No se está registrando por dónde vas. Tu supervisor ve la ronda como pausada.
+          </p>
+          <button
+            className="ronda-pausada-reanudar"
+            disabled={pausando}
+            onClick={() => void cambiarPausa('resume')}
+            type="button"
+          >
+            {pausando ? 'Reanudando…' : 'Reanudar la ronda'}
+          </button>
+          {errorLibre ? (
+            <p className="guard-action-error" role="alert">
+              {errorLibre}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="guardia-cabecera">
         <p className="guardia-eyebrow">Ronda en {patrol.siteName}</p>
         <h1 className="guardia-titulo">{patrol.routeName}</h1>
-        <p className="guardia-turno">
-          Ronda {hora.format(new Date(shift.scheduledStartAt))} a{' '}
-          {hora.format(new Date(shift.scheduledEndAt))} · {patrol.estimatedDurationMin} min
-          estimados
-        </p>
+        {/*
+          * En un recorrido libre la ventana y la duracion estimada no
+          * significan nada: dura lo que el guardia decida. Decir "60 min
+          * estimados" ahi seria inventarle un plazo que nadie le puso.
+          */}
+        {patrol.isFreeRoam ? (
+          <p className="guardia-turno">
+            Empezaste a las {hora.format(new Date(shift.scheduledStartAt))}. Se registra por
+            dónde vas hasta que lo cierres.
+          </p>
+        ) : (
+          <p className="guardia-turno">
+            Ronda {hora.format(new Date(shift.scheduledStartAt))} a{' '}
+            {hora.format(new Date(shift.scheduledEndAt))} · {patrol.estimatedDurationMin} min
+            estimados
+          </p>
+        )}
+
       </section>
 
       <nav className="guardia-vistas-ronda" aria-label="Acciones del turno">
@@ -915,6 +1090,7 @@ function Ronda({
       {vista === 'ronda' && !fotoDePunto && puntoConTareas ? (
         <GuardTareasPunto
           apiUrl={apiUrl}
+          {...(puente.fase === 'listo' ? { pedirPermisoCamara: puente.pedirPermiso } : {})}
           checkpointId={puntoConTareas.checkpointId}
           clientScanId={puntoConTareas.clientScanId}
           estado={tareas}
@@ -967,11 +1143,98 @@ function Ronda({
             esperandoTareas={tareasEnPantalla}
             puntos={puntos}
             registros={estado.puntos}
+            saltados={saltados}
             siguiente={siguiente}
+            {...(puedeSaltar ? { onDejarParaDespues: dejarParaDespues } : {})}
             {...(politicaFoto ? { politicaFoto } : {})}
             {...(avisoPantalla ? { aviso: avisoPantalla } : {})}
             {...(errorEscaneo ? { error: errorEscaneo } : {})}
           />
+
+          {/*
+            * Terminar la ronda va AL FINAL y no arriba.
+            *
+            * Estaba antes del boton de escanear: lo primero que veia el guardia
+            * era como salirse, no que hacer. Para alguien poco tecnologico eso
+            * es una trampa — la accion de la ronda manda, la salida acompana.
+            */}
+          {/*
+            * Pausar va ANTES de terminar y con mas peso: es reversible y
+            * terminar no. Ofrecer primero la salida que se deshace evita que
+            * el guardia cierre una ronda que solo queria detener un rato.
+            */}
+          {!enPausa && !confirmandoCierre ? (
+            <div className="pausar-ronda">
+              <button
+                className="pausar-ronda-boton"
+                disabled={pausando}
+                onClick={() => void cambiarPausa('pause')}
+                type="button"
+              >
+                {pausando ? 'Pausando…' : 'Pausar la ronda'}
+              </button>
+              <p>Deja de registrarse por dónde vas hasta que la reanudes.</p>
+            </div>
+          ) : null}
+
+          <div className="terminar-ronda">
+            {confirmandoCierre ? (
+              <div className="terminar-ronda-alerta" role="alertdialog" aria-labelledby="alerta-fin">
+                <h3 id="alerta-fin">¿Terminar la ronda ahora?</h3>
+                {patrol.isFreeRoam ? (
+                  <p>Se deja de registrar por dónde vas. Esto no se puede deshacer.</p>
+                ) : (
+                  <p>
+                    Te quedan <strong>{puntosPendientes} punto{puntosPendientes === 1 ? '' : 's'} sin marcar</strong>.
+                    La ronda queda incompleta y tu supervisor lo va a ver así. Esto no se puede
+                    deshacer.
+                  </p>
+                )}
+                {!patrol.isFreeRoam ? (
+                  <label>
+                    ¿Por qué no pudiste terminarla? <span>Puedes dejarlo en blanco</span>
+                    <input
+                      maxLength={500}
+                      onChange={(e) => setMotivoCierre(e.target.value)}
+                      placeholder="La reja estaba cerrada"
+                      value={motivoCierre}
+                    />
+                  </label>
+                ) : null}
+                <button
+                  className="terminar-ronda-seguir"
+                  disabled={cerrandoLibre}
+                  onClick={() => setConfirmandoCierre(false)}
+                  type="button"
+                >
+                  No, sigo la ronda
+                </button>
+                <button
+                  className="terminar-ronda-confirmar"
+                  disabled={cerrandoLibre}
+                  onClick={() =>
+                    void (patrol.isFreeRoam ? terminarRecorridoLibre() : terminarSinCompletar())
+                  }
+                  type="button"
+                >
+                  {cerrandoLibre ? 'Terminando…' : 'Sí, terminar la ronda'}
+                </button>
+                {errorLibre ? (
+                  <p className="guard-action-error" role="alert">
+                    {errorLibre}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                className="terminar-ronda-boton"
+                onClick={() => setConfirmandoCierre(true)}
+                type="button"
+              >
+                Terminar la ronda
+              </button>
+            )}
+          </div>
         </>
       ) : null}
 
@@ -983,6 +1246,7 @@ function Ronda({
           />
           <GuardEventForm
             enviando={enviandoNovedad}
+            {...(puente.fase === 'listo' ? { pedirPermisoCamara: puente.pedirPermiso } : {})}
             onReportar={(entrada) => void reportar(entrada)}
             {...(mensajeNovedad ? { mensaje: mensajeNovedad } : {})}
           />

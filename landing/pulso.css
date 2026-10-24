@@ -1,4 +1,28 @@
 /* ───────────────────────────────────────────────────────────────
+   Fuentes propias.
+
+   Antes venian de Google Fonts: dos conexiones a otro dominio ANTES de
+   pintar la primera letra, y la tipografia saltando a la vista cuando por
+   fin llegaban. Servidas desde este dominio viajan con el CSS, no le
+   cuentan a un tercero quien entro al sitio, y el sitio sigue funcionando
+   si Google cae. Subconjunto latino: 156 KB las siete.
+   ─────────────────────────────────────────────────────────────── */
+@font-face { font-family:Outfit; font-style:normal; font-weight:400; font-display:swap;
+  src:url('fuentes/outfit-400.woff2') format('woff2'); }
+@font-face { font-family:Outfit; font-style:normal; font-weight:700; font-display:swap;
+  src:url('fuentes/outfit-700.woff2') format('woff2'); }
+@font-face { font-family:Outfit; font-style:normal; font-weight:800; font-display:swap;
+  src:url('fuentes/outfit-800.woff2') format('woff2'); }
+@font-face { font-family:Inter; font-style:normal; font-weight:400; font-display:swap;
+  src:url('fuentes/inter-400.woff2') format('woff2'); }
+@font-face { font-family:Inter; font-style:normal; font-weight:500; font-display:swap;
+  src:url('fuentes/inter-500.woff2') format('woff2'); }
+@font-face { font-family:'JetBrains Mono'; font-style:normal; font-weight:400; font-display:swap;
+  src:url('fuentes/jetbrains-400.woff2') format('woff2'); }
+@font-face { font-family:'JetBrains Mono'; font-style:normal; font-weight:500; font-display:swap;
+  src:url('fuentes/jetbrains-500.woff2') format('woff2'); }
+
+/* ───────────────────────────────────────────────────────────────
    Sistema Pulso · VoxTi Labs 1.0
    Ningun componente sabe en que modo esta: todos piden tokens.
    Escala de espaciado: 8 16 24 32 48 64 96. Nada intermedio.
@@ -14,6 +38,10 @@
   --bad:#E23D5C; --bad-text:#A6203C; --bad-soft:#FFEEF1; --bad-soft-br:#FCD6DE;
   --field-bg:#FFFFFF;
   --sobre-relleno:#FFFFFF;   /* texto sobre --action y --bad */
+  /* Superficie oscura de portada, igual que las bandas de voxtilabs.cl.
+     No cambia con el modo: es la firma visual de la empresa. */
+  --medio-bg:#0B0D14; --medio-bg-alzado:#141826; --medio-borde:#262C40;
+  --medio-texto:#EDEFF7; --medio-texto-cuerpo:#B9C0D4; --medio-texto-tenue:#8189A0;
 }
 [data-mode="noche"] {
   --bg:#0B0D14; --bg-raised:#141826; --bg-rest:#1D2233;
@@ -53,12 +81,6 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
 .dato { font-family:'JetBrains Mono', monospace; font-size:13px; color:var(--text); }
 
 /* Wordmark — sin isotipo, la T interior no se disimula */
-.wordmark {
-  font-family:Outfit, sans-serif; font-size:26px; letter-spacing:-.04em;
-  line-height:1; white-space:nowrap;
-}
-.wordmark b { font-weight:800; color:var(--text); }
-.wordmark span { font-weight:400; color:var(--text-muted); }
 
 /* Barra */
 .barra {
@@ -72,6 +94,36 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
   letter-spacing:-.02em; color:var(--text);
 }
 .producto em { font-style:normal; color:var(--text-muted); font-weight:400; }
+
+/*
+ * SentryCore es el producto; VoxTi Labs es quien lo hace. Van juntos pero no
+ * al mismo peso: el nombre del producto manda y el lockup acompania.
+ */
+.producto { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.producto-sello { display:inline-flex; align-items:center; gap:8px; }
+.producto-de {
+  font-family:Inter, sans-serif; font-weight:400; font-size:13px;
+  color:var(--text-muted); letter-spacing:0;
+}
+/*
+ * A 26 px de alto el lockup completo mide 189 px: justo bajo el minimo de 190.
+ * Se sube a 27 px (196 px de ancho) en vez de encogerlo, que es lo que la guia
+ * prohibe — "Labs" se convierte en una mancha gris antes que en una palabra.
+ */
+.producto-nombre { color:var(--text); text-decoration:none; }
+.producto-nombre:focus-visible { outline:2px solid var(--action); outline-offset:2px; border-radius:4px; }
+.marca { display:inline-block; line-height:0; }
+.marca svg { height:27px; width:auto; display:block; }
+.marca:focus-visible { outline:2px solid var(--action); outline-offset:2px; border-radius:4px; }
+
+/*
+ * Bajo 520 px el lockup completo mas el nombre del producto mas el interruptor
+ * no caben sin apretar el logo. Se esconde el sello: el producto conserva su
+ * nombre y la marca vuelve en el pie, donde si tiene aire.
+ */
+@media (max-width:520px) {
+  .producto-sello { display:none; }
+}
 
 /* Botones — radio 999, Outfit 700 16px, alto minimo 46 */
 .boton {
@@ -97,8 +149,92 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
 .interruptor:hover { color:var(--text); background:var(--bg-raised); }
 .interruptor:focus-visible { outline:2px solid var(--action); outline-offset:2px; }
 
-/* Portada */
-.portada { padding:96px 0 64px; }
+/* Portada — banda oscura de marca, con el producto al lado */
+.portada {
+  background:var(--medio-bg); color:var(--medio-texto-cuerpo);
+  padding:72px 0 56px; border-bottom:1px solid var(--medio-borde);
+}
+.portada h1 { color:var(--medio-texto); }
+.portada .entrada { color:var(--medio-texto-cuerpo); }
+/* El punto azul del titular: la firma de VoxTi Labs. */
+.portada h1 .punto { color:var(--action); }
+.portada .etiqueta {
+  background:rgba(61,90,254,.14); border-color:rgba(61,90,254,.38); color:#AEBBFF;
+}
+.portada-rejilla {
+  display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);
+  gap:48px; align-items:center;
+}
+.portada-visual { display:flex; justify-content:center; }
+/* Marco de telefono: deja claro que eso es la app y no una captura del panel. */
+.telefono {
+  width:min(260px, 100%); padding:10px; border-radius:34px;
+  background:linear-gradient(160deg, #2A3147, #11141F);
+  border:1px solid var(--medio-borde); box-shadow:0 24px 60px rgba(0,0,0,.45);
+}
+.telefono img { display:block; width:100%; height:auto; border-radius:26px; }
+.boton-claro {
+  background:transparent; color:var(--medio-texto); border-color:rgba(255,255,255,.28);
+}
+.boton-claro:hover { background:rgba(255,255,255,.08); }
+.boton-compacto { min-height:40px; padding:10px 20px; font-size:15px; white-space:nowrap; }
+
+/* Google Play: la insignia va tal cual la entrega Google, sin recolorear. */
+.descarga { margin-top:32px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.descarga-insignia { display:inline-block; line-height:0; }
+.descarga-insignia img { width:168px; height:auto; }
+.descarga p { margin:0; max-width:34ch; font-size:14px; color:var(--medio-texto-tenue); }
+
+/* Barra */
+.barra-acciones { display:flex; align-items:center; gap:16px; }
+.barra-respaldo {
+  display:flex; flex-direction:column; line-height:1.15;
+  text-decoration:none; color:var(--text-muted);
+}
+.barra-respaldo strong { font-family:Outfit, sans-serif; font-size:14px; color:var(--text); }
+.barra-respaldo:hover strong { color:var(--action-text); }
+
+@media (max-width:860px) {
+  .portada-rejilla { grid-template-columns:1fr; gap:28px; }
+  /*
+   * El titular PRIMERO. Con la foto arriba, lo primero que veia alguien en un
+   * telefono era una captura sin contexto y el "que es esto" quedaba bajo el
+   * pliegue. La imagen acompana al argumento; no lo reemplaza.
+   */
+  .portada-visual { order:1; }
+  .telefono { width:min(230px, 62%); }
+  .barra-respaldo { display:none; }
+}
+@media (max-width:620px) {
+  /*
+   * En la barra cabe una sola cosa ademas del logo, y es la accion. El
+   * interruptor se va: el sitio igual arranca en el modo que pide el sistema.
+   */
+  .barra .interruptor { display:none; }
+  .barra .boton-compacto { padding:9px 16px; font-size:14px; }
+  .portada { padding:48px 0 40px; }
+  .descarga { gap:14px; }
+}
+
+/*
+ * Capturas anchas en pantallas angostas: un panel de 2880 px reducido al ancho
+ * de un telefono no se lee. El lienzo las deja a un tamano legible y se desliza
+ * con el dedo, en vez de fingir que caben.
+ */
+.lienzo { margin:0; }
+@media (max-width:720px) {
+  .lienzo {
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    border-radius:12px; scrollbar-width:thin;
+  }
+  .lienzo img { min-width:660px; }
+  .captura-ancha figcaption::before {
+    content:'Desliza la imagen para ver el detalle';
+    display:block; margin-bottom:6px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint);
+  }
+}
 .etiqueta {
   display:inline-block; margin-bottom:24px; padding:6px 14px; border-radius:999px;
   background:var(--action-soft); border:1px solid var(--action-soft-br); color:var(--action-text);
@@ -108,6 +244,12 @@ p  { margin:0 0 16px; max-width:66ch; }        /* medida maxima del sistema */
 .acciones { display:flex; flex-wrap:wrap; gap:16px; margin-top:32px; }
 
 /* Cifras — numero en Outfit 700, unidad en Inter con --text-muted */
+.portada .cifras {
+  background:var(--medio-bg-alzado); border-color:var(--medio-borde);
+}
+.portada .cifra { background:var(--medio-bg-alzado); border-color:var(--medio-borde); }
+.portada .cifras .valor { color:var(--medio-texto); }
+.portada .cifras .unidad, .portada .cifras .glosa { color:var(--medio-texto-tenue); }
 .cifras {
   display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
   gap:1px; background:var(--border); border:1px solid var(--border);
@@ -170,6 +312,21 @@ section { padding:96px 0; border-top:1px solid var(--border); }
 .captura-ancha { margin:0 0 24px; }
 .captura-ancha img { width:100%; }
 .captura-alta { max-height:520px; object-fit:contain; object-position:top; background:var(--bg-rest); }
+
+/*
+ * Figura dentro de un articulo. Los tres articulos eran solo texto y ademas
+ * su JSON-LD declaraba un Article sin `image`, que es lo que Google usa para
+ * el resultado enriquecido. La captura es real y viene al caso: no hay imagen
+ * decorativa.
+ */
+.figura-articulo { margin:32px 0; }
+.figura-articulo img {
+  display:block; width:100%; height:auto;
+  border:1px solid var(--border); border-radius:22px; background:var(--bg-rest);
+}
+.figura-articulo figcaption {
+  margin-top:12px; font-size:14px; color:var(--text-muted); line-height:1.6;
+}
 .captura {
   background:var(--bg-raised); border:1px solid var(--border);
   border-radius:22px; padding:16px; margin:0;
@@ -234,3 +391,103 @@ footer p { margin:0; font-size:14px; color:var(--text-muted); }
 
 /* Contacto — el destino lo arma el navegador; el aspecto lo pone el sistema */
 .contacto-nota { font-size:13px; color:var(--text-muted); margin-top:16px; }
+
+
+/* ── Pie: empresa y convenio ──────────────────────────────────────────── */
+
+.marca-producto svg { height:26px; }
+
+footer .envoltorio { align-items:start; gap:32px; flex-wrap:wrap; }
+.pie-marca .pie-razon {
+  margin:12px 0 2px; font-family:Outfit, sans-serif; font-weight:700;
+  font-size:14px; letter-spacing:-.02em; color:var(--text);
+}
+.pie-marca address { margin-top:8px; font-style:normal; font-size:13px; line-height:1.6; color:var(--text-muted); }
+
+/*
+ * El logo de Vigilab va en su propia caja clara y no suelto sobre el fondo.
+ * Es negro y rojo sobre transparente: en modo noche el "VIGI" negro
+ * desapareceria. La caja no es adorno, es lo que lo hace legible en los dos
+ * modos. La regla de no ponerle recuadro al logo es para el NUESTRO.
+ */
+.pie-convenio { display:flex; flex-direction:column; gap:10px; max-width:320px; }
+.pie-convenio .rotulo {
+  font-family:'JetBrains Mono', monospace; font-size:11px; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--text-muted);
+}
+.pie-convenio a {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:fit-content; padding:12px 18px; border-radius:14px;
+  background:#FFFFFF; border:1px solid var(--border);
+}
+.pie-convenio a:focus-visible { outline:2px solid var(--action); outline-offset:2px; }
+.pie-convenio img { display:block; width:150px; height:auto; }
+.pie-convenio p { margin:0; font-size:13px; line-height:1.6; color:var(--text-muted); }
+
+.pie-dominio { align-self:end; }
+
+@media (max-width:640px) {
+  footer .envoltorio { gap:24px; }
+  .pie-dominio { align-self:start; }
+}
+
+/* La insignia de Google Play dentro de un articulo: misma caja, fondo claro */
+.descarga-articulo {
+  margin:32px 0; padding:20px 24px; border-radius:14px;
+  background:var(--bg-raised); border:1px solid var(--border);
+}
+.descarga-articulo p { color:var(--text-muted); max-width:46ch; }
+
+/* La accion de la barra cambia de etiqueta, no de tamano de letra: en 360 px
+   el logo y "Solicitar una demo" no caben juntos. */
+.rotulo-corto { display:none; }
+@media (max-width:480px) {
+  .rotulo-largo { display:none; }
+  .rotulo-corto { display:inline; }
+  .barra .marca-producto svg { height:22px; }
+}
+
+/*
+ * Tablas en pantallas angostas. Una tabla de tres columnas no se achica sin
+ * volverse ilegible: se desliza dentro de su propia caja y el resto de la
+ * pagina deja de moverse de lado, que es lo que rompe la lectura en un
+ * telefono.
+ */
+@media (max-width:720px) {
+  .ficha-envoltorio { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .ficha-envoltorio .ficha { min-width:520px; }
+  .ficha-envoltorio::after {
+    content:'Desliza la tabla para verla completa';
+    display:block; margin-top:8px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint);
+  }
+}
+
+/*
+ * Tablas de dos columnas en un telefono: se apilan, no se deslizan.
+ *
+ * Deslizar sirve para una tabla de datos cortos. Cuando las dos columnas son
+ * prosa —"lo que exige la ley" / "lo que hace el sistema"— deslizar deja cada
+ * frase cortada a la mitad y obliga a barrer el dedo renglon por renglon. Como
+ * la primera celda ya es el titulo de la fila, apilar no pierde nada: queda el
+ * titulo arriba y su explicacion debajo.
+ */
+@media (max-width:720px) {
+  .ficha-envoltorio:has(.ficha-par) { overflow-x:visible; }
+  .ficha-envoltorio:has(.ficha-par)::after { content:none; }
+  .ficha-envoltorio .ficha-par { min-width:0; border-radius:16px; }
+  .ficha-par thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .ficha-par, .ficha-par tbody, .ficha-par tr, .ficha-par td { display:block; width:100%; }
+  .ficha-par tr { padding:4px 0; border-bottom:1px solid var(--border); }
+  .ficha-par tr:last-child { border-bottom:none; }
+  .ficha-par td { border-bottom:none; padding:6px 18px; }
+  .ficha-par td:first-child {
+    padding-top:16px; font-family:Outfit, sans-serif; font-weight:700;
+    font-size:15.5px; letter-spacing:-.01em; color:var(--text);
+  }
+  .ficha-par td:last-child { padding-bottom:16px; }
+  /* El dato medido conserva su tipografia, pero alineado a la izquierda:
+     en una ficha apilada, a la derecha queda colgando de la nada. */
+  .ficha-par td.medida { text-align:left; }
+}

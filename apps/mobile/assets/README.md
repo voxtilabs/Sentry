@@ -20,7 +20,7 @@ es una opción de configuración.
 
 | PNG | Tamaño | Fuente | Fondo | Dónde se usa |
 |---|---|---|---|---|
-| `icon.png` | 1024×1024 | `icon.svg` | opaco `#1f3b73` | `icon` en app.config.ts |
+| `icon.png` | 1024×1024 | `icon.svg` | opaco `#3D5AFE` | `icon` en app.config.ts |
 | `adaptive-icon-foreground.png` | 1024×1024 | `adaptive-icon-foreground.svg` | **transparente** | `android.adaptiveIcon.foregroundImage` |
 | `adaptive-icon-monochrome.png` | 1024×1024 | `adaptive-icon-monochrome.svg` | **transparente** | `android.adaptiveIcon.monochromeImage` |
 | `splash-icon.png` | 1024×1024 | `splash-icon.svg` | **transparente** | plugin `expo-splash-screen` |
@@ -42,6 +42,13 @@ Si falta alguno, `app.config.ts` avisa por consola en local y **falla los builds
 de `preview` y `production`**. Es a propósito: sin ese corte, Expo sustituye en
 silencio por el icono por defecto y el logo de Expo se descubre cuando la ficha
 ya está publicada.
+
+## El isotipo es un TRAZO, no una silueta
+
+El SVG dibuja la C con `stroke`, no con `fill`. Si al reexportarlo se pierde el
+`fill="none"`, el path se rellena de negro por defecto y el interior de la C
+queda tapado: el icono pasa de una C a un borron. Paso al regenerarlos desde
+`voxtilabs/SentryBranding` y solo se ve mirando el PNG.
 
 ## Las tres reglas que se rompen siempre
 

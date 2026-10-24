@@ -92,7 +92,82 @@ describe('GuardService', () => {
     });
     expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('p.guard_id = $1'), [
       'guard-id',
+      null,
     ]);
+  });
+
+  it('sin rutas en el recinto elegido, dice cuantas hay en los otros', async () => {
+    /*
+     * Reportado el mismo dia que se filtro por recinto: «eliminó el botón de
+     * ronda voluntaria, quedó solo el de ronda libre». Era CIERTO y era
+     * correcto —el recinto recien creado no tiene rutas cargadas— pero la
+     * seccion desaparecia sin decir nada y se leyo como que el sistema se
+     * habia roto. Una ausencia explicada no es la misma ausencia.
+     */
+    const manager = {
+      query: jest
+        .fn()
+        // La ronda asignada: ninguna.
+        .mockResolvedValueOnce([])
+        // guard_sites: dos recintos.
+        .mockResolvedValueOnce([
+          { id: 'site-edificio', name: 'Edificio', branch_name: '' },
+          { id: 'site-maquinaria', name: 'Maquinaria', branch_name: '' },
+        ])
+        // Rutas voluntarias del recinto elegido: ninguna.
+        .mockResolvedValueOnce([])
+        // Rutas voluntarias de los otros: dos.
+        .mockResolvedValueOnce([
+          { id: 'r1', name: 'Perimetro', site_id: 'site-maquinaria', site_name: 'Maquinaria', checkpoint_count: 4 },
+          { id: 'r2', name: 'Bodegas', site_id: 'site-maquinaria', site_name: 'Maquinaria', checkpoint_count: 3 },
+        ]),
+    };
+    const service = new GuardService({ manager } as unknown as TenantContextService, sinCorreo(), sinReglas(), sinEscalamiento(), sinPuertaGps(), sinEnvioInforme());
+
+    await expect(service.getHome('guard-id', 'site-edificio')).resolves.toMatchObject({
+      hasAssignment: false,
+      voluntaryRoutes: [],
+      voluntaryRoutesElsewhere: 2,
+      selectedSiteName: 'Edificio',
+    });
+  });
+
+  it('con un solo recinto no se pregunta por los otros: no hay otros', async () => {
+    // La consulta extra cuesta una ida a la base en la pantalla que el guardia
+    // abre en cada turno. Sin segundo recinto no tiene nada que contar.
+    const manager = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'site-unico', name: 'Unico', branch_name: '' }])
+        .mockResolvedValueOnce([]),
+    };
+    const service = new GuardService({ manager } as unknown as TenantContextService, sinCorreo(), sinReglas(), sinEscalamiento(), sinPuertaGps(), sinEnvioInforme());
+
+    await expect(service.getHome('guard-id', 'site-unico')).resolves.toMatchObject({
+      voluntaryRoutesElsewhere: 0,
+    });
+    expect(manager.query).toHaveBeenCalledTimes(3);
+  });
+
+  it('EL BUG DE TERRENO: el recinto elegido llega a la consulta y la filtra', async () => {
+    /*
+     * Bruno, con dos recintos asignados al guardia: «la seleccion de recinto no
+     * funciona; aunque le demos con EDIFICIO, toma maquinaria».
+     *
+     * El parametro llegaba hasta getHome y se devolvia como selectedSiteId,
+     * pero la consulta nunca lo usaba: traia la ronda que ganara el ORDER BY.
+     * El selector se veia, se movia y no hacia nada.
+     */
+    const manager = { query: jest.fn().mockResolvedValue([]) };
+    const service = new GuardService({ manager } as unknown as TenantContextService, sinCorreo(), sinReglas(), sinEscalamiento(), sinPuertaGps(), sinEnvioInforme());
+
+    await service.getHome('guard-id', 'site-edificio');
+
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('p.site_id = $2::uuid'),
+      ['guard-id', 'site-edificio'],
+    );
   });
 
   it('vence al mirarla la ronda que quedo abierta de un turno pasado', async () => {

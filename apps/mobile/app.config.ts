@@ -25,6 +25,8 @@ import type { ExpoConfig } from 'expo/config';
 const perfilEas = process.env.EAS_BUILD_PROFILE ?? '';
 const perfilDeTienda = perfilEas === 'production' || perfilEas === 'preview';
 const paraTienda = perfilDeTienda || process.env.NODE_ENV === 'production';
+// Side-by-side USB verification without replacing the Play-signed application.
+const paqueteDePruebas = process.env.SENTRYCORE_QA_BUILD === '1';
 
 const assets = join(__dirname, 'assets');
 
@@ -56,11 +58,19 @@ function asset(nombre: string): string | undefined {
 
 /** Identidad visual de la plataforma (#114). Espeja `apps/mobile/src/theme.ts`. */
 const MARCA = '#1f3b73';
-const SPLASH_FONDO = '#1f3b73';
-const ADAPTATIVO_FONDO = '#1f3b73';
+/*
+ * Los dos del sistema de diseno de la marca, no el #1f3b73 de antes: ese azul
+ * no salia de ninguna paleta y desentonaba con el isotipo, que usa --action.
+ *
+ * El splash va oscuro (--text) porque el isotipo va en azul encima; el fondo
+ * del icono adaptativo tambien, con el isotipo en blanco recortado por la
+ * mascara del launcher.
+ */
+const SPLASH_FONDO = '#FFFFFF';
+const ADAPTATIVO_FONDO = '#3D5AFE';
 
 const config: ExpoConfig = {
-  name: 'SentryCore',
+  name: paqueteDePruebas ? 'SentryCore pruebas' : 'SentryCore',
   slug: 'sentrycore',
   /**
    * Cuenta de Expo dueña del proyecto. Es la ORGANIZACION, no la cuenta
@@ -94,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.1.0',
+  version: '0.3.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',
@@ -137,7 +147,7 @@ const config: ExpoConfig = {
       'expo-camera',
       {
         cameraPermission:
-          'SentryCore usa la camara para fotografiar el estado de los accesos criticos durante la ronda.',
+          'SentryCore usa la cámara para registrar evidencias de rondas y leer localmente nombre y RUN de visitas y patentes de vehículos.',
         // Sin audio: la evidencia es una foto fija. Dejarlo en true agrega
         // RECORD_AUDIO al manifiesto y convierte la revision de Play en una
         // conversacion sobre grabacion de audio en el trabajo que no queremos
@@ -165,6 +175,9 @@ const config: ExpoConfig = {
     // Plugin local: vuelca las cookies del WebView en onPause. Ver
     // plugins/with-volcado-de-cookies.js.
     './plugins/with-volcado-de-cookies',
+    // Plugin local: firma el release con la llave de subida de Play cuando
+    // esta en el entorno. Ver plugins/with-firma-de-subida.js.
+    './plugins/with-firma-de-subida',
   ],
 
   android: {
@@ -176,7 +189,7 @@ const config: ExpoConfig = {
      * El andamiaje traia `cl.sentrycore.control`; esto lo cambia a la convencion de
      * la empresa. Cambiarlo hoy es gratis (nada publicado); manana no.
      */
-    package: 'com.voxtilabs.sentrycore',
+    package: paqueteDePruebas ? 'com.voxtilabs.sentrycore.qa' : 'com.voxtilabs.sentrycore',
 
     adaptiveIcon: {
       foregroundImage: asset('adaptive-icon-foreground.png'),

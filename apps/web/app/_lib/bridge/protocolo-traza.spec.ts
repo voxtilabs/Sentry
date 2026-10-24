@@ -61,7 +61,8 @@ describe('track.point atraviesa el validador del portal (#280)', () => {
     // escrita para rechazarlo y no el `default` mudo.
     const sinValidacion = TIPOS_SHELL.filter((tipo) => {
       const conPayloadVacio = leerMensajeShell(sobre(tipo, {}));
-      const conPayloadPlausible = leerMensajeShell(sobre(tipo, PUNTO));
+      const example = tipo === 'ocr.scan.result' ? { kind: 'identity', run: '12345678-5' } : tipo === 'vehicle.public.result' ? { source: 'autoseguro', plate: 'ABCD12', stolenStatus: 'sin_encargo', checkedAt: PUNTO.recordedAt } : PUNTO;
+      const conPayloadPlausible = leerMensajeShell(sobre(tipo, example));
       // Un tipo con validacion propia acepta alguno de los dos, o rechaza los
       // dos por su contenido. Uno SIN validacion rechaza todo siempre igual.
       return !conPayloadVacio.ok && !conPayloadPlausible.ok;

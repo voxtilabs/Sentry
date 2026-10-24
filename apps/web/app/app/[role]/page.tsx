@@ -6,11 +6,13 @@ import {
   ConsentimientoTrabajador,
 } from '../../_components/consentimiento-carga';
 import { CrashReportsSummary } from '../../_components/crash-reports-summary';
+import { CompanyCardSettings } from '../../_components/company-card-settings';
 import { DashboardShell, type MarcaDelShell } from '../../_components/dashboard-shell';
 import { EnviosPanel } from '../../_components/envios-panel';
 import { FuncionesConfiguracion } from '../../_components/funciones-configuracion';
 import { MarcaConfiguracion } from '../../_components/marca-configuracion';
 import { marcaDelTenant } from '../../_lib/marca-del-tenant';
+import { GuardHomeEntrance, VisitsManagement, type VisitsContext } from '../../_components/visits';
 import { GuardHome, type GuardHomeData } from '../../_components/guard-home';
 import { GuardBottomNav } from '../../_components/guard-bottom-nav';
 import { GuardPoints } from '../../_components/guard-points';
@@ -103,9 +105,10 @@ export default async function RoleDashboard({
   if (role === 'guardia') {
     const guardView = resolveGuardView(firstParameter(query.vista));
     const siteId = firstParameter(query.siteId);
-    const [data, sessions] = await Promise.all([
+    const [data, sessions, visitorContext] = await Promise.all([
       loadGuardHome(siteId),
       guardView === 'sesiones' ? loadSessions() : Promise.resolve([]),
+      loadVisitsContext(),
     ]);
     const subtitle = data.hasAssignment && data.patrol
       ? `Tu turno en ${data.patrol.siteName}.`
@@ -124,7 +127,7 @@ export default async function RoleDashboard({
             antes, y un aviso que se pasa de largo con la rueda del mouse no es
             aviso previo. */}
         {guardView === 'turno' ? (
-          <ConsentimientoTrabajador apiUrl={publicApiUrl()}>
+          <>
           {/* Dos pantallas, una sola montada a la vez. GuardHome es la antesala:
               resumen del turno y el boton de iniciar. GuardShift es la ronda en
               terreno — escaneo NFC, fotos, novedades, panico, sincronizacion.
@@ -136,11 +139,11 @@ export default async function RoleDashboard({
               useGuardBridge, que abre su propio cliente del puente nativo, y dos
               handshakes compiten por los mismos mensajes de escaneo. */}
           {data.patrol && data.patrol.status !== 'pendiente' ? (
-            <GuardShift data={data} apiUrl={publicApiUrl()} />
+            <ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardShift data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador>
           ) : (
-            <GuardHome data={data} apiUrl={publicApiUrl()} />
+            <GuardHomeEntrance apiUrl={publicApiUrl()} context={visitorContext} initialSiteId={data.selectedSiteId}><ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardHome data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador></GuardHomeEntrance>
           )}
-          </ConsentimientoTrabajador>
+          </>
         ) : guardView === 'puntos' ? (
           <GuardPoints data={data} />
         ) : (
@@ -242,6 +245,7 @@ export default async function RoleDashboard({
   } else if (isSupervisor && view === 'planificacion') {
     panel = (
       <div className="panel-view" data-view="planificacion">
+        <CompanyCardSettings apiUrl={publicApiUrl()} role="supervisor" />
         <SupervisorSchedule apiUrl={publicApiUrl()} />
         <RouteEditor
           sites={routeEditorSites}
@@ -276,6 +280,8 @@ export default async function RoleDashboard({
         />
       </div>
     );
+  } else if (view === 'visitas') {
+    panel = <VisitsManagement apiUrl={publicApiUrl()} />;
   } else if (view === 'informes') {
     panel = (
       <div className="panel-view" data-view="informes">
@@ -290,6 +296,7 @@ export default async function RoleDashboard({
   } else if (!isSupervisor && view === 'personas') {
     panel = (
       <div className="panel-view" data-view="personas">
+        <CompanyCardSettings apiUrl={publicApiUrl()} role="admin" />
         <AdminManagement
           users={users}
           sites={sites}
@@ -413,6 +420,16 @@ function Metric({
 
 function publicApiUrl() {
   return process.env.NEXT_PUBLIC_API_URL ?? '/api';
+}
+
+async function loadVisitsContext(): Promise<VisitsContext | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('sentrycore_access');
+  if (!token) return null;
+  try {
+    const response = await fetch(`${process.env.API_INTERNAL_URL ?? publicApiUrl()}/visits/guard/context`, { headers: { cookie: `sentrycore_access=${token.value}` }, cache: 'no-store' });
+    return response.ok ? await response.json() as VisitsContext : null;
+  } catch { return null; }
 }
 
 async function loadGuardHome(siteId?: string): Promise<GuardHomeData> {

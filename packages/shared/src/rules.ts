@@ -203,6 +203,8 @@ export const patrolRulesSchema = z.object({
   reportRecipients: z.array(z.string().email()).max(10).default([]),
 
   /** Dias que se conserva la evidencia fotografica. */
+  visitorRetentionDays: z.number().int().min(1).max(90).default(30),
+
   photoRetentionDays: z.number().int().min(30).max(3650).default(365),
 
   /** Tamaño maximo de cada foto de evidencia, en megabytes (#13). */
@@ -816,6 +818,13 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     // de todas las empresas del SaaS. Eso es una fuga cruzada, no una comodidad.
     scopes: ['tenant', 'site'],
     group: 'avisos',
+  },
+  visitorRetentionDays: {
+    key: 'visitorRetentionDays',
+    label: 'Retención del registro de visitas',
+    description: 'Días que se conservan los datos personales de visitas antes de eliminarlos automáticamente.',
+    type: 'integer', unit: 'days', min: 1, max: 90,
+    default: DEFAULT_PATROL_RULES.visitorRetentionDays, scopes: SOLO_EMPRESA, group: 'retencion',
   },
   photoRetentionDays: {
     key: 'photoRetentionDays',

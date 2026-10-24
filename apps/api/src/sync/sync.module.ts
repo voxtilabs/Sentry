@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { VisitsModule } from '../visits/visits.module';
 import { DatabaseModule } from '../database/database.module';
 import { GuardModule } from '../guard/guard.module';
 import { RulesModule } from '../rules/rules.module';
@@ -20,7 +21,7 @@ import { SyncService } from './sync.service';
 // se arregla en un lado y se olvida en el otro. SupervisorModule ya exporta
 // SupervisorService (lo consume tambien SchedulingModule).
 @Module({
-  imports: [DatabaseModule, GuardModule, RulesModule, SupervisorModule],
+  imports: [DatabaseModule, GuardModule, RulesModule, SupervisorModule, VisitsModule],
   controllers: [SyncController],
   providers: [SyncService, SyncConflictsService],
 })

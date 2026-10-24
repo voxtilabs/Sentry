@@ -21,14 +21,14 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 # Avisos sin arreglo posible HOY. La clave es el paquete; el valor, por que.
 #
-# Los diez son la misma historia: el proyecto usa Expo 57.0.9 y React Native
-# 0.86.2, y el "arreglo" que propone npm es bajar a Expo 53.0.27 / RN 0.72.17
-# —cuatro SDK atras—, lo que romperia la app entera. No hay version parcheada
-# publicada: hay que esperar a que Expo la saque.
+# Expo 57.0.9 y React Native 0.86.2 arrastran avisos sin parche compatible.
+# npm propone bajar de SDK; no aplicar --force. Las excepciones nuevas se
+# revisaron contra los avisos originales y el árbol de dependencias.
+# Ver docs/seguridad-dependencias-android.md (23-10-2026).
 #
 # Cuando Expo publique, se quitan de aca y el check los exige.
 HEREDADOS = {
-    'expo': 'sin parche; npm propone bajar a 53.0.27, cuatro SDK atras',
+    'expo': 'sin parche compatible; npm propone bajar a Expo 44',
     '@expo/cli': 'arrastrado por expo',
     '@expo/metro': 'arrastrado por expo',
     '@expo/metro-config': 'arrastrado por expo',
@@ -39,17 +39,12 @@ HEREDADOS = {
     'react-native': 'sin parche; npm propone bajar a 0.72.17',
     '@react-native/community-cli-plugin': 'arrastrado por react-native',
     '@react-native/virtualized-lists': 'arrastrado por react-native',
-    # Estos dos SI tienen arreglo limpio, pero mover el arbol de dependencias
-    # del movil es un cambio que merece su propio PR y su propio APK de prueba,
-    # no colarse en uno de otra cosa. Ver el issue de actualizacion.
-    # Lo arrastra expo-splash-screen -> @expo/config-plugins, que es
-    # herramienta de BUILD: escribe el AndroidManifest y el plist durante el
-    # prebuild y no viaja dentro del APK. El aviso es inyeccion de XML al
-    # serializar, y lo unico que serializa es el manifiesto del propio
-    # proyecto. El arreglo depende de que Expo actualice @expo/plist y plist.
-    '@xmldom/xmldom': 'solo en el prebuild de Expo; no viaja en el APK',
-    'js-yaml': 'tiene arreglo limpio; se hace en su propio PR (issue de deps)',
-    'nanoid': 'tiene arreglo limpio; se hace en su propio PR (issue de deps)',
+    'braces': 'GHSA-vfj7-8cjw-p6xm sin parche; patrones de archivos del Metro de desarrollo',
+    'micromatch': 'arrastra braces sin parche en Metro; no recibe patrones de visitantes',
+    'metro-file-map': 'arrastra micromatch/braces en el bundler; Metro no se publica en producción',
+    'node-forge': 'GHSA-86w9-cpqp-85rv sin parche; certificados de Expo CLI, no del login de la app',
+    '@expo/code-signing-certificates': 'arrastra node-forge sin parche en Expo CLI',
+    'zod': 'GHSA-mrhx-c7xc-m3w5: Expo CLI exige Zod 3; parche en 4.6.6 es cambio mayor; valida configuración local de build',
 }
 
 

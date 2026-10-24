@@ -1,8 +1,7 @@
 'use client';
 
 import type { Role } from '@sentrycore/shared';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { Brand } from './brand';
 import { esAppDelGuardia } from '../_lib/app-del-guardia';
@@ -14,6 +13,7 @@ import {
   olvidarCodigoEmpresa,
 } from '../_lib/codigo-empresa';
 import { leerCredenciales } from './login-form-data';
+import { rutaDelPanel } from './login-navegacion';
 
 /**
  * Plazo maximo para el login. Existe porque una peticion sin respuesta dejaba
@@ -23,7 +23,6 @@ import { leerCredenciales } from './login-form-data';
 const TIEMPO_MAXIMO_MS = 20_000;
 
 export function LoginScreen() {
-  const router = useRouter();
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api';
   const [showPassword, setShowPassword] = useState(false);
   const [identity, setIdentity] = useState('');
@@ -52,10 +51,35 @@ export function LoginScreen() {
   const [editandoCodigoEmpresa, setEditandoCodigoEmpresa] = useState(false);
   const [codigoEmpresaBorrador, setCodigoEmpresaBorrador] = useState('');
   const [nfcFeedback, setNfcFeedback] = useState<string | null>(null);
-  const [pendingCardUid, setPendingCardUid] = useState<string | null>(null);
-  const [nfcPin, setNfcPin] = useState('');
   const [codigoGuardia, setCodigoGuardia] = useState('');
   const [usandoCodigo, setUsandoCodigo] = useState(false);
+  const cardBusy = useRef(false);
+  const [companyPicker, setCompanyPicker] = useState<{
+    ticket: string; tenantName: string; tenantSlug: string;
+    guards: Array<{ id: string; name: string }>;
+  } | null>(null);
+
+  async function selectCompanyGuard(guardId: string) {
+    if (!companyPicker || cardBusy.current) return;
+    cardBusy.current = true;
+    setStatus('loading');
+    try {
+      const response = await fetch(`${apiUrl}/auth/company-card/select`, {
+        method: 'POST', credentials: 'include', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ticket: companyPicker.ticket, guardId }),
+      });
+      if (!response.ok) {
+        setCompanyPicker(null);
+        throw new Error('Vuelve a acercar la tarjeta de empresa para elegir tu usuario.');
+      }
+      guardarCodigoEmpresa(companyPicker.tenantSlug);
+      window.location.assign(rutaDelPanel('GUARDIA'));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'No pudimos conectar.');
+      setStatus('error');
+    } finally { cardBusy.current = false; }
+  }
 
   /**
    * Ingreso del guardia con sus seis digitos.
@@ -104,8 +128,7 @@ export function LoginScreen() {
         return;
       }
 
-      router.push(`/app/${resultado.user.role.toLowerCase()}`);
-      router.refresh();
+      window.location.assign(rutaDelPanel(resultado.user.role));
     } catch {
       setErrorMessage('No pudimos conectar. Revisa tu señal e inténtalo de nuevo.');
       setStatus('error');
@@ -160,94 +183,34 @@ export function LoginScreen() {
     setEditandoCodigoEmpresa(true);
   }, []);
 
-  const loginWithNfc = useCallback(
-    async (cardUid: string, pin?: string) => {
-      if (!cardUid || status === 'loading') return;
-      if (!navigator.onLine) {
-        setStatus('offline');
-        return;
+  const loginWithNfc = useCallback(async (cardUid: string) => {
+    if (!cardUid || cardBusy.current || companyPicker) return;
+    if (!navigator.onLine) { setStatus('offline'); return; }
+    cardBusy.current = true;
+    setStatus('loading');
+    setErrorMessage('');
+    setNfcFeedback('Tarjeta detectada · Verificando empresa…');
+    try {
+      const response = await fetch(`${apiUrl}/auth/company-card`, {
+        method: 'POST', credentials: 'include', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cardUid }),
+      });
+      if (!response.ok) {
+        throw new Error(response.status === 429
+          ? 'Espera un minuto y vuelve a acercar la tarjeta.'
+          : 'Tarjeta de empresa no registrada o sin guardias activos. Contacta a tu supervisor.');
       }
-      setStatus('loading');
-      setErrorMessage('');
-      setNfcFeedback(`Tarjeta NFC detectada (${cardUid}) · Iniciando sesión…`);
-
-      try {
-        const response = await fetch(`${apiUrl}/auth/nfc-login`, {
-          method: 'POST',
-          credentials: 'include',
-          signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cardUid,
-            ...(pin ? { pin } : {}),
-            ...(tenantId ? { tenantId } : {}),
-            ...(!tenantId && codigoEmpresa ? { tenantSlug: codigoEmpresa } : {}),
-          }),
-        });
-
-        const result = (await response.json()) as {
-          requiresTenantSelection?: boolean;
-          tenants?: Array<{
-            tenantId: string;
-            tenantName: string;
-            tenantSlug: string;
-            role: Role;
-          }>;
-          user?: { role: Role };
-          code?: string;
-          message?: string | string[];
-        };
-
-        if (result.requiresTenantSelection && result.tenants) {
-          setTenantChoices(result.tenants);
-          setStatus('idle');
-          setNfcFeedback(null);
-          return;
-        }
-        if (!response.ok || !result.user) {
-          // Que falte el PIN no es un error del guardia: es el estado en que
-          // el portal tiene que pedirlo (ver auth.service.ts). Se guarda el
-          // UID ya leído para no obligar a un segundo toque de tarjeta.
-          if (result.code === 'NFC_PIN_REQUIRED') {
-            setPendingCardUid(cardUid);
-            setNfcPin('');
-            setStatus('idle');
-            setNfcFeedback(null);
-            return;
-          }
-          setPendingCardUid(null);
-          if (result.code === 'TENANT_CODE_MISMATCH') abrirEdicionDeCodigo();
-          setErrorMessage(
-            result.code === 'TENANT_SUSPENDED' && typeof result.message === 'string'
-              ? result.message
-              : typeof result.message === 'string'
-                ? result.message
-                : 'No se reconoció la tarjeta NFC o el guardia no está activo.',
-          );
-          setStatus('error');
-          setNfcFeedback(null);
-          return;
-        }
-
-        setPendingCardUid(null);
-        router.push(`/app/${result.user.role.toLowerCase()}`);
-        router.refresh();
-      } catch {
-        setStatus(navigator.onLine ? 'error' : 'offline');
-        setErrorMessage(navigator.onLine ? 'Error de conexión al validar la tarjeta NFC.' : '');
-        setNfcFeedback(null);
-      }
-    },
-    [abrirEdicionDeCodigo, apiUrl, codigoEmpresa, router, status, tenantId],
-  );
+      setCompanyPicker(await response.json() as NonNullable<typeof companyPicker>);
+      setStatus('idle');
+    } catch (error) {
+      setStatus(navigator.onLine ? 'error' : 'offline');
+      setErrorMessage(error instanceof Error ? error.message : 'No pudimos validar la tarjeta.');
+    } finally { cardBusy.current = false; setNfcFeedback(null); }
+  }, [apiUrl, companyPicker]);
 
   useEffect(() => {
     function alDetectarTarjetaNfc(uid: string) {
       if (mode !== 'login') return;
-      // Mientras se espera el PIN de un toque anterior, un reintento de
-      // lectura de la MISMA tarjeta (el lector queda armado unos segundos
-      // más) no debe reiniciar el flujo ni gastar otro intento fallido.
-      if (pendingCardUid) return;
       void loginWithNfc(uid);
     }
 
@@ -272,18 +235,7 @@ export function LoginScreen() {
       delete (window as unknown as { __sentrycoreNfcLogin?: unknown }).__sentrycoreNfcLogin;
       window.removeEventListener('sentrycore:nfc:login', handler);
     };
-  }, [mode, loginWithNfc, pendingCardUid]);
-
-  async function submitNfcPin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!pendingCardUid) return;
-    if (!nfcPin.trim()) {
-      setErrorMessage('Ingresa el PIN de la tarjeta.');
-      setStatus('error');
-      return;
-    }
-    await loginWithNfc(pendingCardUid, nfcPin.trim());
-  }
+  }, [mode, loginWithNfc]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -392,8 +344,7 @@ export function LoginScreen() {
         return;
       }
 
-      router.push(`/app/${result.user.role.toLowerCase()}`);
-      router.refresh();
+      window.location.assign(rutaDelPanel(result.user.role));
     } catch (error) {
       const expiro = error instanceof DOMException && error.name === 'TimeoutError';
       setErrorMessage(
@@ -456,6 +407,26 @@ export function LoginScreen() {
     }
   }
 
+  if (companyPicker) return <main className="login-shell company-guard-picker">
+    <section className="login-panel">
+      <div className="login-card">
+        <Brand />
+        <span className="eyebrow">{companyPicker.tenantName}</span>
+        <h2>Selecciona tu usuario</h2>
+        <p className="login-intro">Elige tu nombre para comenzar la ronda.</p>
+        <ul className="company-guard-list" aria-label="Guardias de la empresa">
+          {companyPicker.guards.map((guard) => <li key={guard.id}>
+            <button className="secondary-button" type="button" disabled={status === 'loading'}
+              onClick={() => void selectCompanyGuard(guard.id)}>{guard.name}</button>
+          </li>)}
+        </ul>
+        {errorMessage ? <p role="alert">{errorMessage}</p> : null}
+        <button className="text-button" type="button" disabled={status === 'loading'}
+          onClick={() => { setCompanyPicker(null); setStatus('idle'); setErrorMessage(''); }}>Volver</button>
+      </div>
+    </section>
+  </main>;
+
   return (
     <main className="login-shell">
       <section className="login-story">
@@ -517,54 +488,7 @@ export function LoginScreen() {
             </div>
           ) : null}
 
-          {mode === 'login' && pendingCardUid ? (
-            <form className="login-form" noValidate onSubmit={submitNfcPin}>
-              <label>
-                PIN de la tarjeta
-                <input
-                  autoComplete="off"
-                  autoFocus
-                  inputMode="numeric"
-                  onChange={(event) => {
-                    setNfcPin(event.target.value);
-                    setStatus('idle');
-                    setErrorMessage('');
-                  }}
-                  placeholder="••••"
-                  required
-                  type="password"
-                  value={nfcPin}
-                />
-              </label>
-              {status === 'error' ? (
-                <p className="form-message error" role="alert">
-                  {errorMessage || 'PIN incorrecto. Inténtalo nuevamente.'}
-                </p>
-              ) : null}
-              {status === 'offline' ? (
-                <p className="form-message offline" role="alert">
-                  Estás sin conexión. Comprueba tu red para continuar.
-                </p>
-              ) : null}
-              <button className="primary-button" disabled={status === 'loading'} type="submit">
-                {status === 'loading' ? 'Verificando…' : 'Confirmar PIN'}
-              </button>
-              <button
-                className="text-button recovery-link"
-                onClick={() => {
-                  setPendingCardUid(null);
-                  setNfcPin('');
-                  setStatus('idle');
-                  setErrorMessage('');
-                }}
-                type="button"
-              >
-                Cancelar y usar otra tarjeta
-              </button>
-            </form>
-          ) : null}
-
-          {mode === 'login' && !pendingCardUid ? <form className="login-form" noValidate onSubmit={usandoCodigo ? entrarConCodigo : submit}>
+          {mode === 'login' ? <form className="login-form" noValidate onSubmit={usandoCodigo ? entrarConCodigo : submit}>
             {editandoCodigoEmpresa || !codigoEmpresa ? (
               <label className="codigo-empresa-campo">
                 Código de empresa
@@ -832,7 +756,26 @@ export function LoginScreen() {
             </form>
           ) : null}
         </div>
-        <footer>SentryCore · Acceso seguro</footer>
+        {/*
+          * El convenio con Vigilab va AQUI y no dentro del panel.
+          *
+          * La app es de marca blanca: en cuanto el tenant tiene nombre o logo
+          * propio, la marca del producto desaparece de su pantalla (ver
+          * brand.tsx). Meter a VoxTi y a Vigilab dentro del panel le pondria a
+          * cada cliente la marca de OTRA empresa de seguridad encima de la
+          * suya — justo lo contrario de lo que promete el producto.
+          *
+          * El ingreso es el unico lugar donde todavia no hay cliente: ahi la
+          * marca del producto es lo que corresponde mostrar.
+          */}
+        <footer className="login-pie">
+          <span>SentryCore · Acceso seguro</span>
+          <span className="login-convenio">
+            <span>VoxTi Labs · en convenio con</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/vigilab.png" alt="Vigilab" width={900} height={256} />
+          </span>
+        </footer>
       </section>
     </main>
   );

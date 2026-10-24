@@ -1,6 +1,6 @@
 # ADR 0139 — Control de acceso de visitantes en portería y recepción
 
-- **Estado: ACEPTADA.**
+- **Estado: ACTUALIZADA por solicitud explícita de producto del 22-10-2026.**
 - **Fecha:** 2026-08-18
 - **Issue:** #139
 - **Hito:** Planificado para Fase 2 (M4) como módulo Add-on de pago
@@ -144,3 +144,129 @@ Cuando se inicie el desarrollo de M4, se ejecutarán los siguientes pasos técni
    - `visitors:manage` (ADMIN)
 3. **Submódulo Móvil Dedicado:** Implementación en Expo/React Native de un modo "Portería" alternativo al modo "Ronda", permitiendo lectura de códigos de barra por hardware o cámara ligera y teclado numérico asistido para RUT.
 4. **Feature Gate:** Integración con `packages/shared/src/rules.ts` en `featureFlagsSchema` bajo la clave `visitorAccess: z.boolean().default(false)`.
+
+
+## 8. Incorporación solicitada el 22 de octubre de 2026
+
+La solicitud explícita de incorporar visitas sustituye el aplazamiento descrito arriba. Las evaluaciones de rendimiento anteriores son antecedentes de diseño, no mediciones de esta implementación. No se modifica la captura GPS ni la configuración de puntos al incorporar este módulo.
+
+El guardia encuentra **REGISTRAR VISITAS** antes de iniciar una ronda, conserva el recinto seleccionado y puede registrar entradas y salidas. El ADMIN consulta su empresa; el SUPERVISOR, solo sus recintos asignados. El módulo usa tablas independientes de las rondas, RLS forzada y claves foráneas compuestas por empresa.
+
+### Carnet y operación sin señal
+
+Se usa el modelo latino de [ML Kit incluido en Android](https://developers.google.com/ml-kit/vision/text-recognition/v2/android), sin subir imágenes a un OCR externo. La cámara genera una imagen temporal privada que se elimina al terminar la lectura, incluso si falla. Al portal solo llegan nombres, apellidos y RUN; nunca imagen, serie del documento, texto OCR completo, firma, fechas ni MRZ. El guardia informa a la visita y revisa/corrige los campos. Se valida el dígito verificador del RUN.
+
+Excluir el número de documento no hace que el registro deje de tratar datos personales. El responsable del recinto debe definir la finalidad y base jurídica y atender derechos. La [Ley 21.719](https://www.bcn.cl/leychile/navegar?i=1209272) entra en vigor el 1 de diciembre de 2026; hasta entonces continúa el régimen vigente de la Ley 19.628.
+
+La cola usa la base SQLCipher existente del teléfono, sin respaldo de identidad en localStorage. El identificador de la operación evita duplicados al reconectar y se comprueban empresa y guardia de origen para impedir reasignaciones al cambiar de sesión. Los teléfonos anteriores conservan las rondas y el registro manual con conexión; las funciones nuevas requieren protocolo minor 6. Retención configurable `visitorRetentionDays`: 30 días por defecto, 1–90 días, con purga del worker existente.
+
+### Fuentes vehiculares investigadas
+
+Revisión de fuentes y pruebas realizadas el 22-10-2026. No hay búsqueda masiva de patentes ni servicios de pago activados. Una fuente caída, bloqueada o incompleta produce **no consultado**, nunca un resultado limpio.
+
+| Fuente | Consulta gratuita y datos | Automatización y límites comprobados |
+|---|---|---|
+| [Auto Seguro](https://www.autoseguro.gob.cl/) | Encargos por patente/VIN/motor; información orientativa del servicio público | Formulario con reCAPTCHA v2. La investigación posterior consiguió una consulta automática local aceptada por el servidor con herramientas gratuitas; ver la sección de pruebas de CAPTCHA. La integración posterior usa un servicio privado y cola en el servidor; ver `services/vehicle-lookup/README.md`. La vista asistida inicial fue retirada del flujo del guardia: no se le exige resolver CAPTCHA ni visitar portales. |
+| [CIPAT / Mi Barrio](https://www.cipat.cl/) | Consulta gratuita de reportes comunitarios por patente | El mismo endpoint del formulario público `/api/lookup?patente=...` respondió HTTP 200 sin clave ni CAPTCHA. Se integra automáticamente. `found:false` significa **sin registro en CIPAT**, nunca libre de encargo oficial. Una respuesta positiva exige coincidencia de patente y un booleano `is_stolen`. Se conservan únicamente estado, marca, modelo y color; no teléfonos, texto libre ni datos de denunciantes. |
+| [PRT / MTT](https://www.prt.cl/Paginas/RevisionTecnica.aspx) | Revisión técnica y datos del vehículo; [ChileAtiende confirma gratuidad](https://www.chileatiende.gob.cl/fichas/86124) | Formulario público con CAPTCHA; la conexión HTTPS desde el entorno de trabajo falló por certificado. No se debilita TLS para producción. |
+| [Consulta pública de multas del Registro Civil](https://consultamultas.srcei.cl/ConsultaMultas/consultaMultasExterna.do) | Estado de multas, distinto del certificado pagado; [enlace institucional](https://www.colina.cl/transito/permisos-de-circulacion/links-de-interes/) | La prueba respondió HTTP 200 con “Request Rejected”, sin datos. No confundir ese HTML con cero multas. |
+| [AutoSign](https://autosign.cl/fact/) | Ficha gratuita: marca, modelo, año, color y otros datos; anuncia dueño registral | Adaptador del formulario público con sesión y CSRF normales. Dos consultas de ejemplo respondieron HTTP 500. El adaptador no inventa datos ni certifica titularidad. |
+| [Calistoweb](https://auto.calistoweb.cl/) | Historial de revisión técnica y ficha | Formulario con reCAPTCHA v3. Prueba con navegador real y flujo normal: HTTP 200, `success:false`, “reCAPTCHA verification failed”. No se omite ni falsea su validación. |
+| [Patentes Chile](https://www.patentechile.com/) | Anuncia consultas gratuitas de propietarios y características | Chrome visible y Patchright devolvieron HTTP 403. Se pulsó automáticamente la casilla de Cloudflare, pero continuó el bloqueo. El POST público `/resultados`, descrito en proyectos de GitHub, también respondió 403. No se obtuvieron datos. Su [página de contacto](https://www.patentechile.com/contacto/) excluye proporcionar API y bases de datos a terceros. |
+| [AutoRiesgo](https://autoriesgo.cl/api) | Vista previa gratuita parcial en su web | El endpoint documentado sin clave devolvió HTTP 403 y exige API comercial para uso programático. [Términos](https://autoriesgo.cl/terminos): no extraer automáticamente la web en lugar de la API. No se integra el servicio de pago. |
+| [Boostr](https://boostr.cl/precios) | Prueba de 5 consultas/día, 30 días; requiere clave | No es una fuente gratuita permanente. [Documentación](https://docs.boostr.cl/reference/car-plate) distingue ficha básica y extendida. Sin clave contratada ni prueba activada. |
+| [GetAPI](https://getapi.cl/docs/) | Datos vehiculares y robo según plan | Endpoints documentados requieren `X-Api-Key`; no hay clave ni servicio de pago activado. También se probó el endpoint histórico `chile.getapi.cl/v1/vehicles/plate/...` sin clave: HTTP 401. |
+| [ImpulsaVehículo](https://vehiculos.impulsacv.cl/faq) | Anuncia gratis PRT, robo y TAG | Consulta web solicita correo y usa Turnstile. No se encontró API pública documentada ni se entregan correos personales al sitio. |
+| [Rutificador en Chile](https://rutificadorenchile.cl/rutificador-patente/) | Anuncia ficha gratuita de marca, modelo, año y color | No acredita una API pública utilizable. Su propia página remite al CAV para la titularidad. |
+| [Datika](https://www.datika.cl/) | Ficha técnica gratuita por correo | Informe completo pagado. No aporta consulta automática gratuita documentada para la app. |
+| [Autofact](https://www.autofact.cl/blog/comprar-auto/antecedentes/revisar-patente-gratis) | Anuncia consulta express gratuita de ficha y último dueño; informe gratis por correo | La prueba de acceso devolvió HTTP 403. No se integra un formulario bloqueado ni se solicitan correos al guardia. |
+| [Carvuk](https://www.carvuk.com/consulta-de-patente) | Anuncia ficha y [consulta gratuita de multas](https://www.carvuk.com/consulta-de-multas) | El formulario público cargó HTTP 200, pero mantuvo deshabilitado el envío mientras Cloudflare solicitaba validación. La prueba no produjo datos vehiculares ni un resultado de multas. |
+| [Forecars](https://forecars.cl/historial-por-patente) | Historial gratuito sin correo: hasta tres patentes distintas por día desde una conexión; no informa encargo individual por robo | La prueba del formulario quedó detenida por validación antiabuso. Su [documentación para agentes](https://forecars.cl/ai) ofrece API para informes completos pagados, no para la consulta gratis. No se compra ni se activa un informe. |
+| [Buscapatentes](https://www.buscapatentes.cl/) | Formulario público de búsqueda | El botón permaneció deshabilitado en la prueba del navegador, sin resultado vehicular. No se fuerza ni se omite su validación. |
+| [Autodata](https://autodata.cl/) y [Volante o Maleta](https://www.volanteomaleta.com/) | Sitios de consulta vehicular | Autodata respondió HTTP 403; Volante o Maleta no estableció conexión desde el entorno. No aportaron datos. |
+| [PlacApi](https://placapi.com/api-consulta-vehicular-chile) y [Verifik](https://verifik.gitbook.io/verifik/verifik-es/validacion-de-vehiculo/chile/informacion-del-vehiculo) | APIs documentadas de ficha vehicular | Requieren cuenta/credencial y consumo comercial; no se activan. |
+
+El [CAV oficial](https://www.chileatiende.gob.cl/fichas/3370) identifica al titular y es pagado. El [certificado de multas](https://www.chileatiende.gob.cl/fichas/3439) también es pagado y no reemplaza todas las clases de antecedentes. No se compran certificados desde la app.
+
+Las características observadas por el guardia se distinguen de las consultas de fuente. Un resultado leído desde el formulario público en el teléfono queda atribuido como **consulta asistida en teléfono**, con fecha y actor; no es una certificación firmada por el organismo ni una garantía contra adulteración del dispositivo.
+
+### Ajuste del flujo: solo ficha del vehículo
+
+La lectura de patente dispara la consulta automáticamente; no hay botón para abrir Auto Seguro, CAPTCHA, enlaces externos ni campos obligatorios de marca, modelo o color. El guardia ve la ficha y registra el ingreso. Se conserva la posibilidad de repetir el escaneo o corregir una lectura equivocada. La falta de señal o de respuesta de un proveedor no impide registrar la patente y nunca se representa como cero multas ni como ausencia de encargo.
+
+La API encola las consultas fuera de la transacción de la petición. Publica la ficha básica y añade el resultado de Auto Seguro cuando el servicio privado termina. La visita se puede registrar mientras tanto; conserva el resultado aunque se cierre la app. No obtiene titularidad, color ni multas en todas las consultas. Esos límites se mantienen visibles y las respuestas comunitarias se separan del registro oficial.
+
+### Pruebas de proyectos gratuitos para CAPTCHA
+
+Investigación adicional del 22-10-2026, con una patente autorizada por su titular.
+Los informes, capturas, perfiles y modelos se mantienen fuera del repositorio.
+
+- [JacobLinCool/recaptcha-solver](https://github.com/JacobLinCool/recaptcha-solver),
+  versión 0.3.0, MIT: Vosk local y ffmpeg. Resolvió el desafío de audio del demo de
+  Google en 3,3 segundos y obtuvo un token. Auto Seguro no entregó audio y mostró
+  la advertencia de consultas automatizadas; allí terminó con `No Audio Found`.
+  Se abrió antes la casilla como adaptación al [problema de selector #10](https://github.com/JacobLinCool/recaptcha-solver/issues/10).
+- [Vinyzu/recognizer](https://github.com/Vinyzu/recognizer), referencia
+  `8a002c4574a1158ca4fa8519279427fce3614c97`, GPL-3.0: YOLO, CLIP y CLIPSeg
+  locales en CPU. Pasaron las dos referencias ensayadas de bicicletas y escaleras.
+  El automatismo original no obtuvo token dentro de tres intentos. Al observar
+  respuestas sin reemplazar peticiones, un ensayo normal resolvió imágenes y
+  emitió token en unos 70 segundos; otro agotó seis intentos sin token.
+- Con [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python) 1.64.2,
+  Chrome visible y un perfil anónimo dedicado, se completó el formulario oficial:
+  token real, POST aceptado, `IsResponse=true`, `Cod=0`, búsqueda por patente y
+  coincidencia de la patente solicitada. El resultado conocido fue
+  `CodTipoEncargo=0`. Esa consulta reutilizó el perfil y tardó unos 12 segundos
+  en la fase del CAPTCHA; no requirió resolver nuevas imágenes en ese intento.
+  La herramienta reproducible volvió a completar la consulta con un perfil
+  anónimo nuevo en unos 11 segundos totales, validando otra respuesta oficial.
+  Esto prueba viabilidad local, no disponibilidad ni latencia garantizadas.
+- [CaptchaFree](https://github.com/theriley106/CaptchaFree), MIT, y
+  [Buster](https://github.com/dessant/buster), GPL-3.0, también admiten voz local
+  mediante Whisper. Se revisó su código; no se ejecutaron. Necesitan que el sitio
+  ofrezca el audio. Cambiar el reconocedor no resuelve la ausencia de ese archivo.
+- [CaptchaBreaker](https://github.com/DHRlabs/CaptchaBreaker) tiene OCR local de
+  texto, pero su propia evaluación declara aproximadamente 7% de coincidencia
+  exacta en captchas distorsionados reales. Su vía de imágenes avanzada requiere
+  configurar un proveedor de visión externo; no se validó como alternativa local.
+
+La prueba reproducible está en `scripts/research/autoseguro/`. Lee el token emitido
+por Google desde el DOM compartido: el contexto JavaScript aislado de Patchright
+no expone los globals `grecaptcha` ni los de la respuesta oficial. La validación
+de esa respuesta se ejecuta explícitamente en el contexto principal. No se crean
+tokens ni se reemplaza la página oficial. Se distingue la emisión del CAPTCHA de
+la aceptación de la consulta. La ejecución local guarda evidencia privada. La misma herramienta es invocada por el worker privado, con límites y sin datos sensibles en logs.
+
+La integración de servidor añade cola, límites de concurrencia, tiempo máximo y
+estados pendientes/no consultados. Las pruebas de reCAPTCHA v2 no acreditan compatibilidad con v3 o Turnstile. Tampoco
+obtienen por sí mismas dueño, marca, modelo, color o multas de otra plataforma.
+
+
+### Fuentes adicionales y ejecución desde el VPS (23-10-2026)
+
+- [Restart](https://api.restart.cl/docs): API pública sin clave, límite documentado
+  de cinco solicitudes cada diez segundos por IP. El endpoint
+  `/v1/vehiculos-revisiones/:patente` devolvió marca, modelo, año y cuatro revisiones
+  para la patente autorizada. Se integra con un espaciado mínimo de 2,2 segundos,
+  coincidencia exacta de patente y selección de la fecha más reciente. No se
+  conservan números de certificado ni otros identificadores de su respuesta.
+- [Venpu](https://venpu.cl/cuanto-vale-mi-auto): su formulario gratuito sin registro
+  devolvió marca, modelo y año. Comprobado como alternativa de consulta, sin
+  incorporarlo inicialmente como dependencia del adaptador. La integración posterior
+  usa el GET público del formulario como respaldo de marca, modelo, año y color;
+  no aporta propietario ni multas.
+- [PatentesChile.cl](https://patenteschile.cl/), distinto de PatenteChile.com:
+  su formulario llama a `/api/consulta`. Respondió 200 con `encontrado:false` para
+  la patente autorizada; no equivale a inexistencia del vehículo. No se integra.
+- [Patente al Día](https://patentealdia.cl/): la consulta básica solicita cuenta.
+  No se registran cuentas ni se compran informes. PatentesChile.com (plural)
+  redirigió a un dominio estacionado, sin datos.
+
+El perfil CPU del contenedor usa YOLO11n-seg y omite las clases no soportadas por
+ese modelo dentro del límite de intentos. La prueba local tardó unos catorce
+segundos y la ejecutada desde el servidor unos quince segundos: ambas obtuvieron
+token, enviaron el formulario y validaron la respuesta oficial para la misma
+patente autorizada. No se infiere fiabilidad estadística de estas dos muestras.
+La API exige esos indicadores y una fecha reciente antes de publicar el estado.
+El proceso no usa sesiones ni cookies del teléfono, servicios de pago o claves
+externas. Los informes de prueba y la patente se conservan fuera de GitHub.

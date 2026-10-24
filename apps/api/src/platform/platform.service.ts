@@ -40,6 +40,24 @@ interface BillingRow {
 export class PlatformService {
   constructor(private readonly dataSource: DataSource) {}
 
+  async companyCard(actorId: string, tenantId: string) {
+    const rows = await this.withPlatformActor(actorId, (manager) =>
+      manager.query<Array<{ card_uid: string | null }>>('SELECT platform_get_company_card($1, $2) AS card_uid', [actorId, tenantId]));
+    return { cardUid: rows[0]!.card_uid };
+  }
+
+  async setCompanyCard(actorId: string, tenantId: string, cardUid: string) {
+    try {
+      await this.withPlatformActor(actorId, (manager) =>
+        manager.query('SELECT platform_set_company_card($1, $2, $3)', [actorId, tenantId, cardUid]));
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') throw new ConflictException('La tarjeta ya pertenece a otra empresa');
+      if ((error as { code?: string }).code === 'P0002') throw new NotFoundException('Empresa no encontrada');
+      throw error;
+    }
+    return { cardUid: cardUid || null };
+  }
+
   async listTenants(actorId: string) {
     const rows = await this.withPlatformActor(actorId, (manager) =>
       manager.query<TenantRow[]>(`SELECT * FROM platform_list_tenants($1)`, [actorId]),
@@ -92,6 +110,9 @@ export class PlatformService {
             input.adminFamilyName,
           ],
         );
+        if (input.loginCardUid) {
+          await manager.query('SELECT platform_set_company_card($1, $2, $3)', [actorId, tenantId, input.loginCardUid]);
+        }
       });
     } catch (error) {
       if (error instanceof QueryFailedError && error.driverError?.code === '23505') {

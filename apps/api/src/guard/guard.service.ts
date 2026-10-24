@@ -26,7 +26,7 @@ import {
 
 interface PatrolRow {
   id: string;
-  status: 'pendiente' | 'en_curso' | 'completada' | 'incompleta' | 'vencida';
+  status: 'pendiente' | 'en_curso' | 'pausada' | 'completada' | 'incompleta' | 'vencida';
   scheduled_start_at: Date;
   scheduled_end_at: Date;
   started_at: Date | null;
@@ -36,6 +36,7 @@ interface PatrolRow {
   site_name: string;
   site_timezone: string;
   route_name: string;
+  es_libre: boolean;
   estimated_duration_min: number;
   checkpoints: Array<{
     id: string;
@@ -113,6 +114,7 @@ export const CONSULTA_HOME = `
           s.name AS site_name,
           s.timezone AS site_timezone,
           r.name AS route_name,
+          r.is_free_roam AS es_libre,
           r.estimated_duration_min,
           COALESCE(
             jsonb_agg(
@@ -162,7 +164,21 @@ export const CONSULTA_HOME = `
         LEFT JOIN checkpoints c
           ON c.tenant_id = rc.tenant_id AND c.id = rc.checkpoint_id
         WHERE p.guard_id = $1
-          AND p.status IN ('pendiente', 'en_curso')
+          -- El estado pausada cuenta como ABIERTA (#231): sin el, la ronda
+          -- desaparece de la pantalla y el guardia cree que no tiene ninguna.
+          -- Lo mismo en el vencimiento (una pausa olvidada tiene que vencer
+          -- igual) y en la guarda de una-ronda-a-la-vez.
+          AND p.status IN ('pendiente', 'en_curso', 'pausada')
+          -- El recinto que ELIGIO el guardia (#231). Sin esta linea el
+          -- selector no servia para nada: el parametro llegaba a getHome, se
+          -- devolvia como selectedSiteId y la consulta seguia trayendo la
+          -- ronda que ganara el ORDER BY. Reportado en terreno: «aunque le
+          -- demos con EDIFICIO, toma maquinaria».
+          --
+          -- El ::uuid no es adorno: un parametro que solo aparece dentro de
+          -- un IS NULL no le da a PostgreSQL de donde deducir el tipo y la
+          -- sentencia revienta con 42P08. Ver parametros-tipados.integration.
+          AND ($2::uuid IS NULL OR p.site_id = $2::uuid)
         -- Se agrupa por las CLAVES PRIMARIAS (p.id, s.id, r.id): eso habilita
         -- la dependencia funcional y deja usar cualquier columna de esas tablas.
         -- Agrupar por p.site_id no sirve: es columna de patrols, no la PK de
@@ -244,7 +260,7 @@ export class GuardService {
   async getHome(guardId: string, siteId?: string) {
     const rows = await this.tenantContext.manager.query<PatrolRow[]>(
       CONSULTA_HOME,
-      [guardId],
+      [guardId, siteId ?? null],
     );
 
     const patrol = rows?.[0];
@@ -282,16 +298,56 @@ export class GuardService {
        * que no funciona. Se piden las activas de sus recintos con al menos dos
        * puntos, que es lo que `startVoluntaryPatrol` exige.
        */
-      const rutasVoluntarias = await this.rutasParaRondaVoluntaria(
-        assignedSites.map((s) => s.id),
-      );
+      /*
+       * Las del recinto ELEGIDO, no las de todos. Mezclarlas le ofrecia al
+       * guardia rondas del edificio de al frente estando en maquinaria, y al
+       * iniciarlas el servidor lo mandaba al otro recinto sin decirle nada.
+       */
+      const elegidoParaRondas =
+        siteId !== undefined ? assignedSites.find((s) => s.id === siteId) : undefined;
+      const recintosOfrecidos = elegidoParaRondas
+        ? [elegidoParaRondas.id]
+        : assignedSites.map((s) => s.id);
+      const rutasVoluntarias = await this.rutasParaRondaVoluntaria(recintosOfrecidos);
+
+      /*
+       * Cuantas hay en los OTROS recintos del guardia.
+       *
+       * Reportado en terreno el mismo dia que se filtro por recinto: «eliminó
+       * el boton de ronda voluntaria, quedó solo el de ronda libre». Es cierto
+       * y es correcto —el recinto nuevo todavia no tiene rutas cargadas— pero
+       * desaparecer sin decir nada se lee como que el sistema se rompio. Con
+       * este numero la pantalla puede explicar que las hay en otro recinto y
+       * que se cambia con el selector de arriba.
+       */
+      const rutasEnOtrosRecintos =
+        elegidoParaRondas && rutasVoluntarias.length === 0 && assignedSites.length > 1
+          ? (
+              await this.rutasParaRondaVoluntaria(
+                assignedSites.filter((s) => s.id !== elegidoParaRondas.id).map((s) => s.id),
+              )
+            ).length
+          : 0;
+
+      /*
+       * El mensaje dice DONDE no hay turno cuando el guardia eligio recinto.
+       * Con dos recintos asignados, "no tienes un turno" a secas se lee como
+       * "no trabajas hoy" y el guardia no vuelve a mirar el otro.
+       */
+      const elegido = assignedSites.find((s) => s.id === siteId);
+      const mensaje =
+        elegido && assignedSites.length > 1
+          ? `No tienes un turno asignado en ${elegido.name} en este momento.`
+          : 'No tienes un turno asignado en este momento.';
 
       return {
         hasAssignment: false as const,
         assignedSites,
         selectedSiteId: siteId ?? assignedSites[0]?.id ?? null,
-        message: 'No tienes un turno asignado en este momento.',
+        message: mensaje,
         voluntaryRoutes: rutasVoluntarias,
+        voluntaryRoutesElsewhere: rutasEnOtrosRecintos,
+        selectedSiteName: elegidoParaRondas?.name ?? null,
         connection: { status: 'online' as const },
         synchronization: { pendingItems: 0 },
       };
@@ -313,7 +369,7 @@ export class GuardService {
     )) {
       await this.tenantContext.manager.query(
         `UPDATE patrols SET status = 'vencida'
-         WHERE id = $1 AND status IN ('pendiente', 'en_curso')`,
+         WHERE id = $1 AND status IN ('pendiente', 'en_curso', 'pausada')`,
         [patrol.id],
       );
       return {
@@ -373,6 +429,13 @@ export class GuardService {
         // despues como se corrige una pantalla.
         timezone: patrol.site_timezone,
         routeName: patrol.route_name,
+        /*
+         * La app necesita saberlo para ofrecer el boton de cerrar: un recorrido
+         * libre no tiene punto de cierre que lo termine solo, y si no se cierra
+         * la traza sigue registrando la posicion del guardia despues de que
+         * volvio a su puesto.
+         */
+        isFreeRoam: patrol.es_libre === true,
         estimatedDurationMin: patrol.estimated_duration_min,
         startedAt: patrol.started_at,
         completedCheckpointCount: patrol.completed_checkpoint_count,
@@ -651,7 +714,7 @@ export class GuardService {
     ) {
       await this.tenantContext.manager.query(
         `UPDATE patrols SET status = 'vencida'
-         WHERE id = $1 AND status IN ('pendiente', 'en_curso')`,
+         WHERE id = $1 AND status IN ('pendiente', 'en_curso', 'pausada')`,
         [patrolId],
       );
       estado = 'vencida';
@@ -1151,7 +1214,7 @@ export class GuardService {
      */
     const abiertas = await this.tenantContext.manager.query<Array<{ id: string }>>(
       `SELECT id FROM patrols
-       WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso') LIMIT 1`,
+       WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso', 'pausada') LIMIT 1`,
       [guardId],
     );
     if (abiertas.length > 0) {
@@ -1188,6 +1251,325 @@ export class GuardService {
       isVoluntary: true,
       expectedCheckpoints: puntos.length,
     };
+  }
+
+  /**
+   * El recorrido libre: salir a rondar sin ruta ni puntos (#231).
+   *
+   * Es la excepcion, no el camino normal. Un ruido, una alarma, una vuelta
+   * fuera de lo planificado: el guardia necesita que quede constancia de por
+   * donde anduvo, y no hay ruta que seguir ni puntos que marcar.
+   *
+   * La ruta de recorrido libre se crea sola la primera vez que el recinto la
+   * usa. No se siembra al crear el recinto porque la mayoria no la va a usar
+   * nunca, y una ruta vacia en la lista del supervisor es una pregunta que
+   * nadie pidio.
+   */
+  async startFreeRoamPatrol(guardId: string, siteId: string) {
+    const recintos = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT s.id
+         FROM sites s
+         JOIN guard_sites gs ON gs.tenant_id = s.tenant_id AND gs.site_id = s.id
+        WHERE s.id = $1 AND gs.guard_id = $2 AND s.is_active`,
+      [siteId, guardId],
+    );
+    if (recintos.length === 0) {
+      throw new NotFoundException('El recinto no existe o no lo tienes asignado');
+    }
+
+    /*
+     * Una ronda a la vez, igual que la voluntaria: `home()` trae UNA sola, asi
+     * que una segunda abierta queda invisible y los escaneos irian a la que el
+     * telefono muestre y no a la que el guardia cree estar haciendo.
+     */
+    const abiertas = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM patrols
+        WHERE guard_id = $1 AND status IN ('pendiente', 'en_curso', 'pausada') LIMIT 1`,
+      [guardId],
+    );
+    if (abiertas.length > 0) {
+      throw new ConflictException('Ya tienes una ronda abierta: termínala antes de iniciar otra');
+    }
+
+    const rutaId = await this.rutaDeRecorridoLibre(siteId);
+
+    const jornada = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM shift_assignments
+        WHERE guard_id = $1 AND status = 'en_curso'
+        ORDER BY started_at DESC LIMIT 1`,
+      [guardId],
+    );
+
+    const patrolId = randomUUID();
+    /*
+     * `expected_checkpoint_ids` va vacio y no nulo: la columna es NOT NULL y
+     * todo lo que la lee espera una lista. Vacia significa "no habia nada que
+     * marcar", que es exactamente lo que pasa aca.
+     *
+     * `is_voluntary` en true la deja fuera de los promedios de cumplimiento,
+     * que es lo correcto: un recorrido sin puntos no se puede cumplir ni
+     * incumplir, y promediarlo como 0% hundiria el numero del recinto.
+     */
+    await this.tenantContext.manager.query(
+      `INSERT INTO patrols (
+        id, tenant_id, site_id, route_id, guard_id, status, started_at,
+        scheduled_start_at, scheduled_end_at, expected_checkpoint_ids,
+        shift_assignment_id, is_voluntary
+      ) VALUES ($1, app_tenant_id(), $2, $3, $4, 'en_curso', now(),
+                now(), now() + interval '12 hours', '[]'::jsonb, $5, true)`,
+      [patrolId, siteId, rutaId, guardId, jornada[0]?.id ?? null],
+    );
+
+    return { id: patrolId, status: 'en_curso' as const, isFreeRoam: true as const };
+  }
+
+  /**
+   * Cerrar el recorrido libre, que es lo unico que puede terminarlo.
+   *
+   * Una ronda normal se cierra sola al marcar su punto de cierre. Un recorrido
+   * libre no tiene puntos, asi que sin esto quedaria abierto hasta vencer a las
+   * 12 horas: el guardia arrastraria una ronda fantasma que le impide empezar
+   * otra, y la traza seguiria registrando su posicion despues de que volvio a
+   * su puesto. Eso ultimo importa mas que la comodidad: se rastrea SOLO
+   * mientras la ronda esta en curso.
+   */
+  async finishFreeRoamPatrol(guardId: string, patrolId: string) {
+    const filas = await this.tenantContext.manager.query<
+      Array<{ id: string; status: string; es_libre: boolean }>
+    >(
+      `SELECT p.id, p.status, r.is_free_roam AS es_libre
+         FROM patrols p
+         JOIN routes r ON r.tenant_id = p.tenant_id AND r.id = p.route_id
+        WHERE p.id = $1 AND p.guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    /*
+     * Solo las libres. Dejar cerrar una ronda asignada a voluntad seria darle
+     * al guardia la forma de terminar su turno sin recorrer: el informe diria
+     * "completada" con la mitad de los puntos sin marcar.
+     */
+    if (!ronda.es_libre) {
+      throw new ConflictException('Solo un recorrido libre se cierra a mano');
+    }
+    if (ronda.status !== 'en_curso') {
+      throw new ConflictException('Este recorrido ya está cerrado');
+    }
+
+    /*
+     * La columna es `closed_at`, no `ended_at`: `ended_at` no existe y el
+     * UPDATE fallaba con 42703, dejando al guardia con una ronda abierta que
+     * no podia cerrar ni reemplazar.
+     *
+     * `compliance_pct` en 0 y no nulo porque la columna alimenta los informes,
+     * y un nulo ahi se lee distinto segun quien lo mire. La ronda es
+     * `is_voluntary`, asi que ese 0 NO entra en los promedios del recinto: un
+     * recorrido sin puntos no se puede cumplir ni incumplir.
+     *
+     * El `AND status = 'en_curso'` protege de una carrera: dos toques seguidos
+     * al boton no pueden cerrar dos veces.
+     */
+    await this.tenantContext.manager.query(
+      `UPDATE patrols
+          SET status = 'completada', closed_at = now(), compliance_pct = 0
+        WHERE id = $1 AND status = 'en_curso'`,
+      [patrolId],
+    );
+    return { id: patrolId, status: 'completada' as const };
+  }
+
+  /**
+   * Pausar la ronda (#231).
+   *
+   * El guardia tiene que poder detenerla —lo llaman, come, entra a un
+   * subterraneo— y que quede CONSTANCIA. Sin esto solo caben dos salidas, las
+   * dos mentirosas: dejarla corriendo, y el informe acredita un tiempo en que
+   * nadie recorrio; o cerrarla incompleta, y pierde lo que llevaba marcado.
+   *
+   * LA PAUSA DETIENE LA TRAZA. Se rastrea solo mientras la ronda esta en curso,
+   * y una ronda pausada no lo esta. El estado en `pausada` es lo que hace que
+   * el servidor rechace las posiciones que llegen mientras tanto: no se confia
+   * en que el telefono deje de mandarlas.
+   */
+  async pausePatrol(guardId: string, patrolId: string, motivo?: string) {
+    const filas = await this.tenantContext.manager.query<Array<{ id: string; status: string }>>(
+      `SELECT id, status FROM patrols WHERE id = $1 AND guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    if (ronda.status === 'pausada') throw new ConflictException('Esta ronda ya está pausada');
+    if (ronda.status !== 'en_curso') {
+      throw new ConflictException('Solo se puede pausar una ronda en curso');
+    }
+
+    const limpio = motivo?.trim();
+    /*
+     * El INSERT va primero: si fallara despues de cambiar el estado, la ronda
+     * quedaria `pausada` sin fila que diga desde cuando, y el informe no
+     * podria calcular el tiempo detenido.
+     */
+    await this.tenantContext.manager.query(
+      `INSERT INTO patrol_pauses (tenant_id, patrol_id, reason)
+       VALUES (app_tenant_id(), $1, $2)`,
+      [patrolId, limpio && limpio.length >= 3 ? limpio : null],
+    );
+    await this.tenantContext.manager.query(
+      `UPDATE patrols SET status = 'pausada' WHERE id = $1 AND status = 'en_curso'`,
+      [patrolId],
+    );
+
+    return { id: patrolId, status: 'pausada' as const };
+  }
+
+  /** Reanudar: vuelve a 'en_curso' y la traza se enciende de nuevo. */
+  async resumePatrol(guardId: string, patrolId: string) {
+    const filas = await this.tenantContext.manager.query<Array<{ id: string; status: string }>>(
+      `SELECT id, status FROM patrols WHERE id = $1 AND guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    if (ronda.status !== 'pausada') throw new ConflictException('Esta ronda no está pausada');
+
+    /*
+     * Se cierra la pausa ABIERTA, no "la ultima": si por lo que sea quedaran
+     * dos, cerrar la mas reciente dejaria la otra abierta para siempre y el
+     * tiempo pausado creceria solo. El indice unico lo impide, pero la consulta
+     * no depende de que el indice exista.
+     */
+    await this.tenantContext.manager.query(
+      `UPDATE patrol_pauses SET resumed_at = now()
+        WHERE patrol_id = $1 AND resumed_at IS NULL`,
+      [patrolId],
+    );
+    await this.tenantContext.manager.query(
+      `UPDATE patrols SET status = 'en_curso' WHERE id = $1 AND status = 'pausada'`,
+      [patrolId],
+    );
+
+    return { id: patrolId, status: 'en_curso' as const };
+  }
+
+  /**
+   * Terminar la ronda sin haber marcado todos los puntos (#231).
+   *
+   * Pedido de terreno: el guardia sale, la ronda no se puede completar —lluvia,
+   * un acceso cerrado, lo llaman a otra cosa— y hasta ahora no tenia como
+   * cerrarla. Quedaba abierta hasta vencer a las 12 horas, impidiendole empezar
+   * otra y dejando la traza registrando su posicion.
+   *
+   * NO LA MARCA COMO COMPLETADA. Queda `incompleta` con el cumplimiento REAL:
+   * si marco un punto de dos, el informe dice 50% e incompleta. Esa es la
+   * diferencia entre darle una salida al guardia y darle una forma de fingir
+   * que recorrio. El supervisor ve exactamente lo que paso.
+   *
+   * Se pide un motivo opcional porque "la reja estaba cerrada" vale mas en el
+   * informe que un 50% sin explicacion.
+   */
+  async finishPatrolEarly(guardId: string, patrolId: string, motivo?: string) {
+    const filas = await this.tenantContext.manager.query<
+      Array<{ id: string; status: string; site_id: string; expected_checkpoint_ids: string[] }>
+    >(
+      `SELECT id, status, site_id, expected_checkpoint_ids
+         FROM patrols WHERE id = $1 AND guard_id = $2`,
+      [patrolId, guardId],
+    );
+    const ronda = filas[0];
+    if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
+    if (ronda.status !== 'en_curso') {
+      throw new ConflictException('Esta ronda ya está cerrada');
+    }
+
+    const escaneos = await this.tenantContext.manager.query<
+      Array<{ checkpoint_id: string; anomalies: ScanAnomaly[] | null }>
+    >(`SELECT checkpoint_id, anomalies FROM scans WHERE patrol_id = $1`, [patrolId]);
+
+    const reglas = await this.rules.effective({ siteId: ronda.site_id });
+    /*
+     * El MISMO calculo que usa el cierre normal. Si aca se inventara otro, dos
+     * rondas con los mismos escaneos podrian mostrar cumplimientos distintos
+     * segun como se cerraron, y el numero dejaria de significar nada.
+     */
+    const cumplimiento = computeCompliance(
+      ronda.expected_checkpoint_ids,
+      escaneos.map((e) => ({ checkpointId: e.checkpoint_id, anomalies: e.anomalies ?? [] })),
+      reglas.complianceThreshold,
+    );
+
+    await this.tenantContext.manager.query(
+      `UPDATE patrols
+          SET status = CASE WHEN $2 >= 100 THEN 'completada' ELSE 'incompleta' END,
+              closed_at = now(), compliance_pct = $2
+        WHERE id = $1 AND status = 'en_curso'`,
+      [patrolId, cumplimiento.pct],
+    );
+
+    /*
+     * El motivo va como novedad de la ronda y no como columna nueva: es texto
+     * libre del guardia, es lo mismo que ya hace `field_events`, y asi aparece
+     * en el informe junto al resto de lo que conto.
+     */
+    const limpio = motivo?.trim();
+    if (limpio) {
+      /*
+       * `criticality` en 'info' y el motivo en `text`: es una nota del guardia,
+       * no una alerta que despierte a nadie. `client_event_id` es obligatorio y
+       * unico por guardia — es la llave con que la app evita duplicar al
+       * reintentar; aca lo genera el servidor porque el evento nace del cierre.
+       */
+      await this.tenantContext.manager.query(
+        `INSERT INTO field_events
+           (tenant_id, site_id, patrol_id, guard_id, criticality, text, client_event_id)
+         VALUES (app_tenant_id(), $1, $2, $3, 'info', $4, gen_random_uuid())`,
+        [ronda.site_id, patrolId, guardId, `Ronda terminada sin completar: ${limpio}`],
+      );
+    }
+
+    return {
+      id: patrolId,
+      status: cumplimiento.pct >= 100 ? ('completada' as const) : ('incompleta' as const),
+      compliancePct: cumplimiento.pct,
+    };
+  }
+
+  /** La ruta de recorrido libre del recinto; se crea la primera vez que se usa. */
+  private async rutaDeRecorridoLibre(siteId: string): Promise<string> {
+    const existentes = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM routes WHERE site_id = $1 AND is_free_roam LIMIT 1`,
+      [siteId],
+    );
+    const existente = existentes[0];
+    if (existente) return existente.id;
+
+    const rutaId = randomUUID();
+    /*
+     * `ON CONFLICT DO NOTHING` contra el indice unico: dos guardias del mismo
+     * recinto pueden apretar el boton a la vez y solo puede quedar una ruta.
+     */
+    await this.tenantContext.manager.query(
+      /*
+       * `estimated_duration_min` es NOT NULL con CHECK > 0, asi que hay que
+       * darle un valor aunque aqui no signifique nada: un recorrido libre dura
+       * lo que el guardia decida. No se usa para nada —el vencimiento sale de
+       * `scheduled_end_at` y el cierre lo hace el guardia a mano—, pero
+       * omitirla hacia fallar el alta con un 500 contra PostgreSQL real.
+       */
+      `INSERT INTO routes (id, tenant_id, site_id, name, estimated_duration_min,
+                           is_active, is_free_roam)
+       VALUES ($1, app_tenant_id(), $2, 'Recorrido libre', 60, true, true)
+       ON CONFLICT DO NOTHING`,
+      [rutaId, siteId],
+    );
+
+    const creadas = await this.tenantContext.manager.query<Array<{ id: string }>>(
+      `SELECT id FROM routes WHERE site_id = $1 AND is_free_roam LIMIT 1`,
+      [siteId],
+    );
+    const creada = creadas[0];
+    if (!creada) throw new ConflictException('No se pudo preparar el recorrido libre');
+    return creada.id;
   }
 
   /**

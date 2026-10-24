@@ -19,7 +19,7 @@ export async function posicionDelEscaneo(): Promise<PosicionEscaneo | undefined>
   const permiso = await Location.getForegroundPermissionsAsync();
   if (permiso.status !== 'granted') return undefined;
   const posicion = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
+    accuracy: Location.Accuracy.BestForNavigation,
     mayShowUserSettingsDialog: true,
   });
   return {

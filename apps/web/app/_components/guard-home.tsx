@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+
+import { DivulgacionUbicacion } from './divulgacion-ubicacion';
 import { useEffect, useState } from 'react';
 
 import type { CheckpointKind } from '@sentrycore/shared';
@@ -30,10 +32,19 @@ export interface GuardHomeData {
     siteName: string;
     checkpointCount: number;
   }>;
+  /**
+   * Cuantas rondas voluntarias hay en los OTROS recintos del guardia cuando en
+   * el elegido no hay ninguna. Sirve para explicar una ausencia en vez de
+   * dejar que la seccion desaparezca sola.
+   */
+  voluntaryRoutesElsewhere?: number;
+  /** Nombre del recinto elegido, para nombrarlo en ese aviso. */
+  selectedSiteName?: string | null;
   shift?: {
     scheduledStartAt: string;
     scheduledEndAt: string;
   };
+
   /** Presupuesto de compresion de foto, resuelto por la API en la cascada del recinto. */
   photoBudget?: { targetBytes: number; maxBytes: number };
   /**
@@ -56,6 +67,12 @@ export interface GuardHomeData {
     /** Zona horaria del RECINTO. La marca de agua de la foto la usa. */
     timezone?: string;
     routeName: string;
+    /**
+     * La ronda es un recorrido libre (#231): no tiene puntos, asi que nada la
+     * cierra sola y el guardia necesita el boton para terminarla. Viene DENTRO
+     * de `patrol`, que es donde la API la pone.
+     */
+    isFreeRoam?: boolean;
     estimatedDurationMin: number;
     completedCheckpointCount: number;
     checkpoints: Array<{
@@ -93,6 +110,36 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
   const [rutaElegida, setRutaElegida] = useState<string>('');
   const [iniciandoVoluntaria, setIniciandoVoluntaria] = useState(false);
   const [errorVoluntaria, setErrorVoluntaria] = useState<string>();
+  const [enRecorridoLibre, setEnRecorridoLibre] = useState(false);
+  const [errorLibre, setErrorLibre] = useState<string>();
+
+  /**
+   * El recorrido libre (#231): salir a recorrer sin ruta ni puntos.
+   *
+   * Es la EXCEPCION —un ruido, una alarma, una vuelta fuera de lo planificado—
+   * y por eso va detras de un desplegable cerrado y no como un boton mas. Un
+   * guardia que ve dos botones del mismo tamanio va a usar el que no le pide
+   * elegir ruta, y el recorrido libre no acredita ningun punto.
+   */
+  async function iniciarRecorridoLibre(siteId: string) {
+    setEnRecorridoLibre(true);
+    setErrorLibre(undefined);
+    try {
+      const respuesta = await fetch(`${apiUrl}/guard/sites/${siteId}/free-roam`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!respuesta.ok) {
+        const cuerpo = (await respuesta.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(cuerpo?.message ?? 'No pudimos iniciar el recorrido');
+      }
+      window.location.reload();
+    } catch (e) {
+      setErrorLibre(e instanceof Error ? e.message : 'No pudimos iniciar el recorrido');
+      setEnRecorridoLibre(false);
+    }
+  }
+
 
   /**
    * Arranca una ronda que nadie programo.
@@ -159,6 +206,18 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
 
   if (!data.hasAssignment || !data.patrol || !data.shift) {
     return (
+      <>
+      {/*
+        * La divulgacion destacada va DELANTE del dialogo de Android (rechazo de
+        * Play del 02-10-2026). Se monta en las dos vistas de esta pantalla
+        * porque el guardia puede caer en cualquiera de las dos al ingresar.
+        */}
+      {puente.divulgacionPendiente ? (
+        <DivulgacionUbicacion
+          onContinuar={puente.continuarTrasDivulgacion}
+          onPosponer={puente.posponerDivulgacion}
+        />
+      ) : null}
       <section className="empty-assignment" aria-live="polite">
         <span className="empty-icon">✓</span>
         {data.assignedSites && data.assignedSites.length > 1 ? (
@@ -192,6 +251,26 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
           * dice para que sirve, porque un guardia no tiene por que adivinar por
           * que le conviene salir a una hora que nadie le fijo.
           */}
+        {/*
+          * Que no haya ninguna en ESTE recinto no es lo mismo que no haber
+          * ninguna. Reportado en terreno: «eliminó el botón de ronda
+          * voluntaria, quedó solo el de ronda libre» — era cierto, el recinto
+          * recien creado no tenia rutas, pero la seccion desaparecia sin decir
+          * nada y se leyo como que el sistema se habia roto.
+          */}
+        {rutasVoluntarias.length === 0 && (data.voluntaryRoutesElsewhere ?? 0) > 0 ? (
+          <div className="ronda-voluntaria vacia">
+            <h3>Ronda voluntaria</h3>
+            <p>
+              {data.selectedSiteName
+                ? `En ${data.selectedSiteName} todavía no hay rondas configuradas para recorrer por tu cuenta.`
+                : 'En este recinto todavía no hay rondas configuradas para recorrer por tu cuenta.'}{' '}
+              Hay {data.voluntaryRoutesElsewhere === 1 ? 'una' : data.voluntaryRoutesElsewhere} en
+              otro recinto: cámbialo arriba para verla.
+            </p>
+          </div>
+        ) : null}
+
         {rutasVoluntarias.length > 0 ? (
           <div className="ronda-voluntaria">
             <h3>Ronda voluntaria</h3>
@@ -238,8 +317,41 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
           </div>
         ) : null}
 
+        {/*
+          * Recorrido libre (#231). Va DETRAS de un desplegable cerrado y en
+          * tono menor a proposito: es la excepcion —un ruido, una alarma, una
+          * vuelta que nadie planifico— y no el camino normal. Un guardia que ve
+          * dos botones del mismo tamanio elige el que no le pide ruta, y este
+          * no acredita ningun punto de control.
+          */}
+        {data.assignedSites && data.assignedSites.length > 0 ? (
+          <details className="recorrido-libre">
+            <summary>¿Necesitas salir sin una ronda asignada?</summary>
+            <p>
+              Queda registrado por dónde anduviste, con la hora de inicio y de término. No marca
+              puntos de control, así que no cuenta como ronda cumplida. Ciérralo tú cuando vuelvas.
+            </p>
+            <button
+              className="secondary-button"
+              disabled={enRecorridoLibre}
+              onClick={() =>
+                iniciarRecorridoLibre(data.selectedSiteId ?? data.assignedSites![0]!.id)
+              }
+              type="button"
+            >
+              {enRecorridoLibre ? 'Iniciando…' : 'Empezar recorrido libre'}
+            </button>
+            {errorLibre ? (
+              <p className="ronda-voluntaria-error" role="alert">
+                {errorLibre}
+              </p>
+            ) : null}
+          </details>
+        ) : null}
+
         <ConnectionStatus pendingItems={data.synchronization.pendingItems} />
       </section>
+      </>
     );
   }
 
@@ -299,6 +411,15 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
 
   return (
     <>
+      {/* Misma divulgacion que en la vista sin ronda: el guardia puede ingresar
+          en cualquiera de las dos y el dialogo del sistema no puede adelantarse
+          al texto en ninguna. */}
+      {puente.divulgacionPendiente ? (
+        <DivulgacionUbicacion
+          onContinuar={puente.continuarTrasDivulgacion}
+          onPosponer={puente.posponerDivulgacion}
+        />
+      ) : null}
       {puente.avisoUbicacion ? (
         <p className="guardia-anuncio guardia-anuncio-alerta" role="alert">
           {puente.avisoUbicacion}
@@ -349,6 +470,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
             un <button> sin onClick — se veia igual que uno funcionando y no
             hacia nada. */}
         {error ? <p className="guard-action-error" role="alert">{error}</p> : null}
+
 
         <div className="guard-shift-grid">
           <span><small>Ronda</small><strong>{time.format(new Date(shift.scheduledStartAt))} — {time.format(new Date(shift.scheduledEndAt))}</strong></span>

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { validateEnv } from './env';
 
 const valid = {
@@ -12,6 +15,14 @@ const valid = {
   SMTP_SECURE: 'true',
   WEB_PUBLIC_URL: 'https://control.example.test',
 };
+
+/** Los drivers que el esquema acepta, leidos del propio codigo fuente. */
+const MAIL_DRIVERS: string[] = (() => {
+  const fuente = readFileSync(join(__dirname, 'env.ts'), 'utf8');
+  const m = /MAIL_DRIVER:\s*z\.enum\(\[([^\]]+)\]\)/.exec(fuente);
+  if (!m?.[1]) throw new Error('no encontre el enum de MAIL_DRIVER');
+  return [...m[1].matchAll(/'([a-z]+)'/g)].map((x) => x[1] as string);
+})();
 
 describe('validateEnv', () => {
   it('acepta un entorno de producción completo y seguro', () => {
@@ -36,10 +47,39 @@ describe('validateEnv', () => {
 
   it('rechaza correo local o sin cifrar en producción', () => {
     expect(() => validateEnv({ ...valid, MAIL_DRIVER: 'mailpit' })).toThrow(
-      'MAIL_DRIVER debe ser smtp',
+      'no puede ser mailpit',
     );
     expect(() => validateEnv({ ...valid, SMTP_SECURE: 'false' })).toThrow(
       'SMTP_SECURE=true',
+    );
+  });
+
+  /*
+   * La guarda de produccion tiene que prohibir el driver que NO ENTREGA, no
+   * exigir uno en concreto. Decia `!== 'smtp'` porque smtp era el unico real,
+   * y al agregar `resend` empezo a rechazar un driver legitimo: la API se
+   * negaba a arrancar y tumbo produccion dos veces.
+   *
+   * Esta prueba recorre TODOS los drivers que el esquema acepta, asi que el
+   * proximo que se agregue entra sola.
+   */
+  it('deja arrancar en producción con cualquier driver que sí entregue', () => {
+    const entregan = MAIL_DRIVERS.filter((d) => d !== 'mailpit');
+    expect(entregan.length).toBeGreaterThan(1);
+
+    for (const driver of entregan) {
+      expect(() =>
+        validateEnv({ ...valid, MAIL_DRIVER: driver, RESEND_API_KEY: 're_llave_de_prueba' }),
+      ).not.toThrow();
+    }
+  });
+
+  it('cada driver exige sus propias credenciales', () => {
+    expect(() => validateEnv({ ...valid, MAIL_DRIVER: 'resend', RESEND_API_KEY: '' })).toThrow(
+      'RESEND_API_KEY',
+    );
+    expect(() => validateEnv({ ...valid, MAIL_DRIVER: 'smtp', SMTP_HOST: '' })).toThrow(
+      'SMTP_HOST',
     );
   });
 

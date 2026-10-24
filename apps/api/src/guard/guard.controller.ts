@@ -1,10 +1,20 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 
 import type { AuthenticatedUser } from '../auth/auth.guard';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { CreateScanDto } from './dto/create-scan.dto';
+import { FinishEarlyDto } from './dto/finish-early.dto';
 import { EnrollDeviceKeyDto } from './dto/enroll-device-key.dto';
 import { ReportEventDto } from './dto/report-event.dto';
 import { ShiftMarkDto } from './dto/shift-mark.dto';
@@ -19,8 +29,14 @@ export class GuardController {
     private readonly signatures: DeviceSignatureService,
   ) {}
 
+  /*
+   * La clave de firma la registra cualquiera que use la app en su telefono, no
+   * solo el guardia: desde #231 el SUPERVISOR da de alta puntos con el lector
+   * NFC, y el puente aborta el saludo si esto responde 403 —dejandolo sin
+   * escaneo y sin explicacion en pantalla—.
+   */
   @Post('device-signing-key')
-  @Permissions('patrols:execute')
+  @Permissions('device:signing-key:enroll')
   enrollDeviceKey(
     @Body() input: EnrollDeviceKeyDto,
     @Req() request: Request & { user: AuthenticatedUser },
@@ -28,11 +44,17 @@ export class GuardController {
     return this.signatures.enroll(request.user.sub, input.deviceId, input.key);
   }
 
+  /*
+   * `siteId` se valida como UUID aqui y no en el servicio: la consulta lo
+   * compara con `$2::uuid` y un valor mal formado —la URL la puede editar
+   * cualquiera— saldria como 22P02, o sea un 500 en la pantalla principal del
+   * guardia. Opcional: sin recinto elegido se responde la ronda que haya.
+   */
   @Get('home')
   @Permissions('patrols:execute')
   home(
     @Req() request: Request & { user: AuthenticatedUser },
-    @Query('siteId') siteId?: string,
+    @Query('siteId', new ParseUUIDPipe({ optional: true })) siteId?: string,
   ) {
     return this.guardService.getHome(request.user.sub, siteId);
   }
@@ -75,6 +97,73 @@ export class GuardController {
     @Req() request: Request & { user: AuthenticatedUser },
   ) {
     return this.guardService.startVoluntaryPatrol(request.user.sub, routeId);
+  }
+
+  /*
+   * El recorrido libre (#231). Es la excepcion —un ruido, una alarma, una
+   * vuelta fuera de lo planificado— y por eso va aparte de la ronda
+   * voluntaria: aquella recorre una ruta de verdad, esta no tiene ninguna.
+   */
+  @Post('sites/:siteId/free-roam')
+  @Permissions('patrols:execute')
+  startFreeRoamPatrol(
+    @Param('siteId') siteId: string,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.startFreeRoamPatrol(request.user.sub, siteId);
+  }
+
+  /*
+   * Cerrarlo es parte de la funcion, no un extra: sin esto el recorrido queda
+   * abierto hasta vencer y la traza sigue registrando la posicion del guardia
+   * despues de que volvio a su puesto.
+   */
+  @Post('patrols/:patrolId/free-roam/finish')
+  @Permissions('patrols:execute')
+  finishFreeRoamPatrol(
+    @Param('patrolId') patrolId: string,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.finishFreeRoamPatrol(request.user.sub, patrolId);
+  }
+
+  /*
+   * Pausar y reanudar (#231). La pausa DETIENE la traza: el servidor rechaza
+   * las posiciones de una ronda que no esta `en_curso`, asi que no depende de
+   * que el telefono deje de mandarlas.
+   */
+  @Post('patrols/:patrolId/pause')
+  @Permissions('patrols:execute')
+  pausePatrol(
+    @Param('patrolId') patrolId: string,
+    @Body() input: FinishEarlyDto,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.pausePatrol(request.user.sub, patrolId, input.reason);
+  }
+
+  @Post('patrols/:patrolId/resume')
+  @Permissions('patrols:execute')
+  resumePatrol(
+    @Param('patrolId') patrolId: string,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.resumePatrol(request.user.sub, patrolId);
+  }
+
+  /*
+   * Terminar la ronda sin haber marcado todos los puntos (#231). Queda
+   * `incompleta` con el cumplimiento REAL: es una salida para el guardia, no
+   * una forma de fingir que recorrio.
+   */
+  @Post('patrols/:patrolId/finish-early')
+  @Permissions('patrols:execute')
+  finishPatrolEarly(
+    @Param('patrolId') patrolId: string,
+    @Body() input: FinishEarlyDto,
+    @Req() request: Request & { user: AuthenticatedUser },
+  ) {
+    return this.guardService.finishPatrolEarly(request.user.sub, patrolId, input.reason);
   }
 
   @Post('events')

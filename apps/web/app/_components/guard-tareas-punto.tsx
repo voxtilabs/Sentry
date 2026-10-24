@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { GuardCameraInput, type PedirPermisoCamara } from './guard-camera-input';
 
 import { procesarFoto } from './guard-photo';
 import { fijarServerId, guardarFoto } from './guard-photo-store';
@@ -61,6 +62,7 @@ export function GuardTareasPunto({
   idDelEscaneo,
   onEstado,
   onListo,
+  pedirPermisoCamara,
 }: {
   apiUrl: string;
   nombrePunto: string;
@@ -78,6 +80,7 @@ export function GuardTareasPunto({
   idDelEscaneo: () => string | undefined;
   onEstado: (estado: EstadoTareas) => void;
   onListo: () => void;
+  pedirPermisoCamara?: PedirPermisoCamara;
 }) {
   const [borradores, setBorradores] = useState<Record<string, Borrador>>({});
   const [guardando, setGuardando] = useState<string>();
@@ -189,6 +192,7 @@ export function GuardTareasPunto({
           guardando={guardando === item.id}
           onAnotar={(cambio) => anotar(item.id, cambio)}
           onGuardar={() => void guardar(item)}
+          {...(pedirPermisoCamara ? { pedirPermisoCamara } : {})}
         />
       ))}
 
@@ -215,12 +219,14 @@ function Tarea({
   guardando,
   onAnotar,
   onGuardar,
+  pedirPermisoCamara,
 }: {
   item: ItemTarea;
   borrador: Borrador | undefined;
   guardando: boolean;
   onAnotar: (cambio: Partial<Borrador>) => void;
   onGuardar: () => void;
+  pedirPermisoCamara?: PedirPermisoCamara;
 }) {
   const valor = borrador?.value ?? '';
   const esFalla = item.responseType === 'ok_falla' && valor === 'falla';
@@ -285,23 +291,10 @@ function Tarea({
           {/* Solo cámara: `capture="environment"` abre la cámara y no el selector
               de archivos. Es la misma regla que la foto del acceso y por la misma
               razón — desde la galería, una foto vieja pasa por evidencia nueva. */}
-          <label className="guardia-boton-secundario ancho" htmlFor={`${campo}-foto`}>
-            {borrador?.nombreArchivo ? 'Repetir foto' : 'Tomar foto'}
-          </label>
-          <input
-            accept="image/*"
-            capture="environment"
-            className="guardia-invisible"
-            disabled={guardando}
-            id={`${campo}-foto`}
-            onChange={(evento) => {
-              const archivo = evento.target.files?.[0];
-              if (!archivo) return;
-              onAnotar({ archivo, nombreArchivo: archivo.name });
-              evento.target.value = '';
-            }}
-            type="file"
-          />
+          <GuardCameraInput id={`${campo}-foto`} disabled={guardando}
+            etiqueta={borrador?.nombreArchivo ? 'Repetir foto' : 'Tomar foto'}
+            onFoto={(archivo) => onAnotar({ archivo, nombreArchivo: archivo.name })}
+            {...(pedirPermisoCamara ? { pedirPermiso: pedirPermisoCamara } : {})} />
           {borrador?.archivo ? <p className="guardia-nota">Foto lista para enviar.</p> : null}
         </div>
       ) : null}
