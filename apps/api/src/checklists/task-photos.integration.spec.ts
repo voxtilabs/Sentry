@@ -75,6 +75,15 @@ conBase('fotos múltiples y versiones contra PostgreSQL con RLS', () => {
     expect(r.results[0]?.status).toBe('rechazado');
     expect(await runner.query(`SELECT * FROM checklist_responses WHERE item_id=$1`, [t.itemId])).toEqual([]);
   }));
+  it('recupera escaneos para la cola de su guardia y no permite obtenerlos con otra sesión', async () => transaccion(async (service, runner) => {
+    await plantilla(service, runner);
+    await foto(runner);
+    const expected = await runner.query(`SELECT client_scan_id AS "clientScanId", id AS "scanId", checkpoint_id AS "checkpointId" FROM scans WHERE patrol_id=$1 ORDER BY scanned_at_server`, [patrol]);
+    const recuperada = await service.templateForPatrol(patrol, guard, true);
+    expect(recuperada.hasChecklist && recuperada.syncScans).toEqual(expected);
+    await expect(service.templateForPatrol(patrol, 'b0000000-0000-4000-8000-000000000002', true))
+      .rejects.toMatchObject({ status: 404 });
+  }));
   it('publicar cambios conserva la plantilla congelada y acepta la cola de la ronda anterior', async () => transaccion(async (service, runner) => {
     const t = await plantilla(service, runner);
     const nueva = await service.updateTemplate(t.id, { replaceAnswered: true, name: 'Configuración nueva', items: [{

@@ -24,6 +24,7 @@ import {
   type PayloadNovedad,
 } from './guard-outbox';
 import { GuardTareasPunto } from './guard-tareas-punto';
+import { useRecuperarTareasGuardadas } from './guard-tareas-recuperacion';
 import { useTrazaEnVivo } from './use-guard-traza';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import {
@@ -174,6 +175,7 @@ function subirFotoPersistida(
 }
 
 export function GuardShift({ data, apiUrl }: { data: GuardShiftData; apiUrl: string }) {
+  useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
   if (!data.hasAssignment || data.patrol === undefined || data.shift === undefined) {
     return <SinAsignacion apiUrl={apiUrl} mensaje={data.message} />;
   }

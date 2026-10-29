@@ -305,7 +305,7 @@ export class ChecklistsService {
   // -------------------------------------------------------------- ejecucion
 
   /** Lo que el guardia tiene que responder en esta ronda, ya resuelto. */
-  async templateForPatrol(patrolId: string, guardId: string) {
+  async templateForPatrol(patrolId: string, guardId: string, includeScanIds = false) {
     const ronda = await this.rondaDelGuardia(patrolId, guardId);
     const plantilla = await this.plantillaDeLaRonda(ronda);
     if (!plantilla) {
@@ -316,6 +316,10 @@ export class ChecklistsService {
       hasChecklist: true as const,
       template: { id: plantilla.id, name: plantilla.name,
         items: await this.conCantidadesDeFotos(plantilla.items, ronda.site_id) },
+      ...(includeScanIds ? { syncScans: await this.tenantContext.manager.query<Array<{
+        clientScanId: string; scanId: string; checkpointId: string;
+      }>>(`SELECT client_scan_id AS "clientScanId", id AS "scanId", checkpoint_id AS "checkpointId"
+           FROM scans WHERE patrol_id=$1 ORDER BY scanned_at_server`, [patrolId]) } : {}),
     };
   }
 

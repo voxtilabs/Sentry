@@ -22,6 +22,10 @@ Sin conexión se conservan fotos, texto y respuesta. El servidor no acepta la
 respuesta hasta recibir todas las fotos capturadas y exige el mínimo configurado.
 Al reconectar, volver a la pantalla o recuperar el id de un escaneo, se reintenta
 la cola. Un recibo persistente evita repetir la subida de una foto ya confirmada.
+La recuperación también se ejecuta en la portada sin ronda asignada: consulta
+los escaneos de las rondas con trabajo local y envía sus fotos y respuestas. El
+servidor valida que cada ronda pertenezca al guardia de la sesión; el trabajo de
+otra sesión se conserva y no se envía con la identidad nueva.
 Los reenvíos de respuestas son idempotentes. Las fotos deben pertenecer a la misma
 ronda y al punto de la tarea; no se admiten ids repetidos.
 
