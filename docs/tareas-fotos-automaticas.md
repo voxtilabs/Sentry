@@ -10,8 +10,10 @@ el mínimo y el máximo (1–10); inicialmente se heredan **mínimo 1, máximo 3
 reglas de evidencia. El administrador puede cambiar los valores heredados por
 empresa, recinto o punto. El máximo efectivo nunca queda por debajo del mínimo.
 
-La app muestra una tarea a la vez. Cada captura se procesa con marca de agua,
-se guarda en IndexedDB y se intenta subir inmediatamente. **Agregar foto** aparece
+La app muestra una tarea a la vez. Las tareas de fotografía del punto aparecen
+antes de sus preguntas, aunque el CSV original las haya traído en otro orden.
+Cada captura se procesa con marca de agua, se guarda en IndexedDB y se intenta
+subir inmediatamente. **Agregar foto** aparece
 al regresar de cámara y desaparece al alcanzar el máximo. La pregunta se habilita
 después del mínimo: tocar SÍ/NO encola y envía la respuesta completa; un argumento
 o número tiene un solo botón verde **Enviar**. Solo fotos termina automáticamente

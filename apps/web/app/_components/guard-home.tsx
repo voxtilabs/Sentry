@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import type { CheckpointKind } from '@sentrycore/shared';
 
 import type { PoliticaFoto } from './guard-shift-state';
+import { useRecuperarTareasGuardadas } from './guard-tareas-recuperacion';
 import { traducirEstadoPermiso } from './guard-permiso-ubicacion';
 import { useGuardBridge } from './use-guard-bridge';
 
@@ -101,6 +102,7 @@ const time = new Intl.DateTimeFormat('es-CL', {
 });
 
 export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: string }) {
+  useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
   const router = useRouter();
   const puente = useGuardBridge(apiUrl);
   const guardarRutaOffline = puente.guardarRutaOffline;

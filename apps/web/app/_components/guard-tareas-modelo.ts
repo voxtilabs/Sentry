@@ -86,7 +86,12 @@ export function tareasDelPunto(
 ): ItemTarea[] {
   return items
     .filter((item) => item.checkpointId === checkpointId)
-    .sort((a, b) => a.position - b.position);
+    .sort((a, b) => {
+      // El CSV puede traer la pregunta antes de la foto. En terreno siempre
+      // van primero las capturas; position conserva el orden dentro de cada paso.
+      const paso = (item: ItemTarea) => item.responseType === 'foto' ? 0 : item.requiresPhoto ? 1 : 2;
+      return paso(a) - paso(b) || a.position - b.position;
+    });
 }
 
 /**
