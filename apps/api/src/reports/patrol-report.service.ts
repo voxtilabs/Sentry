@@ -83,7 +83,7 @@ export interface InformeRondaPdf {
  */
 export const SQL_TAREAS_DEL_TURNO = `
   WITH ronda AS (
-    SELECT rp.id, rp.site_id, sa.shift_id
+    SELECT rp.id, rp.site_id, sa.shift_id, rp.checklist_template_id
     FROM patrols rp
     LEFT JOIN shift_assignments sa
       ON sa.tenant_id = rp.tenant_id AND sa.id = rp.shift_assignment_id
@@ -104,9 +104,10 @@ export const SQL_TAREAS_DEL_TURNO = `
     (SELECT t.id
      FROM checklist_templates t, ronda
      WHERE NOT EXISTS (SELECT 1 FROM respondida)
-       AND t.is_active
-       AND (t.site_id IS NULL OR t.site_id = ronda.site_id)
-       AND (t.shift_id IS NULL OR t.shift_id = ronda.shift_id)
+       AND (t.id = ronda.checklist_template_id OR
+         (ronda.checklist_template_id IS NULL AND t.is_active
+           AND (t.site_id IS NULL OR t.site_id = ronda.site_id)
+           AND (t.shift_id IS NULL OR t.shift_id = ronda.shift_id)))
      ORDER BY (t.site_id IS NOT NULL)::int + (t.shift_id IS NOT NULL)::int DESC
      LIMIT 1)
   )
@@ -125,6 +126,8 @@ export const SQL_TAREAS_DEL_TURNO = `
     r.notes,
     r.failed,
     r.photo_id,
+    (SELECT array_agg(rp.photo_id ORDER BY rp.position)
+       FROM checklist_response_photos rp WHERE rp.tenant_id = r.tenant_id AND rp.response_id = r.id) AS photo_ids,
     r.late_minutes,
     r.responded_at
   FROM checklist_items i

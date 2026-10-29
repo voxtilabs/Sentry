@@ -1014,7 +1014,7 @@ function dibujarTareas(doc: PDFKit.PDFDocument, modelo: InformeRonda): void {
       { texto: tarea.respuesta ? recortar(tarea.respuesta.replaceAll('\n', ' '), 20) : '—' },
       tarea.faltaFoto
         ? { texto: 'FALTA', color: PALETA.alerta, negrita: true }
-        : { texto: tarea.fotoId ? 'Sí' : '—' },
+        : { texto: tarea.fotoIds.length ? String(tarea.fotoIds.length) : '—' },
       tarea.atrasada
         ? { texto: `+${tarea.atrasoMinutos} min`, color: PALETA.alerta, negrita: true }
         : { texto: '—' },

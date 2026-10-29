@@ -45,6 +45,10 @@ HEREDADOS = {
     'node-forge': 'GHSA-86w9-cpqp-85rv sin parche; certificados de Expo CLI, no del login de la app',
     '@expo/code-signing-certificates': 'arrastra node-forge sin parche en Expo CLI',
     'zod': 'GHSA-mrhx-c7xc-m3w5: Expo CLI exige Zod 3; parche en 4.6.6 es cambio mayor; valida configuración local de build',
+    'deepmerge': 'GHSA-gcqx-w48m-w2h4 sin versión corregida; Expo mezcla la configuración local de compilación, no datos del guardia',
+    '@expo/config': 'arrastra deepmerge sin parche al leer configuración del proyecto durante el build',
+    '@expo/local-build-cache-provider': 'arrastra @expo/config y deepmerge en tooling local de build',
+    '@expo/prebuild-config': 'arrastra @expo/config y deepmerge al generar el proyecto nativo',
 }
 
 

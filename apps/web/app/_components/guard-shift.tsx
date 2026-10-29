@@ -25,7 +25,7 @@ import {
 } from './guard-outbox';
 import { GuardTareasPunto } from './guard-tareas-punto';
 import { useTrazaEnVivo } from './use-guard-traza';
-import { adoptarFotosDeTareas, sincronizarTareas } from './guard-tareas-flujo';
+import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import {
   cargarEstadoTareas,
   cargarPlantillaTareas,
@@ -34,6 +34,7 @@ import {
   guardarPlantillaTareas,
   itemsDeLaPlantilla,
   tareasDelPuntoPorResponder,
+  tareaCubreFotoDelPunto,
   type EstadoTareas,
   type ItemTarea,
   type PlantillaTareas,
@@ -158,7 +159,7 @@ function subirFotoPersistida(
   // señal vuelve a mitad del procesado. Ver conSubidaExclusiva.
   return conSubidaExclusiva(clientEventId, async () => {
     const guardada = await leerFoto(clientEventId);
-    if (!guardada) return undefined;
+    if (!guardada || guardada.destino === 'tarea') return undefined;
     // Se manda la hora de CAPTURA que quedo guardada con la foto, no la de ahora:
     // esta subida puede ocurrir horas despues, al recuperar señal.
     //
@@ -405,6 +406,29 @@ function Ronda({
     setTareas(siguiente);
   }, []);
 
+  useEffect(() => {
+    const refrescar = () => setTareas(cargarEstadoTareas(patrol.id));
+    const fotoSubida = (evento: Event) => {
+      const { clientScanId } = (evento as CustomEvent<{ clientScanId: string }>).detail;
+      actualizar((actual) => marcarFotoPuntoSubida(actual, clientScanId, true));
+    };
+    const sincronizar = () => { void sincronizarTareasGuardadas(apiUrl, patrol.id,
+      cargarEstadoRonda(patrol.id).puntos).catch(() => undefined); };
+    window.addEventListener('sentrycore:tareas', refrescar);
+    window.addEventListener('sentrycore:foto-tarea-subida', fotoSubida);
+    window.addEventListener('online', sincronizar);
+    const alVolver = () => { if (document.visibilityState === 'visible') sincronizar(); };
+    document.addEventListener('visibilitychange', alVolver);
+    const timer = window.setInterval(sincronizar, 10_000);
+    return () => {
+      window.removeEventListener('sentrycore:tareas', refrescar);
+      window.removeEventListener('sentrycore:foto-tarea-subida', fotoSubida);
+      window.removeEventListener('online', sincronizar);
+      document.removeEventListener('visibilitychange', alVolver);
+      window.clearInterval(timer);
+    };
+  }, [actualizar, apiUrl, patrol.id]);
+
   /**
    * Las tareas del turno se piden AL ENTRAR a la ronda y se guardan (#265).
    *
@@ -425,11 +449,7 @@ function Ronda({
 
     void (async () => {
       const registros = cargarEstadoRonda(patrol.id).puntos;
-      const sincronizado = await sincronizarTareas(
-        apiUrl,
-        await adoptarFotosDeTareas(apiUrl, local, registros),
-      );
-      if (vivo && sincronizado !== local) actualizarTareas(sincronizado);
+      await sincronizarTareasGuardadas(apiUrl, patrol.id, registros);
 
       try {
         const respuesta = await pedirApi(apiUrl, `/checklists/patrols/${patrol.id}/template`);
@@ -556,12 +576,7 @@ function Ronda({
           };
         }
         void (async () => {
-          const actual = cargarEstadoTareas(patrol.id);
-          const siguiente = await sincronizarTareas(
-            apiUrl,
-            await adoptarFotosDeTareas(apiUrl, actual, escaneosConId),
-          );
-          if (siguiente !== actual) actualizarTareas(siguiente);
+          await sincronizarTareasGuardadas(apiUrl, patrol.id, escaneosConId);
         })();
       }),
     [actualizar, actualizarTareas, apiUrl, idsDeEscaneo, patrol.id, refrescarFotosPendientes],
@@ -592,6 +607,13 @@ function Ronda({
   const tareasEnPantalla =
     puntoConTareas !== undefined &&
     tareasDelPuntoPorResponder(itemsTareas, tareas, puntoConTareas.checkpointId).length > 0;
+
+  useEffect(() => {
+    if (puntoConTareas && !tareasEnPantalla && estado.cierre && !fotoDePunto) {
+      setPuntoConTareas(undefined);
+      setVista('resumen');
+    }
+  }, [puntoConTareas, tareasEnPantalla, estado.cierre, fotoDePunto]);
 
   // Qué caminos ofrece la pantalla: lo que puede el TELÉFONO (lo trae el puente)
   // cruzado con lo que permite la EMPRESA (lo trae la API en la cascada del
@@ -710,14 +732,14 @@ function Ronda({
       // La foto se pide igual estando sin señal: se guarda en el teléfono y sube
       // sola con el id que devuelva la sincronización. Va ANTES del resumen para
       // que el punto de cierre no se salte su evidencia.
-      if (exigeFoto) {
+      if (exigeFoto && !tareaCubreFotoDelPunto(itemsTareas, destino.id)) {
         pedirFotoDelPunto(
           { checkpointId: destino.id, nombre: destino.name, clientScanId },
           `${guardadoSinSenal} Ahora fotografía el acceso.`,
         );
         return;
       }
-      if (destino.isClosingPoint) setVista('resumen');
+      if (destino.isClosingPoint && !tareasDelPuntoPorResponder(itemsTareas, tareas, destino.id).length) setVista('resumen');
       return;
     }
 
@@ -780,7 +802,7 @@ function Ronda({
         : `Punto ${respuesta.checkpoint.name} registrado${esQr ? ' por QR' : ''}${conObservacion}. ` +
           `${respuesta.progress.scanned} de ${respuesta.progress.expected}.`,
     );
-    if (exigeFoto) {
+    if (exigeFoto && !tareaCubreFotoDelPunto(itemsTareas, respuesta.checkpoint.id)) {
       // El anuncio propio repite "por QR" y la observación a propósito: pisa al
       // de arriba —los dos setAnuncio caen en la misma tanda de React— y sin
       // esto el respaldo por QR dejaba de decirse en voz alta justo en los
@@ -797,7 +819,7 @@ function Ronda({
       );
       return;
     }
-    if (cerrada) setVista('resumen');
+    if (cerrada && !tareasDelPuntoPorResponder(itemsTareas, tareas, respuesta.checkpoint.id).length) setVista('resumen');
   }
 
   /**
@@ -899,7 +921,7 @@ function Ronda({
   /** Si el punto fotografiado era el de cierre, ahora sí toca el resumen. */
   function cerrarPuntoConFoto(pendiente: FotoDePunto) {
     const punto = puntos.find((candidato) => candidato.id === pendiente.checkpointId);
-    if (punto?.isClosingPoint) setVista('resumen');
+    if (punto?.isClosingPoint && !tareasDelPuntoPorResponder(itemsTareas, tareas, punto.id).length) setVista('resumen');
   }
 
   async function reportar(entrada: { criticidad: Criticidad; texto?: string; foto?: File }) {
@@ -1104,7 +1126,7 @@ function Ronda({
           items={itemsTareas}
           nombrePunto={puntoConTareas.nombre}
           onEstado={actualizarTareas}
-          onListo={() => setPuntoConTareas(undefined)}
+          onListo={() => { setPuntoConTareas(undefined); if (estado.cierre) setVista('resumen'); }}
           {...(puntoConTareas.scanId ? { scanId: puntoConTareas.scanId } : {})}
         />
       ) : null}

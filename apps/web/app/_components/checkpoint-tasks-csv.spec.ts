@@ -7,7 +7,7 @@ describe('tareas por punto desde CSV', () => {
     expect(result.errors).toEqual([]);
     expect(result.tasks).toHaveLength(2);
     expect(result.tasks[0]).toMatchObject({ checkpointId: 'p1', requiresPhoto: true, label: 'Fotografía puerta, completa' });
-    expect(result.tasks[1]).toMatchObject({ responseType: 'texto', requiresPhoto: false });
+    expect(result.tasks[1]).toMatchObject({ responseType: 'si_no', requiresPhoto: false });
   });
   it('no agrega tareas de otros recintos ni duplica filas', () => {
     const result = parseCheckpointTasksCsv('id;tarea\nAABB1234;Fotografía puerta\nFFFF9999;Otra\nAABB1234;Fotografía puerta', points);

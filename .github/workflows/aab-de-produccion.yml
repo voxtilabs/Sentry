@@ -31,6 +31,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: aab-produccion-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   aab:
     name: construir el AAB firmado

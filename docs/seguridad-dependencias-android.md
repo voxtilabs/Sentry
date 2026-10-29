@@ -55,3 +55,20 @@ proyecto. Esto no corrige el defecto de la biblioteca ni exime a otros servicios
 que acepten colecciones no confiables. Retirar esta excepción cuando Expo admita
 la versión corregida o exista un backport compatible. La auditoría conserva su
 rechazo de paquetes nuevos no revisados.
+
+## Revisión adicional del 29-10-2026
+
+El aviso [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4),
+revisado el 27 de octubre, señala contaminación del prototipo del objeto devuelto
+por **deepmerge 4.3.1**. El mantenedor no ha publicado una versión corregida y
+4.3.1 sigue siendo la última versión del registro. La actualización dirigida no
+modificó el lockfile; no se degrada Expo a SDK 51 ni se fuerza una dependencia.
+
+La cadena real es Expo → `@expo/config` → deepmerge; `@expo/prebuild-config` y
+`@expo/local-build-cache-provider` aparecen también por esa dependencia. Se
+documentan los cuatro paquetes en la excepción existente. En este proyecto la
+entrada mezclada es la configuración local de compilación, mantenida en Git:
+el flujo de fotos y respuestas no entrega objetos del guardia a esa biblioteca.
+Esto acepta un riesgo acotado del tooling; **no corrige la biblioteca**. No usar
+configuraciones de proyectos no confiables y retirar la excepción al publicarse
+un parche compatible. El control sigue fallando ante paquetes nuevos no revisados.

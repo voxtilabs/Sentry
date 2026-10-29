@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** Límites de seguridad del formulario; la cantidad operativa es configurable. */
+export const TASK_PHOTO_COUNT_RANGE = { min: 1, max: 10 } as const;
+
 /**
  * Reglas configurables de SentryCore.
  *
@@ -209,6 +212,9 @@ export const patrolRulesSchema = z.object({
 
   /** Tamaño maximo de cada foto de evidencia, en megabytes (#13). */
   photoMaxSizeMB: z.number().int().min(1).max(50).default(10),
+  /** Valores heredados por las tareas que no tienen una cantidad propia. */
+  taskPhotoMinCount: z.number().int().min(1).max(10).default(1),
+  taskPhotoMaxCount: z.number().int().min(1).max(10).default(3),
   /**
    * Peso al que el telefono COMPRIME la foto antes de subirla, en kilobytes.
    *
@@ -864,6 +870,22 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     default: DEFAULT_PATROL_RULES.photoMaxSizeMB,
     scopes: SOLO_EMPRESA,
     group: 'evidencia',
+  },
+  taskPhotoMinCount: {
+    key: 'taskPhotoMinCount',
+    label: 'Fotos mínimas por tarea',
+    description: 'Cantidad mínima cuando una tarea exige fotos. El supervisor puede elegir una cantidad propia en cada tarea. Si supera el máximo heredado, el máximo se amplía hasta este mínimo.',
+    type: 'integer', unit: null, min: 1, max: 10,
+    default: DEFAULT_PATROL_RULES.taskPhotoMinCount,
+    scopes: TODOS_LOS_NIVELES, group: 'evidencia',
+  },
+  taskPhotoMaxCount: {
+    key: 'taskPhotoMaxCount',
+    label: 'Fotos máximas por tarea',
+    description: 'Hasta cuántas fotos puede agregar el guardia antes de responder. El supervisor puede elegir otro máximo en cada tarea; nunca queda por debajo del mínimo requerido.',
+    type: 'integer', unit: null, min: 1, max: 10,
+    default: DEFAULT_PATROL_RULES.taskPhotoMaxCount,
+    scopes: TODOS_LOS_NIVELES, group: 'evidencia',
   },
   excelExportMaxRows: {
     key: 'excelExportMaxRows',

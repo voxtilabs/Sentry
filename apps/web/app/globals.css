@@ -1390,3 +1390,16 @@ a.stats-boton { display: inline-flex; align-items: center; }
 @media (prefers-reduced-motion: reduce) {
   .visits-theft-alert { animation: none; background-color: #fee2e2; }
 }
+.guardia-boton-enviar {
+  border: 1px solid #15803d;
+  border-radius: 12px;
+  background: #15803d;
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+  padding: 0.9rem 1rem;
+  min-height: 52px;
+  cursor: pointer;
+}
+.guardia-boton-enviar:disabled { opacity: 0.5; cursor: default; }
+.guardia-boton-enviar:focus-visible { outline: 3px solid #166534; outline-offset: 3px; }

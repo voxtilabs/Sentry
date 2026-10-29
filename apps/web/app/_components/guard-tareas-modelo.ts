@@ -1,6 +1,7 @@
 'use client';
 
 import { borrarClave, escribirJson, leerJson } from './guard-storage';
+import { DEFAULT_PATROL_RULES } from '@sentrycore/shared';
 
 /**
  * Las tareas del turno, vistas desde el teléfono (#265).
@@ -37,7 +38,7 @@ import { borrarClave, escribirJson, leerJson } from './guard-storage';
 const CLAVE_PLANTILLA = 'sentrycore.guard.tareas.plantilla.v1';
 const CLAVE_ESTADO = 'sentrycore.guard.tareas.v1';
 
-export type TipoRespuestaTarea = 'ok_falla' | 'texto' | 'numero';
+export type TipoRespuestaTarea = 'ok_falla' | 'si_no' | 'texto' | 'numero' | 'foto';
 
 export interface ItemTarea {
   id: string;
@@ -59,6 +60,8 @@ export interface ItemTarea {
   dueLocalTime?: string | null;
   /** Foto SIEMPRE, esté todo bien o mal. Distinta de `requiresPhotoOnFail`. */
   requiresPhoto?: boolean;
+  photoMinCount?: number | null;
+  photoMaxCount?: number | null;
 }
 
 export type PlantillaTareas =
@@ -107,9 +110,23 @@ export function tareasDelCierre(items: readonly ItemTarea[]): ItemTarea[] {
  * cuando se marca falla, que es la regla vieja y sigue valiendo.
  */
 export function tareaExigeFoto(item: ItemTarea, valor: string | undefined): boolean {
-  if (item.requiresPhoto === true) return true;
+  if (item.requiresPhoto === true || item.responseType === 'foto') return true;
   return item.requiresPhotoOnFail && (valor ?? '').trim().toLowerCase() === 'falla';
 }
+
+export function cantidadesDeFotos(item: ItemTarea) {
+  const min = item.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount;
+  return { min, max: Math.max(min, item.photoMaxCount ?? DEFAULT_PATROL_RULES.taskPhotoMaxCount) };
+}
+
+/** La evidencia de una tarea del mismo punto también respalda su escaneo. */
+export function tareaCubreFotoDelPunto(items: readonly ItemTarea[], checkpointId: string): boolean {
+  return items.some((item) => item.checkpointId === checkpointId &&
+    (item.requiresPhoto === true || item.responseType === 'foto'));
+}
+
+export interface FotoTarea { clientPhotoId: string; photoId?: string }
+export interface BorradorTarea { value: string; clientScanId: string; fotos: FotoTarea[] }
 
 // --------------------------------------------------------- la cola de la ronda
 
@@ -132,6 +149,8 @@ export interface RespuestaTareaEnCola {
   clientScanId?: string;
   /** Id de la foto YA subida. Sin él, una respuesta que exige foto no viaja. */
   photoId?: string;
+  fotos?: FotoTarea[];
+  minFotos?: number;
   /** Esta respuesta no vale sin foto. Se congela al responder, con el valor dado. */
   exigeFoto: boolean;
   estado: 'pendiente' | 'rechazada';
@@ -144,6 +163,8 @@ export interface EstadoTareas {
   cola: RespuestaTareaEnCola[];
   /** Items que el servidor ya tiene ('aplicado' o 'duplicado'): no se re-ofrecen. */
   enviadas: string[];
+  /** Fotos y texto a salvo aunque aún falte responder la pregunta. */
+  borradores?: Record<string, BorradorTarea>;
 }
 
 /** Lo que entra en `POST /checklists/patrols/:id/responses`, y nada más. */
@@ -152,6 +173,7 @@ export interface RespuestaParaEnviar {
   value: string;
   notes?: string;
   photoId?: string;
+  photoIds?: string[];
 }
 
 export interface ResultadoTarea {
@@ -186,6 +208,7 @@ export function responderTarea(
     clientPhotoId?: string;
     /** Id de servidor de esa foto, cuando ya subió. */
     photoId?: string;
+    fotos?: FotoTarea[];
   },
 ): EstadoTareas {
   if (estado.enviadas.includes(entrada.item.id)) return estado;
@@ -199,6 +222,7 @@ export function responderTarea(
     ...(entrada.clientScanId ? { clientScanId: entrada.clientScanId } : {}),
     ...(entrada.clientPhotoId ? { clientPhotoId: entrada.clientPhotoId } : {}),
     ...(entrada.photoId ? { photoId: entrada.photoId } : {}),
+    ...(entrada.fotos ? { fotos: entrada.fotos, minFotos: cantidadesDeFotos(entrada.item).min } : {}),
     exigeFoto: tareaExigeFoto(entrada.item, entrada.value),
     estado: 'pendiente',
   };
@@ -206,8 +230,11 @@ export function responderTarea(
   // Corregirse antes de que salga sí se puede: esa respuesta todavía no llegó a
   // ninguna parte, así que la última pisa a la anterior y no se acumulan dos
   // respuestas del mismo item en la cola.
+  const borradores = { ...estado.borradores };
+  delete borradores[entrada.item.id];
   return {
     ...estado,
+    ...(estado.borradores ? { borradores } : {}),
     cola: [...estado.cola.filter((otra) => otra.itemId !== respuesta.itemId), respuesta],
   };
 }
@@ -221,11 +248,18 @@ export function anotarFotoDeTarea(
   clientPhotoId: string,
   photoId: string,
 ): EstadoTareas {
+  const anotar = (fotos: FotoTarea[]) => fotos.map((foto) =>
+    foto.clientPhotoId === clientPhotoId ? { ...foto, photoId } : foto);
   return {
     ...estado,
     cola: estado.cola.map((respuesta) =>
-      respuesta.clientPhotoId === clientPhotoId ? { ...respuesta, photoId } : respuesta,
+      ({ ...respuesta,
+        ...(respuesta.clientPhotoId === clientPhotoId ? { photoId } : {}),
+        ...(respuesta.fotos ? { fotos: anotar(respuesta.fotos) } : {}),
+      }),
     ),
+    ...(estado.borradores ? { borradores: Object.fromEntries(Object.entries(estado.borradores)
+      .map(([id, borrador]) => [id, { ...borrador, fotos: anotar(borrador.fotos) }])) } : {}),
   };
 }
 
@@ -240,12 +274,16 @@ export function anotarFotoDeTarea(
 export function loteParaEnviar(estado: EstadoTareas): RespuestaParaEnviar[] {
   return estado.cola
     .filter((respuesta) => respuesta.estado === 'pendiente')
-    .filter((respuesta) => !respuesta.exigeFoto || respuesta.photoId !== undefined)
+    .filter((respuesta) => respuesta.fotos
+      ? respuesta.fotos.every((foto) => foto.photoId) &&
+        (!respuesta.exigeFoto || respuesta.fotos.length >= (respuesta.minFotos ?? 1))
+      : !respuesta.exigeFoto || respuesta.photoId !== undefined)
     .map((respuesta) => ({
       itemId: respuesta.itemId,
       value: respuesta.value,
       ...(respuesta.notes ? { notes: respuesta.notes } : {}),
       ...(respuesta.photoId ? { photoId: respuesta.photoId } : {}),
+      ...(respuesta.fotos?.length ? { photoIds: respuesta.fotos.map((foto) => foto.photoId!) } : {}),
     }));
 }
 
@@ -333,9 +371,16 @@ export function fotosDeTareaAdoptables(
   }
 
   const adoptables: { clientPhotoId: string; scanId: string }[] = [];
-  for (const respuesta of estado.cola) {
+  for (const respuesta of [...estado.cola, ...Object.values(estado.borradores ?? {})]) {
+    if (respuesta.fotos) {
+      const scanId = respuesta.clientScanId ? idPorEscaneo.get(respuesta.clientScanId) : undefined;
+      if (scanId) for (const foto of respuesta.fotos) {
+        if (!foto.photoId) adoptables.push({ clientPhotoId: foto.clientPhotoId, scanId });
+      }
+      continue;
+    }
     // Con `photoId` ya está arriba; sin `clientPhotoId` no hay foto que subir.
-    if (respuesta.photoId !== undefined) continue;
+    if (!('itemId' in respuesta) || respuesta.photoId !== undefined) continue;
     if (!respuesta.clientPhotoId || !respuesta.clientScanId) continue;
     const scanId = idPorEscaneo.get(respuesta.clientScanId);
     if (scanId !== undefined) adoptables.push({ clientPhotoId: respuesta.clientPhotoId, scanId });
@@ -349,7 +394,7 @@ export function fotosDeTareaAdoptables(
 export function tareaRespondida(estado: EstadoTareas, itemId: string): boolean {
   return (
     estado.enviadas.includes(itemId) ||
-    estado.cola.some((respuesta) => respuesta.itemId === itemId)
+    estado.cola.some((respuesta) => respuesta.itemId === itemId && respuesta.estado !== 'rechazada')
   );
 }
 
@@ -411,6 +456,7 @@ export function cargarEstadoTareas(patrolId: string): EstadoTareas {
 
 export function guardarEstadoTareas(estado: EstadoTareas): void {
   escribirJson(`${CLAVE_ESTADO}:${estado.patrolId}`, estado);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('sentrycore:tareas'));
 }
 
 /** Se llama solo cuando la ronda cerró y no queda nada por subir. */

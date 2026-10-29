@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsOptional,
@@ -40,6 +41,14 @@ export class ChecklistResponseDto {
   @IsOptional()
   @IsUUID()
   photoId?: string;
+
+  /** Conserva photoId para las versiones anteriores de la app. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  photoIds?: string[];
 }
 
 /**

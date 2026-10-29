@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { DEFAULT_PATROL_RULES, TASK_PHOTO_COUNT_RANGE } from '@sentrycore/shared';
 import { parseCheckpointTasksCsv } from './checkpoint-tasks-csv';
 
 import {
@@ -170,7 +171,7 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
     // Al editar NO se manda el alcance: el servidor no lo acepta y el recinto de
     // una plantilla no se mueve. Solo el nombre y las tareas.
     const cuerpo = cuerpoDePlantilla(nombre, tareas, templateId ? null : turnoId || null);
-    if (templateId) delete cuerpo.shiftId;
+    if (templateId) { delete cuerpo.shiftId; cuerpo.replaceAnswered = true; }
     try {
       const respuesta = await fetch(
         templateId
@@ -187,8 +188,10 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
         setEstado({ texto: mensajeDeRespuesta(respuesta.status), tono: 'aviso' });
         return;
       }
+      const resultado = await respuesta.json() as { id?: string; versionCreated?: boolean };
+      if (resultado.id) setTemplateId(resultado.id);
       setEstado({
-        texto: templateId ? 'Tareas actualizadas.' : 'Tareas guardadas para este recinto.',
+        texto: resultado.versionCreated ? 'Nueva configuración publicada. Las rondas anteriores conservan sus tareas y evidencias.' : templateId ? 'Tareas actualizadas.' : 'Tareas guardadas para este recinto.',
         tono: 'ok',
       });
       await recargar();
@@ -361,6 +364,7 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
                       onChange={(evento) =>
                         cambiarTarea(tarea.clave, {
                           responseType: evento.target.value as TipoRespuesta,
+                          requiresPhotoOnFail: evento.target.value === 'ok_falla' && tarea.requiresPhotoOnFail,
                         })
                       }
                       value={tarea.responseType}
@@ -426,26 +430,33 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
                   </div>
                 </div>
                 <div className="tareas-turno-fotos">
-                  <label>
-                    <input
-                      checked={tarea.requiresPhoto}
-                      onChange={(evento) =>
-                        cambiarTarea(tarea.clave, { requiresPhoto: evento.target.checked })
-                      }
-                      type="checkbox"
-                    />{' '}
-                    Foto siempre
-                  </label>
-                  <label>
-                    <input
-                      checked={tarea.requiresPhotoOnFail}
-                      onChange={(evento) =>
-                        cambiarTarea(tarea.clave, { requiresPhotoOnFail: evento.target.checked })
-                      }
-                      type="checkbox"
-                    />{' '}
-                    Foto solo si marca falla
-                  </label>
+                  {tarea.responseType !== 'foto' ? <label>Fotografías
+                    <select value={tarea.requiresPhoto ? 'siempre' : tarea.requiresPhotoOnFail ? 'no' : 'ninguna'}
+                      onChange={(e) => cambiarTarea(tarea.clave, {
+                        requiresPhoto: e.target.value === 'siempre', requiresPhotoOnFail: e.target.value === 'no',
+                      })}>
+                      <option value="ninguna">Sin fotos</option>
+                      <option value="siempre">Primero fotos, luego la respuesta</option>
+                      {tarea.responseType === 'ok_falla' ? <option value="no">Fotos solo si responde NO</option> : null}
+                    </select>
+                  </label> : null}
+                  {tarea.responseType === 'foto' || tarea.requiresPhoto || tarea.requiresPhotoOnFail ? <>
+                    <label>Fotos mínimas
+                      <input type="number" min={TASK_PHOTO_COUNT_RANGE.min} max={TASK_PHOTO_COUNT_RANGE.max}
+                        value={tarea.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount}
+                        onChange={(e) => cambiarTarea(tarea.clave, { photoMinCount: Number(e.target.value) })} />
+                    </label>
+                    <label>Fotos máximas
+                      <input type="number" min={TASK_PHOTO_COUNT_RANGE.min} max={TASK_PHOTO_COUNT_RANGE.max}
+                        value={tarea.photoMaxCount ?? DEFAULT_PATROL_RULES.taskPhotoMaxCount}
+                        onChange={(e) => cambiarTarea(tarea.clave, { photoMaxCount: Number(e.target.value) })} />
+                    </label>
+                    <small>{tarea.responseType === 'foto'
+                      ? 'Se completa automáticamente al tomar el mínimo de fotos.'
+                      : tarea.responseType === 'texto' || tarea.responseType === 'numero'
+                        ? 'El guardia toma las fotos, escribe su respuesta y pulsa Enviar.'
+                        : 'El guardia toma las fotos y completa la tarea al tocar SÍ o NO.'}</small>
+                  </> : null}
                   <small>{resumenDeTarea(tarea, recinto?.checkpoints ?? [])}</small>
                   {fueraDelTurno(tarea.dueLocalTime, turno) ? (
                     <em className="tareas-turno-tarde">Fuera del horario del turno</em>

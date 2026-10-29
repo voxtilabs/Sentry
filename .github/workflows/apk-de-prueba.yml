@@ -26,18 +26,15 @@ on:
         description: 'Instalar junto a la app de Play Store (paquete .qa)'
         type: boolean
         default: false
-  # El gatillo por PR existe porque `workflow_dispatch` solo funciona cuando el
-  # workflow ya vive en la rama POR DEFECTO — y la rama por defecto es `main`,
-  # que despliega produccion: no se toca para conseguir un APK. Un PR que
-  # modifique ESTE archivo corre con la version de la rama, sin cola de EAS y
-  # sin tocar main. Se descubrio el dia que EAS agoto los builds gratis del mes
-  # con un arreglo del muestreador sin poder probar.
-  pull_request:
-    paths:
-      - '.github/workflows/apk-de-prueba.yml'
+  # A demanda: este workflow ya existe en main. Compilar en cada actualización
+  # del PR repetía veinte minutos de Gradle incluso por cambios del servidor.
 
 permissions:
   contents: read
+
+concurrency:
+  group: apk-prueba-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:

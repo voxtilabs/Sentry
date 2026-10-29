@@ -38,7 +38,7 @@ const VERSION_BD = 1;
  * sería una migración, y perder fotos pendientes al actualizar es exactamente
  * lo que este almacén existe para evitar.
  */
-export type DestinoFoto = 'evento' | 'escaneo';
+export type DestinoFoto = 'evento' | 'escaneo' | 'tarea';
 
 export interface FotoPendiente {
   /**
@@ -55,6 +55,7 @@ export interface FotoPendiente {
 
 interface RegistroFoto extends FotoPendiente {
   blob: Blob;
+  photoId?: string;
 }
 
 /**
@@ -194,13 +195,14 @@ export async function fijarServerId(clientEventId: string, serverId: string): Pr
  */
 export function leerFoto(
   clientEventId: string,
-): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto } | undefined> {
+): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto; photoId?: string } | undefined> {
   const leida = (registro: RegistroFoto | undefined) =>
     registro
       ? {
           blob: registro.blob,
           takenAtDevice: registro.takenAtDevice,
           destino: registro.destino ?? ('evento' as const),
+          ...(registro.photoId ? { photoId: registro.photoId } : {}),
         }
       : undefined;
   return conRespaldo(
@@ -208,6 +210,18 @@ export function leerFoto(
       leida(await conAlmacen<RegistroFoto | undefined>('readonly', (a) => a.get(clientEventId))),
     () => leida(memoria.get(clientEventId)),
   );
+}
+
+/** Recibo duradero: se escribe antes de borrar el blob o enviar la respuesta. */
+export async function anotarReciboFotoTarea(clientPhotoId: string, photoId: string): Promise<void> {
+  const registro = await conRespaldo(
+    () => conAlmacen<RegistroFoto | undefined>('readonly', (a) => a.get(clientPhotoId)),
+    () => memoria.get(clientPhotoId),
+  );
+  if (!registro) return;
+  const siguiente = { ...registro, photoId };
+  await conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.put(siguiente)); },
+    () => { memoria.set(clientPhotoId, siguiente); });
 }
 
 /** Borra la foto: se llama recién cuando el servidor confirmó la subida. */

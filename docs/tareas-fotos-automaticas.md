@@ -1,0 +1,43 @@
+# Tareas por punto: fotos y respuesta automática
+
+El supervisor configura cada tarea en **Tareas del turno**: recinto, punto,
+pregunta y tipo de respuesta. Las opciones son **Sí / No**, **Argumento escrito**,
+**Número** y **Solo fotos**. La opción adicional **Sí / No · avisar si NO** conserva
+la alerta operativa que antes se mostraba como OK/Falla.
+
+Un único selector decide si hay fotos. Cuando se requieren, el supervisor elige
+el mínimo y el máximo (1–10); inicialmente se heredan **mínimo 1, máximo 3** de las
+reglas de evidencia. El administrador puede cambiar los valores heredados por
+empresa, recinto o punto. El máximo efectivo nunca queda por debajo del mínimo.
+
+La app muestra una tarea a la vez. Cada captura se procesa con marca de agua,
+se guarda en IndexedDB y se intenta subir inmediatamente. **Agregar foto** aparece
+al regresar de cámara y desaparece al alcanzar el máximo. La pregunta se habilita
+después del mínimo: tocar SÍ/NO encola y envía la respuesta completa; un argumento
+o número tiene un solo botón verde **Enviar**. Solo fotos termina automáticamente
+al cumplir el mínimo. No hay botón Guardar tarea ni una segunda cámara para la
+foto general del punto si una tarea ya la exige.
+
+Sin conexión se conservan fotos, texto y respuesta. El servidor no acepta la
+respuesta hasta recibir todas las fotos capturadas y exige el mínimo configurado.
+Al reconectar, volver a la pantalla o recuperar el id de un escaneo, se reintenta
+la cola. Un recibo persistente evita repetir la subida de una foto ya confirmada.
+Los reenvíos de respuestas son idempotentes. Las fotos deben pertenecer a la misma
+ronda y al punto de la tarea; no se admiten ids repetidos.
+
+El editor publica una versión nueva al actualizar las tareas. La ronda conserva
+su plantilla desde que la consulta; su cola y su informe siguen usando esa versión
+aunque el supervisor cambie la configuración. Las tareas y respuestas históricas
+no se reescriben. Las fotos adicionales se vinculan en una tabla append-only con
+RLS forzado y claves compuestas por empresa; aparecen juntas en el anexo del PDF.
+
+El cambio de tareas usa el puente existente. El Android **0.3.1 (8)** incorpora
+además R8 y reducción de recursos en release para atender la advertencia de DEX;
+los mapas se conservan como artefacto y dentro del AAB. El porcentaje definitivo
+de Play debe comprobarse al procesar el nuevo archivo: no se deduce solo de activar
+un flag. Referencias: [Android vitals](https://developer.android.com/google/play/vitals/code-optimization)
+y [optimización con R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
+
+Los APK se generan a demanda; un push de cambios del servidor no vuelve a
+compilar Gradle. APK y AAB cancelan una compilación anterior de la misma rama
+cuando se pide otra, para evitar consumo duplicado de Actions.

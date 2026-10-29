@@ -25,7 +25,9 @@
  *    supervisor en otra zona pidiera la tarea a otra hora sin enterarse.
  */
 
-export type TipoRespuesta = 'ok_falla' | 'texto' | 'numero';
+import { DEFAULT_PATROL_RULES, TASK_PHOTO_COUNT_RANGE } from '@sentrycore/shared';
+
+export type TipoRespuesta = 'ok_falla' | 'si_no' | 'texto' | 'numero' | 'foto';
 
 export interface PuntoDelRecinto {
   readonly id: string;
@@ -60,6 +62,8 @@ export interface TareaDeLaApi {
   readonly checkpointId: string | null;
   readonly dueLocalTime: string | null;
   readonly requiresPhoto: boolean;
+  readonly photoMinCount?: number | null;
+  readonly photoMaxCount?: number | null;
 }
 
 export interface PlantillaDeLaApi {
@@ -80,11 +84,15 @@ export interface TareaBorrador {
   readonly dueLocalTime: string | null;
   readonly requiresPhoto: boolean;
   readonly requiresPhotoOnFail: boolean;
+  readonly photoMinCount?: number | null;
+  readonly photoMaxCount?: number | null;
 }
 
 export const TIPOS_DE_RESPUESTA: ReadonlyArray<{ valor: TipoRespuesta; etiqueta: string }> = [
-  { valor: 'ok_falla', etiqueta: 'OK / Falla' },
-  { valor: 'texto', etiqueta: 'Texto libre' },
+  { valor: 'si_no', etiqueta: 'Sí / No' },
+  { valor: 'texto', etiqueta: 'Argumento escrito' },
+  { valor: 'foto', etiqueta: 'Solo fotos (sin pregunta)' },
+  { valor: 'ok_falla', etiqueta: 'Sí / No · avisar al supervisor si NO' },
   { valor: 'numero', etiqueta: 'Número' },
 ];
 
@@ -129,6 +137,8 @@ export function borradorDesdeApi(item: TareaDeLaApi): TareaBorrador {
     dueLocalTime: horaDelServidor(item.dueLocalTime),
     requiresPhoto: item.requiresPhoto,
     requiresPhotoOnFail: item.requiresPhotoOnFail,
+    photoMinCount: item.photoMinCount ?? null,
+    photoMaxCount: item.photoMaxCount ?? null,
   };
 }
 
@@ -159,7 +169,9 @@ export function cuerpoDePlantilla(
       label: tarea.label.trim(),
       responseType: tarea.responseType,
       requiresPhotoOnFail: tarea.requiresPhotoOnFail,
-      requiresPhoto: tarea.requiresPhoto,
+      requiresPhoto: tarea.responseType === 'foto' || tarea.requiresPhoto,
+      ...(tarea.photoMinCount != null ? { photoMinCount: tarea.photoMinCount } : {}),
+      ...(tarea.photoMaxCount != null ? { photoMaxCount: tarea.photoMaxCount } : {}),
       ...(tarea.checkpointId ? { checkpointId: tarea.checkpointId } : {}),
       ...(tarea.dueLocalTime ? { dueLocalTime: tarea.dueLocalTime } : {}),
     })),
@@ -242,13 +254,15 @@ export function revisarBorrador(
           'Se pide igual y queda marcada como fuera de horario en el informe.',
       );
     }
-    if (tarea.requiresPhoto) {
-      avisos.push(
-        `Tarea ${numero}: exige foto siempre. La pantalla del guardia todavía no adjunta fotos ` +
-          'de tareas, así que hoy se responde con observación escrita.',
-      );
-    }
+    const min = tarea.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount;
+    const max = tarea.photoMaxCount ?? Math.max(min, DEFAULT_PATROL_RULES.taskPhotoMaxCount);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < TASK_PHOTO_COUNT_RANGE.min ||
+      max > TASK_PHOTO_COUNT_RANGE.max || min > max) errores.push(`Tarea ${numero}: revisa el mínimo y máximo de fotos (${TASK_PHOTO_COUNT_RANGE.min}–${TASK_PHOTO_COUNT_RANGE.max}).`);
+    if (tarea.responseType === 'foto' && !tarea.checkpointId) errores.push(`Tarea ${numero}: selecciona el punto donde se tomarán las fotos.`);
   });
+  const claves = tareas.map((tarea) => JSON.stringify([tarea.checkpointId, tarea.dueLocalTime,
+    tarea.label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es')]));
+  if (new Set(claves).size !== claves.length) errores.push('Hay tareas duplicadas en el mismo punto y horario. Quita la repetida.');
 
   return { errores, avisos };
 }
@@ -291,7 +305,7 @@ export function resumenDeTarea(
   } else {
     partes.push('en cualquier punto');
   }
-  if (tarea.requiresPhoto) partes.push('foto obligatoria');
-  else if (tarea.requiresPhotoOnFail) partes.push('foto si falla');
+  if (tarea.requiresPhoto || tarea.responseType === 'foto') partes.push(`${tarea.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount}–${tarea.photoMaxCount ?? DEFAULT_PATROL_RULES.taskPhotoMaxCount} fotos`);
+  else if (tarea.requiresPhotoOnFail) partes.push('foto si responde NO');
   return partes.join(' · ');
 }

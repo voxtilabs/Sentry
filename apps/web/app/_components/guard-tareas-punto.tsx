@@ -1,312 +1,154 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { GuardCameraInput, type PedirPermisoCamara } from './guard-camera-input';
-
 import { procesarFoto } from './guard-photo';
-import { fijarServerId, guardarFoto } from './guard-photo-store';
-import { guardarYSubirFotoDePunto } from './guard-scan-photo-flow';
+import { guardarFoto } from './guard-photo-store';
 import { nuevoUuid } from './guard-storage';
-import { sincronizarTareas, subirFotoDeTareaGuardada } from './guard-tareas-flujo';
+import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import {
-  responderTarea,
-  tareaExigeFoto,
-  tareasDelPuntoPorResponder,
-  type EstadoTareas,
-  type ItemTarea,
+  cargarEstadoTareas, cantidadesDeFotos, responderTarea, tareaExigeFoto,
+  tareasDelPuntoPorResponder, type BorradorTarea, type EstadoTareas, type ItemTarea,
 } from './guard-tareas-modelo';
 
-/**
- * Las tareas del turno, EN EL PUNTO (#265).
- *
- * Aparece apenas el punto queda marcado —después de la foto obligatoria del
- * acceso, que es la evidencia que no se puede perder— y muestra solo las tareas
- * de ESE punto. Antes el checklist entero se pedía en el resumen, o sea después
- * del punto de cierre: para la tarea de las 11 en el refrigerador eso llega tres
- * pisos tarde.
- *
- * Dos reglas del producto que se ven acá tal como se decidieron:
- *
- * - **No bloquea la ronda.** El requisito es explícito: *"si la tarea queda
- *   fuera del horario de la ronda, que se envíe igual, se puede trabajar todo
- *   igual"*. Por eso hay un botón para seguir sin responder y la hora se muestra
- *   como referencia, no como veto. Cuánto se atrasó lo calcula el SERVIDOR, que
- *   es el único que conoce la zona del recinto y no le cree al reloj del
- *   teléfono.
- * - **La foto obligatoria se toma acá y ahora**, con la cámara en vivo y nunca
- *   desde la galería (si se pudiera elegir un archivo, el guardia fotografía el
- *   refrigerador una vez y reusa esa imagen todo el mes). El camino de la foto
- *   —marca de agua, almacén persistente antes de la red, subida colgada del
- *   escaneo— es el MISMO que el de la foto del acceso: se reusa
- *   `guardarYSubirFotoDePunto`, con sus pruebas y su arreglo de la carrera del
- *   veredicto. Lo único propio es la clave de la foto, que no puede ser la del
- *   escaneo: esa ya la ocupa la foto del punto y se pisarían.
- */
-
-interface Borrador {
-  value: string;
-  notes?: string;
-  archivo?: File;
-  nombreArchivo?: string;
-}
-
-export function GuardTareasPunto({
-  apiUrl,
-  nombrePunto,
-  checkpointId,
-  clientScanId,
-  scanId,
-  items,
-  estado,
-  foto,
-  idDelEscaneo,
-  onEstado,
-  onListo,
-  pedirPermisoCamara,
+/** Una tarea a la vez: cámara → pregunta → envío, sin confirmaciones duplicadas. */
+export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScanId, scanId,
+  items, estado, foto, idDelEscaneo, onEstado, onListo, pedirPermisoCamara,
 }: {
-  apiUrl: string;
-  nombrePunto: string;
-  checkpointId: string;
-  /** Escaneo con el que se marcó el punto: la foto de la tarea cuelga de él. */
-  clientScanId: string;
-  /** Id del escaneo en el servidor, si ya lo devolvió. */
-  scanId?: string;
-  /** La plantilla completa; acá se filtran las de este punto. */
-  items: readonly ItemTarea[];
-  estado: EstadoTareas;
-  /** Lo que necesita la marca de agua y la compresión, igual que la del punto. */
+  apiUrl: string; nombrePunto: string; checkpointId: string; clientScanId: string; scanId?: string;
+  items: readonly ItemTarea[]; estado: EstadoTareas;
   foto: { sitio: string; ruta: string; zonaHoraria?: string; objetivoBytes?: number };
-  /** El id del escaneo LEÍDO AHORA: puede haber llegado mientras se responde. */
   idDelEscaneo: () => string | undefined;
-  onEstado: (estado: EstadoTareas) => void;
-  onListo: () => void;
+  onEstado: (estado: EstadoTareas) => void; onListo: () => void;
   pedirPermisoCamara?: PedirPermisoCamara;
 }) {
-  const [borradores, setBorradores] = useState<Record<string, Borrador>>({});
-  const [guardando, setGuardando] = useState<string>();
+  const [ocupada, setOcupada] = useState(false);
+  const candado = useRef(false);
   const [aviso, setAviso] = useState<string>();
-
   const pendientes = tareasDelPuntoPorResponder(items, estado, checkpointId);
-  if (!pendientes.length) return null;
+  const item = pendientes[0];
+  if (!item) return null;
+  const borrador = estado.borradores?.[item.id] ?? { value: '', clientScanId, fotos: [] };
 
-  function anotar(itemId: string, cambio: Partial<Borrador>) {
-    setBorradores((actual) => ({
-      ...actual,
-      [itemId]: { value: '', ...actual[itemId], ...cambio },
-    }));
+  function anotar(tarea: ItemTarea, cambio: Partial<BorradorTarea>) {
+    const actual = cargarEstadoTareas(estado.patrolId);
+    const previo = actual.borradores?.[tarea.id] ?? { value: '', clientScanId, fotos: [] };
+    const siguiente = { ...actual, borradores: { ...actual.borradores,
+      [tarea.id]: { ...previo, ...cambio } } };
+    onEstado(siguiente);
+    return siguiente;
   }
 
-  async function guardar(item: ItemTarea) {
-    const borrador = borradores[item.id] ?? { value: '' };
-    const valor = borrador.value.trim();
-    if (!valor) {
-      setAviso('Responde la tarea antes de guardarla.');
-      return;
-    }
-    if (tareaExigeFoto(item, valor) && !borrador.archivo) {
-      setAviso('Esta tarea exige foto: tómala antes de guardarla.');
-      return;
-    }
+  function registros() {
+    const id = scanId ?? idDelEscaneo();
+    return { [checkpointId]: { clientScanId, ...(id ? { scanId: id } : {}) } };
+  }
 
-    setGuardando(item.id);
+  async function completar(tarea: ItemTarea, value: string) {
+    const actual = cargarEstadoTareas(estado.patrolId);
+    const fotos = actual.borradores?.[tarea.id]?.fotos ?? [];
+    if (!value.trim() || (tareaExigeFoto(tarea, value) && fotos.length < cantidadesDeFotos(tarea).min)) return;
+    onEstado(responderTarea(actual, { item: tarea, value,
+      respondidaAt: new Date().toISOString(), clientScanId, fotos }));
+    await sincronizarTareasGuardadas(apiUrl, estado.patrolId, registros());
+  }
+
+  async function responder(tarea: ItemTarea, value: string) {
+    if (candado.current) return;
+    candado.current = true;
+    setOcupada(true);
+    try {
+      anotar(tarea, { value });
+      await completar(tarea, value);
+    } finally {
+      candado.current = false;
+      setOcupada(false);
+    }
+  }
+
+  async function capturar(tarea: ItemTarea, archivo: File) {
+    if (candado.current) return;
+    const actual = cargarEstadoTareas(estado.patrolId);
+    const previas = actual.borradores?.[tarea.id]?.fotos ?? [];
+    if (previas.length >= cantidadesDeFotos(tarea).max) return;
+    candado.current = true;
+    setOcupada(true);
     setAviso(undefined);
-
-    let clientPhotoId: string | undefined;
-    let photoId: string | undefined;
-    let avisoFoto: string | undefined;
-
-    if (borrador.archivo) {
-      // Clave PROPIA para la foto de la tarea. El almacén indexa por esta clave
-      // y la del escaneo ya la usa la foto del acceso: compartirla borraría una
-      // de las dos evidencias sin decir nada.
-      clientPhotoId = nuevoUuid();
-      const desenlace = await guardarYSubirFotoDePunto(
-        {
-          checkpointId,
-          nombre: `${nombrePunto} · ${item.label}`,
-          clientScanId: clientPhotoId,
-          ...(scanId ? { scanId } : {}),
-        },
-        borrador.archivo,
-        new Date().toISOString(),
-        {
-          procesar: (entrada) =>
-            procesarFoto(entrada, {
-              sitio: foto.sitio,
-              ruta: foto.ruta,
-              ...(foto.zonaHoraria ? { zonaHoraria: foto.zonaHoraria } : {}),
-              ...(foto.objetivoBytes ? { objetivoBytes: foto.objetivoBytes } : {}),
-            }),
-          guardar: (clave, imagen, cuando, id) => guardarFoto(clave, imagen, cuando, id, 'escaneo'),
-          fijarId: fijarServerId,
-          subir: async (clave, idEscaneo) => {
-            const subida = await subirFotoDeTareaGuardada(apiUrl, clave, idEscaneo);
-            photoId = subida.photoId;
-            return subida.ok;
-          },
-          // Se ignora la clave que llega —esa es la de la FOTO— y se resuelve la
-          // del escaneo del punto, que es de donde cuelga. Releerla acá y no al
-          // abrir el panel es lo que evita que una foto tomada sin señal se
-          // quede esperando un veredicto que ya pasó.
-          idDelEscaneo: () => scanId ?? idDelEscaneo(),
-        },
-      );
-      if (desenlace.clase !== 'subida' || desenlace.subida === false) {
-        avisoFoto =
-          'La foto quedó guardada en el teléfono y se envía sola. La tarea sale con ella.';
+    try {
+      const clientPhotoId = nuevoUuid();
+      const tomadaAt = new Date().toISOString();
+      const imagen = await procesarFoto(archivo, { sitio: foto.sitio, ruta: foto.ruta,
+        ...(foto.zonaHoraria ? { zonaHoraria: foto.zonaHoraria } : {}),
+        ...(foto.objetivoBytes ? { objetivoBytes: foto.objetivoBytes } : {}) });
+      await guardarFoto(clientPhotoId, imagen, tomadaAt, scanId ?? idDelEscaneo() ?? null, 'tarea');
+      const siguiente = anotar(tarea, { fotos: [...previas, { clientPhotoId }] });
+      const value = tarea.responseType === 'foto' ? 'foto' : siguiente.borradores?.[tarea.id]?.value ?? '';
+      if (tarea.responseType === 'foto' || ((tarea.responseType === 'ok_falla' || tarea.responseType === 'si_no') && value)) {
+        await completar(tarea, value);
       }
+      await sincronizarTareasGuardadas(apiUrl, estado.patrolId, registros());
+      const guardado = cargarEstadoTareas(estado.patrolId);
+      const pendiente = guardado.borradores?.[tarea.id]?.fotos.some((f) => !f.photoId) ||
+        guardado.cola.some((r) => r.itemId === tarea.id);
+      setAviso(pendiente ? 'Foto guardada en el teléfono. Se enviará automáticamente al recuperar conexión.' : 'Foto enviada.');
+    } catch {
+      setAviso('No pudimos guardar la foto. Vuelve a tomarla antes de continuar.');
+    } finally {
+      candado.current = false;
+      setOcupada(false);
     }
-
-    const siguiente = responderTarea(estado, {
-      item,
-      value: valor,
-      ...(borrador.notes ? { notes: borrador.notes } : {}),
-      // Hora del teléfono: queda en la cola local. Cuánto se atrasó lo decide el
-      // servidor con la zona del recinto.
-      respondidaAt: new Date().toISOString(),
-      clientScanId,
-      ...(clientPhotoId ? { clientPhotoId } : {}),
-      ...(photoId ? { photoId } : {}),
-    });
-
-    // Se manda al tiro si hay señal; si no, queda en la cola del teléfono y sale
-    // sola después. Ninguna de las dos ramas bloquea al guardia.
-    onEstado(await sincronizarTareas(apiUrl, siguiente));
-    setGuardando(undefined);
-    setAviso(avisoFoto ?? `Tarea "${item.label}" registrada.`);
   }
 
-  return (
-    <section className="guardia-tareas-punto" aria-labelledby="guardia-tareas-titulo">
-      <h2 id="guardia-tareas-titulo">Tareas de este punto</h2>
-      <p className="guardia-nota">
-        <strong>{nombrePunto}</strong> tiene {pendientes.length === 1 ? 'una tarea' : `${pendientes.length} tareas`} del
-        turno. Si respondes fuera de la hora pedida se envía igual y queda mencionado en el informe.
-      </p>
-
-      {pendientes.map((item) => (
-        <Tarea
-          key={item.id}
-          item={item}
-          borrador={borradores[item.id]}
-          guardando={guardando === item.id}
-          onAnotar={(cambio) => anotar(item.id, cambio)}
-          onGuardar={() => void guardar(item)}
-          {...(pedirPermisoCamara ? { pedirPermisoCamara } : {})}
-        />
-      ))}
-
-      {aviso ? (
-        <p className="guardia-anuncio" role="status" aria-live="polite">
-          {aviso}
-        </p>
-      ) : null}
-
-      <button className="guardia-boton-texto" onClick={onListo} type="button">
-        Seguir con la ronda
-      </button>
-      <p className="guardia-nota">
-        Lo que dejes sin responder queda como tarea pendiente del turno y tu supervisor lo ve en el
-        informe.
-      </p>
-    </section>
-  );
+  return <section className="guardia-tareas-punto" aria-labelledby="guardia-tareas-titulo">
+    <h2 id="guardia-tareas-titulo">Tareas de {nombrePunto}</h2>
+    <p className="guardia-nota">{pendientes.length} {pendientes.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}. Las fotos se envían al tomarlas.</p>
+    <TareaPuntoFormulario item={item} borrador={borrador} ocupada={ocupada}
+      onFoto={(archivo) => void capturar(item, archivo)}
+      onTexto={(value) => anotar(item, { value })}
+      onResponder={(value) => void responder(item, value)}
+      {...(pedirPermisoCamara ? { pedirPermisoCamara } : {})} />
+    {aviso ? <p className="guardia-anuncio" role="status">{aviso}</p> : null}
+    <button className="guardia-boton-texto" disabled={ocupada} onClick={onListo} type="button">Seguir con la ronda</button>
+    <p className="guardia-nota">Las tareas que dejes pendientes aparecerán en el informe.</p>
+  </section>;
 }
 
-function Tarea({
-  item,
-  borrador,
-  guardando,
-  onAnotar,
-  onGuardar,
-  pedirPermisoCamara,
-}: {
-  item: ItemTarea;
-  borrador: Borrador | undefined;
-  guardando: boolean;
-  onAnotar: (cambio: Partial<Borrador>) => void;
-  onGuardar: () => void;
+/** El formulario permite comprobar el orden de los controles sin simular la red. */
+export function TareaPuntoFormulario({ item, borrador, ocupada, onFoto, onTexto, onResponder, pedirPermisoCamara }: {
+  item: ItemTarea; borrador: BorradorTarea; ocupada: boolean;
+  onFoto: (archivo: File) => void; onTexto: (value: string) => void; onResponder: (value: string) => void;
   pedirPermisoCamara?: PedirPermisoCamara;
 }) {
-  const valor = borrador?.value ?? '';
-  const esFalla = item.responseType === 'ok_falla' && valor === 'falla';
-  const exigeFoto = tareaExigeFoto(item, valor);
+  const { min, max } = cantidadesDeFotos(item);
+  const exigeFoto = tareaExigeFoto(item, borrador.value);
+  const lista = !exigeFoto || borrador.fotos.length >= min;
+  const binaria = item.responseType === 'ok_falla' || item.responseType === 'si_no';
   const campo = `tarea-${item.id}`;
-
-  return (
-    <div className="guardia-tarea">
-      <p className="guardia-tarea-label" id={campo}>
-        {item.label}
-      </p>
-      <span className="guardia-tarea-marcas">
-        {item.dueLocalTime ? (
-          <span className="guardia-chip hora">Toca a las {item.dueLocalTime.slice(0, 5)}</span>
-        ) : null}
-        {item.requiresPhoto ? <span className="guardia-chip foto">Exige foto</span> : null}
-      </span>
-
-      {item.responseType === 'ok_falla' ? (
-        <div className="guardia-ok-falla" role="group" aria-labelledby={campo}>
-          <button
-            className={`guardia-boton-opcion${valor === 'ok' ? ' elegida' : ''}`}
-            onClick={() => onAnotar({ value: 'ok' })}
-            type="button"
-          >
-            OK
-          </button>
-          <button
-            className={`guardia-boton-opcion falla${esFalla ? ' elegida' : ''}`}
-            onClick={() => onAnotar({ value: 'falla' })}
-            type="button"
-          >
-            Falla
-          </button>
-        </div>
-      ) : (
-        <input
-          aria-labelledby={campo}
-          className="guardia-entrada"
-          inputMode={item.responseType === 'numero' ? 'decimal' : 'text'}
-          maxLength={500}
-          onChange={(evento) => onAnotar({ value: evento.target.value })}
-          type="text"
-          value={valor}
-        />
-      )}
-
-      {esFalla ? (
-        <textarea
-          aria-label={`Observación de ${item.label}`}
-          className="guardia-texto"
-          maxLength={500}
-          onChange={(evento) => onAnotar({ notes: evento.target.value })}
-          placeholder="Qué observaste"
-          rows={2}
-          value={borrador?.notes ?? ''}
-        />
-      ) : null}
-
-      {exigeFoto ? (
-        <div className="guardia-foto">
-          {/* Solo cámara: `capture="environment"` abre la cámara y no el selector
-              de archivos. Es la misma regla que la foto del acceso y por la misma
-              razón — desde la galería, una foto vieja pasa por evidencia nueva. */}
-          <GuardCameraInput id={`${campo}-foto`} disabled={guardando}
-            etiqueta={borrador?.nombreArchivo ? 'Repetir foto' : 'Tomar foto'}
-            onFoto={(archivo) => onAnotar({ archivo, nombreArchivo: archivo.name })}
-            {...(pedirPermisoCamara ? { pedirPermiso: pedirPermisoCamara } : {})} />
-          {borrador?.archivo ? <p className="guardia-nota">Foto lista para enviar.</p> : null}
-        </div>
-      ) : null}
-
-      <button
-        className="guardia-boton-primario ancho"
-        disabled={guardando || !valor.trim() || (exigeFoto && !borrador?.archivo)}
-        onClick={onGuardar}
-        type="button"
-      >
-        {guardando ? 'Guardando…' : 'Guardar tarea'}
-      </button>
-    </div>
-  );
+  return <div className="guardia-tarea" aria-busy={ocupada}>
+    <p className="guardia-tarea-label" id={campo}>{item.label}</p>
+    {item.dueLocalTime ? <p className="guardia-nota">Hora de referencia: {item.dueLocalTime.slice(0, 5)}</p> : null}
+    {exigeFoto ? <div className="guardia-tarea-fotos">
+      <p className="guardia-nota" role="status">{borrador.fotos.length} de {min} fotos mínimas · máximo {max}</p>
+      {borrador.fotos.length < max ? <GuardCameraInput id={`${campo}-foto`} disabled={ocupada}
+        etiqueta={borrador.fotos.length ? 'Agregar foto' : 'Tomar foto'} onFoto={onFoto}
+        {...(pedirPermisoCamara ? { pedirPermiso: pedirPermisoCamara } : {})} /> : null}
+      {!lista ? <p className="guardia-nota">Primero toma {min - borrador.fotos.length} {min - borrador.fotos.length === 1 ? 'foto más' : 'fotos más'}.</p> : null}
+    </div> : null}
+    {lista && item.responseType !== 'foto' ? <>
+      {binaria ? <div className="guardia-ok-falla" role="group" aria-labelledby={campo}>
+        <button className="guardia-boton-opcion" disabled={ocupada} type="button"
+          onClick={() => onResponder(item.responseType === 'ok_falla' ? 'ok' : 'si')}>SÍ</button>
+        <button className="guardia-boton-opcion" disabled={ocupada} type="button"
+          onClick={() => onResponder(item.responseType === 'ok_falla' ? 'falla' : 'no')}>NO</button>
+      </div> : <>
+        {item.responseType === 'numero' ? <input className="guardia-entrada" aria-labelledby={campo} inputMode="decimal"
+          maxLength={500} value={borrador.value} onChange={(e) => onTexto(e.target.value)} />
+          : <textarea className="guardia-texto" aria-labelledby={campo} placeholder="Escribe tu respuesta"
+            maxLength={500} rows={3} value={borrador.value} onChange={(e) => onTexto(e.target.value)} />}
+        <button className="guardia-boton-enviar ancho" type="button" disabled={ocupada || !borrador.value.trim()}
+          onClick={() => onResponder(borrador.value)}>{ocupada ? 'Enviando…' : 'Enviar'}</button>
+      </>}
+    </> : null}
+    {ocupada ? <p className="guardia-nota" role="status">Guardando y enviando automáticamente…</p> : null}
+  </div>;
 }

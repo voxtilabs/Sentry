@@ -1,11 +1,13 @@
 'use client';
 
 import { subirFotoDeTarea, enviarRespuestasDeTareas } from './guard-outbox';
-import { borrarFoto, conSubidaExclusiva, leerFoto } from './guard-photo-store';
+import { anotarReciboFotoTarea, borrarFoto, conSubidaExclusiva, leerFoto } from './guard-photo-store';
 import {
   anotarFotoDeTarea,
   enviarPendientes,
   fotosDeTareaAdoptables,
+  cargarEstadoTareas,
+  guardarEstadoTareas,
   type EstadoTareas,
 } from './guard-tareas-modelo';
 
@@ -43,6 +45,10 @@ export async function subirFotoDeTareaGuardada(
     const guardada = await leerFoto(clientPhotoId);
     // `undefined` = ya no estaba: otro camino la subió y la borró.
     if (!guardada) return undefined;
+    if (guardada.photoId) {
+      idsDeFotoDeTarea.set(clientPhotoId, guardada.photoId);
+      return true;
+    }
     // La hora de CAPTURA que quedó con la foto, no la de ahora: esta subida
     // puede ocurrir horas después, al recuperar señal.
     const resultado = await subirFotoDeTarea(
@@ -53,7 +59,7 @@ export async function subirFotoDeTareaGuardada(
     );
     if (!resultado.ok) return false;
     if (resultado.photoId) idsDeFotoDeTarea.set(clientPhotoId, resultado.photoId);
-    await borrarFoto(clientPhotoId);
+    if (resultado.photoId) await anotarReciboFotoTarea(clientPhotoId, resultado.photoId);
     return true;
   });
 
@@ -106,4 +112,49 @@ export function sincronizarTareas(apiUrl: string, estado: EstadoTareas): Promise
   return enviarPendientes(estado, (lote) =>
     enviarRespuestasDeTareas(apiUrl, estado.patrolId, lote),
   );
+}
+
+const sincronizaciones = new Map<string, Promise<EstadoTareas>>();
+
+/** Un solo envío por ronda. Relee lo capturado durante la red antes de persistir. */
+export function sincronizarTareasGuardadas(apiUrl: string, patrolId: string,
+  registros: Parameters<typeof adoptarFotosDeTareas>[2]): Promise<EstadoTareas> {
+  const enCurso = sincronizaciones.get(patrolId);
+  if (enCurso) return enCurso.then(() => sincronizarTareasGuardadas(apiUrl, patrolId, registros));
+  const promesa = (async () => {
+    const base = cargarEstadoTareas(patrolId);
+    const adoptado = await adoptarFotosDeTareas(apiUrl, base, registros);
+    let actual = cargarEstadoTareas(patrolId);
+    const fotos = [...adoptado.cola.flatMap((r) => r.fotos ??
+      (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId, photoId: r.photoId }] : [])),
+      ...Object.values(adoptado.borradores ?? {}).flatMap((b) => b.fotos)];
+    for (const foto of fotos) if (foto.photoId) actual = anotarFotoDeTarea(actual, foto.clientPhotoId, foto.photoId);
+    if (typeof window !== 'undefined') {
+      for (const r of [...actual.cola, ...Object.values(actual.borradores ?? {})]) {
+        if (r.clientScanId && r.fotos?.some((f) => f.photoId)) {
+          window.dispatchEvent(new CustomEvent('sentrycore:foto-tarea-subida',
+            { detail: { clientScanId: r.clientScanId } }));
+        }
+      }
+    }
+    guardarEstadoTareas(actual);
+    const resultado = await sincronizarTareas(apiUrl, actual);
+    const reciente = cargarEstadoTareas(patrolId);
+    const enviadas = [...new Set([...reciente.enviadas, ...resultado.enviadas])];
+    const siguiente = { ...reciente, enviadas,
+      cola: reciente.cola.filter((r) => !enviadas.includes(r.itemId)).map((r) => {
+        const rechazo = resultado.cola.find((otro) => otro.itemId === r.itemId &&
+          otro.respondidaAt === r.respondidaAt && otro.estado === 'rechazada');
+        return rechazo ?? r;
+      }) };
+    guardarEstadoTareas(siguiente);
+    for (const r of actual.cola) if (enviadas.includes(r.itemId)) {
+      for (const f of r.fotos ?? (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId }] : [])) {
+        await borrarFoto(f.clientPhotoId);
+      }
+    }
+    return siguiente;
+  })().finally(() => sincronizaciones.delete(patrolId));
+  sincronizaciones.set(patrolId, promesa);
+  return promesa;
 }
