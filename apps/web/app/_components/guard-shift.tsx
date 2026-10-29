@@ -31,7 +31,6 @@ import {
   cargarEstadoTareas,
   cargarPlantillaTareas,
   estadoTareasInicial,
-  guardarEstadoTareas,
   guardarPlantillaTareas,
   itemsDeLaPlantilla,
   tareasDelPuntoPorResponder,
@@ -405,7 +404,6 @@ function Ronda({
   useEffect(() => iniciarAutoSync(apiUrl), [apiUrl]);
 
   const actualizarTareas = useCallback((siguiente: EstadoTareas) => {
-    guardarEstadoTareas(siguiente);
     setTareas(siguiente);
   }, []);
 

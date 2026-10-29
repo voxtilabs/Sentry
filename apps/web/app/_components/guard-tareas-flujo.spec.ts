@@ -1,7 +1,8 @@
 import { guardarFoto, leerFoto, _reiniciarMemoria, anotarReciboFotoTarea, listarPendientes } from './guard-photo-store';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { subirFotoDeTarea, enviarRespuestasDeTareas } from './guard-outbox';
-import { cargarEstadoTareas, guardarEstadoTareas, responderTarea, estadoTareasInicial, type ItemTarea } from './guard-tareas-modelo';
+import { cargarEstadoTareas, guardarEstadoTareas, responderTarea, estadoTareasInicial, _reiniciarTareasDurables,
+  rehidratarTareasDurables, recuperarCapturasTareas, modificarEstadoTareas, type ItemTarea } from './guard-tareas-modelo';
 
 jest.mock('./guard-outbox', () => ({ subirFotoDeTarea: jest.fn(), enviarRespuestasDeTareas: jest.fn() }));
 const subir = jest.mocked(subirFotoDeTarea), enviar = jest.mocked(enviarRespuestasDeTareas);
@@ -11,7 +12,7 @@ const registros = { punto: { clientScanId: 'cliente-scan', scanId: 'servidor-sca
 const mapa = new Map<string, string>();
 const ventanaOriginal = globalThis.window;
 beforeEach(() => {
-  mapa.clear(); _reiniciarMemoria(); jest.resetAllMocks();
+  mapa.clear(); _reiniciarMemoria(); _reiniciarTareasDurables(); jest.resetAllMocks();
   Object.defineProperty(globalThis, 'window', { configurable: true, value: Object.assign(new EventTarget(), {
     localStorage: { getItem: (k: string) => mapa.get(k) ?? null, setItem: (k: string, v: string) => mapa.set(k, v) },
   }) });
@@ -21,11 +22,45 @@ beforeEach(() => {
 afterEach(() => { Object.defineProperty(globalThis, 'window', { configurable: true, value: ventanaOriginal }); });
 async function guardarDosFotos() {
   for (const id of ['foto-1', 'foto-2']) await guardarFoto(id, new Blob([id]), id, null, 'tarea');
-  guardarEstadoTareas({ ...estadoTareasInicial('ronda'), borradores: {
+  await guardarEstadoTareas({ ...estadoTareasInicial('ronda'), borradores: {
     tarea: { value: '', clientScanId: 'cliente-scan', fotos: [{ clientPhotoId: 'foto-1' }, { clientPhotoId: 'foto-2' }] },
   } });
 }
 describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia', () => {
+  it('serializa cambios simultáneos sobre el estado más reciente aunque falle localStorage', async () => {
+    await guardarDosFotos();
+    window.localStorage.setItem = () => { throw new Error('Cuota agotada'); };
+    await Promise.all(['primera', 'segunda'].map((id) => modificarEstadoTareas('ronda', (actual) => ({
+      ...actual, borradores: { ...actual.borradores, [id]: { value: id, clientScanId: 'cliente-scan', fotos: [] } },
+    }))));
+    expect(Object.keys(cargarEstadoTareas('ronda').borradores!)).toEqual(['tarea', 'primera', 'segunda']);
+    _reiniciarTareasDurables();
+    await rehidratarTareasDurables();
+    expect(Object.keys(cargarEstadoTareas('ronda').borradores!)).toEqual(['tarea', 'primera', 'segunda']);
+  });
+  it('un cierre brusco que revierte localStorage no pierde la respuesta confirmada en IndexedDB', async () => {
+    await guardarDosFotos();
+    const actual = cargarEstadoTareas('ronda');
+    await guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'no', respondidaAt: 'ahora',
+      clientScanId: 'cliente-scan', fotos: actual.borradores!.tarea!.fotos }));
+    mapa.set('sentrycore.guard.tareas.v1:ronda', JSON.stringify(estadoTareasInicial('ronda')));
+    _reiniciarTareasDurables(); // Proceso nuevo; el almacén durable permanece.
+    await rehidratarTareasDurables();
+    expect(cargarEstadoTareas('ronda').cola[0]?.fotos).toHaveLength(2);
+    await sincronizarTareasGuardadas('/api', 'ronda', registros);
+    expect(enviar).toHaveBeenCalledWith('/api', 'ronda', [{ itemId: 'tarea', value: 'no', photoIds: ['foto-1', 'foto-2'] }]);
+  });
+  it('recupera una captura huérfana de una tarea fotográfica inequívoca sin inventar respuestas escritas', () => {
+    const item = { ...tarea, responseType: 'foto' as const };
+    const base = { ...estadoTareasInicial('ronda'), borradores: { tarea: { value: '', clientScanId: 'cliente-scan', fotos: [{ clientPhotoId: 'f1' }] } } };
+    const scans = [{ clientScanId: 'cliente-scan', scanId: 'servidor-scan', checkpointId: 'punto' }];
+    const fotos = [{ clientEventId: 'f2', serverId: 'servidor-scan', destino: 'tarea' }];
+    const recuperada = recuperarCapturasTareas(base, [item], scans, fotos);
+    expect(recuperada.cola[0]?.value).toBe('foto');
+    expect(recuperada.cola[0]?.fotos).toHaveLength(2);
+    expect(recuperarCapturasTareas(base, [item, { ...item, id: 'otra' }], scans, fotos)).toEqual(base);
+    expect(recuperarCapturasTareas(base, [{ ...tarea, responseType: 'texto' }], scans, fotos).cola).toEqual([]);
+  });
   it('sube cada foto antes de responder y espera la pregunta para completar la tarea', async () => {
     await guardarDosFotos();
     await sincronizarTareasGuardadas('/api', 'ronda', registros);
@@ -33,7 +68,7 @@ describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia',
     expect(enviar).not.toHaveBeenCalled();
     expect(await listarPendientes()).toEqual([]); // Fotos confirmadas, aunque aún falte contestar.
     const actual = cargarEstadoTareas('ronda');
-    guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'si', respondidaAt: 'ahora',
+    await guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'si', respondidaAt: 'ahora',
       clientScanId: 'cliente-scan', fotos: actual.borradores!.tarea!.fotos }));
     await sincronizarTareasGuardadas('/api', 'ronda', registros);
     expect(enviar).toHaveBeenCalledWith('/api', 'ronda', [{ itemId: 'tarea', value: 'si', photoIds: ['foto-1', 'foto-2'] }]);
@@ -43,7 +78,7 @@ describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia',
   it('sin conexión conserva fotos y respuesta; reconectar envía todo una sola vez', async () => {
     await guardarDosFotos();
     const actual = cargarEstadoTareas('ronda');
-    guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'no', respondidaAt: 'ahora',
+    await guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'no', respondidaAt: 'ahora',
       clientScanId: 'cliente-scan', fotos: actual.borradores!.tarea!.fotos }));
     subir.mockResolvedValue({ ok: false });
     await sincronizarTareasGuardadas('/api', 'ronda', registros);
@@ -69,10 +104,10 @@ describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia',
     let llego!: () => void;
     const inicio = new Promise<void>((r) => { llego = r; });
     enviar.mockImplementation(() => { llego(); return new Promise((r) => { resolver = r; }); });
-    guardarEstadoTareas(responderTarea(estadoTareasInicial('ronda'), { item: { ...tarea, requiresPhoto: false }, value: 'si', respondidaAt: 'ahora' }));
+    await guardarEstadoTareas(responderTarea(estadoTareasInicial('ronda'), { item: { ...tarea, requiresPhoto: false }, value: 'si', respondidaAt: 'ahora' }));
     const enviando = sincronizarTareasGuardadas('/api', 'ronda', registros);
     await inicio;
-    guardarEstadoTareas({ ...cargarEstadoTareas('ronda'), borradores: {
+    await guardarEstadoTareas({ ...cargarEstadoTareas('ronda'), borradores: {
       otra: { value: 'Pendiente de explicación', clientScanId: 'otro-scan', fotos: [{ clientPhotoId: 'foto-nueva' }] },
     } });
     resolver([{ itemId: 'tarea', status: 'aplicado' }]);

@@ -1,5 +1,7 @@
 'use client';
 
+import type { EstadoTareas } from './guard-tareas-modelo';
+
 /**
  * Persistencia de las fotos de evidencia que todavía no llegaron al servidor
  * (#70).
@@ -26,7 +28,8 @@
 
 const NOMBRE_BD = 'sentrycore.guard.fotos';
 const ALMACEN = 'fotos';
-const VERSION_BD = 1;
+const VERSION_BD = 2;
+const ALMACEN_TAREAS = 'tareas';
 
 /**
  * A qué cuelga la foto, que es lo que decide el endpoint de subida:
@@ -93,6 +96,7 @@ function abrir(): Promise<IDBDatabase> {
       if (!bd.objectStoreNames.contains(ALMACEN)) {
         bd.createObjectStore(ALMACEN, { keyPath: 'clientEventId' });
       }
+      if (!bd.objectStoreNames.contains(ALMACEN_TAREAS)) bd.createObjectStore(ALMACEN_TAREAS, { keyPath: 'patrolId' });
     };
     solicitud.onsuccess = () => resolver(solicitud.result);
     solicitud.onerror = () => rechazar(solicitud.error);
@@ -102,14 +106,19 @@ function abrir(): Promise<IDBDatabase> {
 async function conAlmacen<T>(
   modo: IDBTransactionMode,
   fn: (almacen: IDBObjectStore) => IDBRequest<T>,
+  nombre = ALMACEN,
 ): Promise<T> {
   const bd = await abrir();
   try {
     return await new Promise<T>((resolver, rechazar) => {
-      const tx = bd.transaction(ALMACEN, modo);
-      const solicitud = fn(tx.objectStore(ALMACEN));
-      solicitud.onsuccess = () => resolver(solicitud.result);
+      const tx = bd.transaction(nombre, modo);
+      const solicitud = fn(tx.objectStore(nombre));
+      let resultado!: T;
+      solicitud.onsuccess = () => { resultado = solicitud.result; };
       solicitud.onerror = () => rechazar(solicitud.error);
+      tx.oncomplete = () => resolver(resultado);
+      tx.onabort = () => rechazar(tx.error);
+      tx.onerror = () => rechazar(tx.error);
     });
   } finally {
     bd.close();
@@ -286,6 +295,24 @@ export async function contarPendientes(): Promise<number> {
 /** Solo para pruebas: vacía el respaldo en memoria entre casos. */
 export function _reiniciarMemoria(): void {
   memoria.clear();
+  tareasMemoria.clear();
   subidasEnCurso.clear();
   indexedDbUtilizable = undefined;
+}
+
+const tareasMemoria = new Map<string, EstadoTareas>();
+
+export function persistirTareasDurables(estado: EstadoTareas): Promise<void> {
+  return conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.put(estado), ALMACEN_TAREAS); },
+    () => { tareasMemoria.set(estado.patrolId, JSON.parse(JSON.stringify(estado)) as EstadoTareas); });
+}
+
+export function leerTareasDurables(): Promise<EstadoTareas[]> {
+  return conRespaldo(() => conAlmacen<EstadoTareas[]>('readonly', (a) => a.getAll(), ALMACEN_TAREAS),
+    () => JSON.parse(JSON.stringify([...tareasMemoria.values()])) as EstadoTareas[]);
+}
+
+export function borrarTareasDurables(patrolId: string): Promise<void> {
+  return conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.delete(patrolId), ALMACEN_TAREAS); },
+    () => { tareasMemoria.delete(patrolId); });
 }

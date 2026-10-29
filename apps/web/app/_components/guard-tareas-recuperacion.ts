@@ -3,7 +3,9 @@
 import { useEffect } from 'react';
 import { pedirApi } from './guard-outbox';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
-import type { EstadoTareas } from './guard-tareas-modelo';
+import { cargarEstadoTareas, modificarEstadoTareas, recuperarCapturasTareas, rehidratarTareasDurables,
+  type ItemTarea, type EstadoTareas } from './guard-tareas-modelo';
+import { listarPendientes } from './guard-photo-store';
 
 /** También se ejecuta cuando el servidor ya no ofrece la ronda recién cerrada. */
 export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key' | 'getItem'>): EstadoTareas[] {
@@ -15,7 +17,7 @@ export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key
       const estado = JSON.parse(storage.getItem(key) ?? 'null') as EstadoTareas | null;
       if (!estado || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(estado.patrolId) || !Array.isArray(estado.cola)) continue;
       if (estado.cola.some((r) => r.estado === 'pendiente') ||
-        Object.values(estado.borradores ?? {}).some((b) => b.fotos?.some((f) => !f.photoId))) estados.push(estado);
+        Object.values(estado.borradores ?? {}).some((b) => b.fotos?.length)) estados.push(estado);
     } catch { /* Un registro corrupto no descarta el resto de la evidencia. */ }
   }
   return estados;
@@ -30,7 +32,13 @@ export async function recuperarTareasGuardadas(apiUrl: string, estados: readonly
     const r = await pedirApi(apiUrl, `/checklists/patrols/${encodeURIComponent(estado.patrolId)}/template?includeScanIds=true`);
     if (r.status === 403 || r.status === 404) { descartadas.add(estado.patrolId); continue; }
     if (!r.ok) continue;
-    const body = await r.json() as { syncScans?: Array<{ clientScanId: string; scanId: string }> };
+    const body = await r.json() as { template?: { items: ItemTarea[] };
+      syncScans?: Array<{ clientScanId: string; scanId: string; checkpointId: string }> };
+    if (body.template?.items) {
+      const pendientes = await listarPendientes();
+      await modificarEstadoTareas(estado.patrolId, (actual) =>
+        recuperarCapturasTareas(actual, body.template!.items, body.syncScans ?? [], pendientes));
+    }
     await sincronizarTareasGuardadas(apiUrl, estado.patrolId,
       Object.fromEntries((body.syncScans ?? []).map((s) => [s.clientScanId, s])));
   }
@@ -43,7 +51,13 @@ export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: str
     const sincronizar = async () => {
       if (corriendo || !vivo || navigator.onLine === false) return;
       corriendo = true;
-      try { await recuperarTareasGuardadas(apiUrl, tareasGuardadasConTrabajo(window.localStorage), activePatrolId, descartadas); }
+      try {
+        const durables = await rehidratarTareasDurables();
+        const estados = new Map(durables.map((e) => [e.patrolId, cargarEstadoTareas(e.patrolId)]));
+        for (const estado of tareasGuardadasConTrabajo(window.localStorage)) estados.set(estado.patrolId, estado);
+        await recuperarTareasGuardadas(apiUrl, [...estados.values()].filter((e) => e.cola.length ||
+          Object.values(e.borradores ?? {}).some((b) => b.fotos.length)), activePatrolId, descartadas);
+      }
       catch { /* Se conserva la cola completa y se reintenta al reconectar. */ }
       finally { corriendo = false; }
     };

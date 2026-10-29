@@ -2,6 +2,7 @@
 
 import { borrarClave, escribirJson, leerJson } from './guard-storage';
 import { DEFAULT_PATROL_RULES } from '@sentrycore/shared';
+import { leerTareasDurables, persistirTareasDurables, borrarTareasDurables } from './guard-photo-store';
 
 /**
  * Las tareas del turno, vistas desde el teléfono (#265).
@@ -37,6 +38,7 @@ import { DEFAULT_PATROL_RULES } from '@sentrycore/shared';
 
 const CLAVE_PLANTILLA = 'sentrycore.guard.tareas.plantilla.v1';
 const CLAVE_ESTADO = 'sentrycore.guard.tareas.v1';
+const estadosActuales = new Map<string, EstadoTareas>();
 
 export type TipoRespuestaTarea = 'ok_falla' | 'si_no' | 'texto' | 'numero' | 'foto';
 
@@ -402,6 +404,46 @@ export function fotosDeTareaAdoptables(
   return adoptables;
 }
 
+/** Repara capturas anteriores al diario durable solo cuando su tarea es inequívoca. */
+export function recuperarCapturasTareas(estado: EstadoTareas, items: readonly ItemTarea[],
+  scans: readonly { clientScanId: string; scanId: string; checkpointId: string }[],
+  fotos: readonly { clientEventId: string; serverId: string | null; destino: string }[]): EstadoTareas {
+  let siguiente = estado;
+  const usadas = new Set([...estado.cola.flatMap((r) => r.fotos?.map((f) => f.clientPhotoId) ?? (r.clientPhotoId ? [r.clientPhotoId] : [])),
+    ...Object.values(estado.borradores ?? {}).flatMap((b) => b.fotos.map((f) => f.clientPhotoId))]);
+  for (const foto of fotos) {
+    if (foto.destino !== 'tarea' || usadas.has(foto.clientEventId)) continue;
+    const scan = scans.find((s) => s.scanId === foto.serverId);
+    if (!scan) continue;
+    const candidatas = items.filter((i) => i.checkpointId === scan.checkpointId &&
+      !estado.enviadas.includes(i.id) && (i.responseType === 'foto' || i.requiresPhoto || i.requiresPhotoOnFail));
+    if (candidatas.length !== 1) continue;
+    const item = candidatas[0]!;
+    const enCola = siguiente.cola.find((r) => r.itemId === item.id);
+    const borrador = siguiente.borradores?.[item.id] ?? { value: '', clientScanId: scan.clientScanId, fotos: [] };
+    const actuales = enCola?.fotos ?? (enCola?.clientPhotoId
+      ? [{ clientPhotoId: enCola.clientPhotoId, ...(enCola.photoId ? { photoId: enCola.photoId } : {}) }] : borrador.fotos);
+    if (actuales.length >= cantidadesDeFotos(item).max) continue;
+    const nuevas = [...actuales, { clientPhotoId: foto.clientEventId }];
+    siguiente = enCola ? { ...siguiente, cola: siguiente.cola.map((r) => r.itemId === item.id ? { ...r, fotos: nuevas } : r) }
+      : { ...siguiente, borradores: { ...siguiente.borradores, [item.id]: { ...borrador, fotos: nuevas } } };
+    usadas.add(foto.clientEventId);
+  }
+  for (const item of items) {
+    const borrador = siguiente.borradores?.[item.id];
+    if (!borrador || siguiente.enviadas.includes(item.id)) continue;
+    const value = item.responseType === 'foto' ? 'foto' : borrador.value;
+    const automatica = item.responseType === 'foto' ||
+      (item.responseType === 'si_no' && ['si', 'no'].includes(value)) ||
+      (item.responseType === 'ok_falla' && ['ok', 'falla'].includes(value));
+    if (automatica && (!tareaExigeFoto(item, value) || borrador.fotos.length >= cantidadesDeFotos(item).min)) {
+      siguiente = responderTarea(siguiente, { item, value, fotos: borrador.fotos,
+        clientScanId: borrador.clientScanId, respondidaAt: new Date().toISOString() });
+    }
+  }
+  return siguiente;
+}
+
 // ------------------------------------------------------------- lo que falta
 
 /** ¿Esta tarea ya está respondida (en la cola o aceptada)? */
@@ -464,17 +506,60 @@ export function cargarPlantillaTareas(patrolId: string): PlantillaTareas | undef
 }
 
 export function cargarEstadoTareas(patrolId: string): EstadoTareas {
+  const actual = estadosActuales.get(patrolId);
+  if (actual) return actual;
   const guardado = leerJson<EstadoTareas | null>(`${CLAVE_ESTADO}:${patrolId}`, null);
   return guardado && guardado.patrolId === patrolId ? guardado : estadoTareasInicial(patrolId);
 }
 
-export function guardarEstadoTareas(estado: EstadoTareas): void {
-  escribirJson(`${CLAVE_ESTADO}:${estado.patrolId}`, estado);
+function notificarTareas(): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('sentrycore:tareas'));
 }
 
+const escrituras = new Map<string, Promise<EstadoTareas>>();
+let rehidratacion: Promise<EstadoTareas[]> | undefined;
+
+/** IndexedDB es el registro durable; localStorage queda como lectura rápida y migración. */
+export function rehidratarTareasDurables(): Promise<EstadoTareas[]> {
+  rehidratacion ??= leerTareasDurables().then((estados) => {
+    for (const estado of estados) {
+      estadosActuales.set(estado.patrolId, estado);
+      escribirJson(`${CLAVE_ESTADO}:${estado.patrolId}`, estado);
+    }
+    if (estados.length) notificarTareas();
+    return estados;
+  });
+  return rehidratacion.then(() => [...estadosActuales.values()]);
+}
+
+/** Modifica desde el estado más reciente y confirma el commit antes de avanzar en pantalla. */
+export function modificarEstadoTareas(patrolId: string, modificar: (actual: EstadoTareas) => EstadoTareas): Promise<EstadoTareas> {
+  const anterior = escrituras.get(patrolId) ?? Promise.resolve(estadoTareasInicial(patrolId));
+  const siguiente = anterior.catch(() => estadoTareasInicial(patrolId)).then(async () => {
+    await rehidratarTareasDurables();
+    const nuevo = modificar(cargarEstadoTareas(patrolId));
+    await persistirTareasDurables(nuevo);
+    estadosActuales.set(patrolId, nuevo);
+    escribirJson(`${CLAVE_ESTADO}:${patrolId}`, nuevo);
+    notificarTareas();
+    return nuevo;
+  });
+  escrituras.set(patrolId, siguiente);
+  const limpiar = () => { if (escrituras.get(patrolId) === siguiente) escrituras.delete(patrolId); };
+  void siguiente.then(limpiar, limpiar);
+  return siguiente;
+}
+
+export async function guardarEstadoTareas(estado: EstadoTareas): Promise<void> {
+  await modificarEstadoTareas(estado.patrolId, () => estado);
+}
+
+export function _reiniciarTareasDurables(): void { rehidratacion = undefined; escrituras.clear(); estadosActuales.clear(); }
+
 /** Se llama solo cuando la ronda cerró y no queda nada por subir. */
 export function olvidarEstadoTareas(patrolId: string): void {
+  estadosActuales.delete(patrolId);
   borrarClave(`${CLAVE_ESTADO}:${patrolId}`);
   borrarClave(`${CLAVE_PLANTILLA}:${patrolId}`);
+  void borrarTareasDurables(patrolId);
 }

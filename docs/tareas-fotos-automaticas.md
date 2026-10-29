@@ -22,6 +22,14 @@ foto general del punto si una tarea ya la exige.
 
 Sin conexión se conservan fotos, texto y respuesta. El servidor no acepta la
 respuesta hasta recibir todas las fotos capturadas y exige el mínimo configurado.
+El estado de cada tarea se confirma en IndexedDB antes de avanzar en pantalla;
+localStorage queda como caché y como origen para migrar borradores anteriores.
+Las escrituras de una ronda se serializan y se espera el commit de la transacción,
+no solo el éxito de su petición: un cierre forzado de Android puede revertir una
+escritura reciente de localStorage aunque el archivo de la foto sí haya persistido.
+Al reabrir se restaura el estado durable antes de sincronizar. Una captura antigua
+sin referencia solo se recupera si el escaneo identifica una única tarea con foto;
+no se asigna evidencia a una pregunta ambigua ni se envían argumentos sin pulsar Enviar.
 Al reconectar, volver a la pantalla o recuperar el id de un escaneo, se reintenta
 la cola. Un recibo persistente evita repetir la subida de una foto ya confirmada.
 La recuperación también se ejecuta en la portada sin ronda asignada: consulta

@@ -7,7 +7,8 @@ import {
   enviarPendientes,
   fotosDeTareaAdoptables,
   cargarEstadoTareas,
-  guardarEstadoTareas,
+  modificarEstadoTareas,
+  rehidratarTareasDurables,
   type EstadoTareas,
 } from './guard-tareas-modelo';
 
@@ -122,13 +123,16 @@ export function sincronizarTareasGuardadas(apiUrl: string, patrolId: string,
   const enCurso = sincronizaciones.get(patrolId);
   if (enCurso) return enCurso.then(() => sincronizarTareasGuardadas(apiUrl, patrolId, registros));
   const promesa = (async () => {
+    await rehidratarTareasDurables();
     const base = cargarEstadoTareas(patrolId);
     const adoptado = await adoptarFotosDeTareas(apiUrl, base, registros);
-    let actual = cargarEstadoTareas(patrolId);
     const fotos = [...adoptado.cola.flatMap((r) => r.fotos ??
       (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId, photoId: r.photoId }] : [])),
       ...Object.values(adoptado.borradores ?? {}).flatMap((b) => b.fotos)];
-    for (const foto of fotos) if (foto.photoId) actual = anotarFotoDeTarea(actual, foto.clientPhotoId, foto.photoId);
+    const actual = await modificarEstadoTareas(patrolId, (reciente) => {
+      for (const foto of fotos) if (foto.photoId) reciente = anotarFotoDeTarea(reciente, foto.clientPhotoId, foto.photoId);
+      return reciente;
+    });
     if (typeof window !== 'undefined') {
       for (const r of [...actual.cola, ...Object.values(actual.borradores ?? {})]) {
         if (r.clientScanId && r.fotos?.some((f) => f.photoId)) {
@@ -137,18 +141,17 @@ export function sincronizarTareasGuardadas(apiUrl: string, patrolId: string,
         }
       }
     }
-    guardarEstadoTareas(actual);
     const resultado = await sincronizarTareas(apiUrl, actual);
-    const reciente = cargarEstadoTareas(patrolId);
-    const enviadas = [...new Set([...reciente.enviadas, ...resultado.enviadas])];
-    const siguiente = { ...reciente, enviadas,
+    const siguiente = await modificarEstadoTareas(patrolId, (reciente) => {
+      const enviadas = [...new Set([...reciente.enviadas, ...resultado.enviadas])];
+      return { ...reciente, enviadas,
       cola: reciente.cola.filter((r) => !enviadas.includes(r.itemId)).map((r) => {
         const rechazo = resultado.cola.find((otro) => otro.itemId === r.itemId &&
           otro.respondidaAt === r.respondidaAt && otro.estado === 'rechazada');
         return rechazo ?? r;
       }) };
-    guardarEstadoTareas(siguiente);
-    for (const r of actual.cola) if (enviadas.includes(r.itemId)) {
+    });
+    for (const r of actual.cola) if (siguiente.enviadas.includes(r.itemId)) {
       for (const f of r.fotos ?? (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId }] : [])) {
         await borrarFoto(f.clientPhotoId);
       }
