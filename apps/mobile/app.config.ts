@@ -104,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.3.0',
+  version: '0.3.1',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',
@@ -136,6 +136,9 @@ const config: ExpoConfig = {
       'expo-build-properties',
       {
         android: {
+          // R8 en release: el AAB debe incluir también su mapa y métricas de optimización.
+          enableMinifyInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
           // Trafico en claro SOLO fuera de builds de tienda: en desarrollo el
           // portal corre en http://10.0.2.2:13000.
           usesCleartextTraffic: !paraTienda,
@@ -178,6 +181,7 @@ const config: ExpoConfig = {
     // Plugin local: firma el release con la llave de subida de Play cuando
     // esta en el entorno. Ver plugins/with-firma-de-subida.js.
     './plugins/with-firma-de-subida',
+    './plugins/with-r8-release',
   ],
 
   android: {

@@ -173,6 +173,14 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Conservar mapas de R8
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentrycore-r8
+          path: apps/mobile/android/app/build/outputs/mapping/release/
+          retention-days: 90
+          if-no-files-found: error
+
       - name: Borrar la llave del runner
         if: always()
         run: rm -f "$RUNNER_TEMP/subida.jks"
