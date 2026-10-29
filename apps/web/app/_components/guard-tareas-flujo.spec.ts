@@ -1,4 +1,4 @@
-import { guardarFoto, leerFoto, _reiniciarMemoria, anotarReciboFotoTarea } from './guard-photo-store';
+import { guardarFoto, leerFoto, _reiniciarMemoria, anotarReciboFotoTarea, listarPendientes } from './guard-photo-store';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { subirFotoDeTarea, enviarRespuestasDeTareas } from './guard-outbox';
 import { cargarEstadoTareas, guardarEstadoTareas, responderTarea, estadoTareasInicial, type ItemTarea } from './guard-tareas-modelo';
@@ -31,6 +31,7 @@ describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia',
     await sincronizarTareasGuardadas('/api', 'ronda', registros);
     expect(subir).toHaveBeenCalledTimes(2);
     expect(enviar).not.toHaveBeenCalled();
+    expect(await listarPendientes()).toEqual([]); // Fotos confirmadas, aunque aún falte contestar.
     const actual = cargarEstadoTareas('ronda');
     guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'si', respondidaAt: 'ahora',
       clientScanId: 'cliente-scan', fotos: actual.borradores!.tarea!.fotos }));

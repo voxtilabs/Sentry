@@ -125,6 +125,15 @@ export function tareaCubreFotoDelPunto(items: readonly ItemTarea[], checkpointId
     (item.requiresPhoto === true || item.responseType === 'foto'));
 }
 
+/** Reabre el último punto escaneado que aún tenga trabajo, incluso tras cerrar el WebView. */
+export function puntoConTareasParaRetomar(items: readonly ItemTarea[], estado: EstadoTareas,
+  registros: Readonly<Record<string, { scannedAt: string; clientScanId: string; scanId?: string }>>) {
+  const candidato = Object.entries(registros)
+    .sort(([, a], [, b]) => b.scannedAt.localeCompare(a.scannedAt))
+    .find(([id]) => tareasDelPuntoPorResponder(items, estado, id).length);
+  return candidato ? { checkpointId: candidato[0], ...candidato[1] } : undefined;
+}
+
 export interface FotoTarea { clientPhotoId: string; photoId?: string }
 export interface BorradorTarea { value: string; clientScanId: string; fotos: FotoTarea[] }
 

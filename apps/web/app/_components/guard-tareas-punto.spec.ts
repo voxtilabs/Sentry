@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TareaPuntoFormulario } from './guard-tareas-punto';
-import { cantidadesDeFotos, type ItemTarea } from './guard-tareas-modelo';
+import { cantidadesDeFotos, puntoConTareasParaRetomar, estadoTareasInicial, type ItemTarea } from './guard-tareas-modelo';
 
 const tarea: ItemTarea = { id: 'tarea', position: 1, label: '¿Está cerrada la cortina?',
   responseType: 'si_no', requiresPhoto: true, requiresPhotoOnFail: false, photoMinCount: 2, photoMaxCount: 3 };
@@ -50,5 +50,13 @@ describe('tareas: foto antes de la pregunta y envío sin confirmación extra', (
   });
   it('el valor inicial es un mínimo de una foto y un máximo de tres', () => {
     expect(cantidadesDeFotos({ ...tarea, photoMinCount: null, photoMaxCount: null })).toEqual({ min: 1, max: 3 });
+  });
+  it('al reabrir retoma el último punto pendiente; no exige escanear de nuevo', () => {
+    const item = { ...tarea, checkpointId: 'puerta' };
+    const registro = { scannedAt: '2026-10-29T22:00:00Z', clientScanId: 'scan', scanId: 'servidor' };
+    expect(puntoConTareasParaRetomar([item], estadoTareasInicial('ronda'), { puerta: registro }))
+      .toEqual({ checkpointId: 'puerta', ...registro });
+    expect(puntoConTareasParaRetomar([item], { ...estadoTareasInicial('ronda'), enviadas: [item.id] }, { puerta: registro })).toBeUndefined();
+    expect(puntoConTareasParaRetomar([item], estadoTareasInicial('ronda'), {})).toBeUndefined();
   });
 });

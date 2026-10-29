@@ -23,11 +23,12 @@ export function parseCheckpointTasksCsv(source: string, checkpoints: readonly Pu
       continue;
     }
     const checkpointId = matches[0]!.id;
-    const key = JSON.stringify([checkpointId, label]);
+    const key = JSON.stringify([checkpointId, label.replace(/\s+/g, ' ').toLocaleLowerCase('es')]);
     if (seen.has(key)) continue;
     seen.add(key);
     tasks.push({ ...tareaVacia(`csv-${index}`), checkpointId, label,
-      responseType: /s[ií]\s*\/\s*no|[¿?]/i.test(label) ? 'si_no' :
+      responseType: /observaci[oó]n|observaciones|detallar|anomal[ií]a/i.test(label) && !/s[ií]\s*\/\s*no/i.test(label) ? 'texto' :
+        /s[ií]\s*\/\s*no|[¿?]/i.test(label) ? 'si_no' :
         /fotograf[ií]a|fotografiar|fotograf[ií]e|\bfoto\b/i.test(label) ? 'foto' : 'si_no',
       requiresPhoto: /fotograf[ií]a|fotografiar|fotograf[ií]e|\bfoto\b/i.test(label) });
   }

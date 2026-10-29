@@ -2,6 +2,10 @@ import { parseCheckpointTasksCsv } from './checkpoint-tasks-csv';
 
 const points = [{ id: 'p1', name: 'Punto renombrado', tagUids: ['AABB1234'] }];
 describe('tareas por punto desde CSV', () => {
+  it('conserva las observaciones como argumento escrito y las fotos como captura sin pregunta', () => {
+    const result = parseCheckpointTasksCsv('id;tarea\nAABB1234;Alguna Observación?\nAABB1234;Foto de portón', points);
+    expect(result.tasks.map((t) => t.responseType)).toEqual(['texto', 'foto']);
+  });
   it('asocia por UID y conserva comillas, tildes y preguntas', () => {
     const result = parseCheckpointTasksCsv('\uFEFFrecinto,punto_nfc_nombre,id,tarea\r\nCasa,Original,AABB1234,"Fotografía puerta, completa"\r\nCasa,Original,AABB1234,Puerta cerrada? (SI/NO)', points);
     expect(result.errors).toEqual([]);

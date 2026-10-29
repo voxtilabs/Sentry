@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DivulgacionUbicacion } from './divulgacion-ubicacion';
 import { GuardCheckpointList, type FaseEscaneo } from './guard-checkpoint-list';
@@ -35,6 +35,7 @@ import {
   itemsDeLaPlantilla,
   tareasDelPuntoPorResponder,
   tareaCubreFotoDelPunto,
+  puntoConTareasParaRetomar,
   type EstadoTareas,
   type ItemTarea,
   type PlantillaTareas,
@@ -607,6 +608,22 @@ function Ronda({
   const tareasEnPantalla =
     puntoConTareas !== undefined &&
     tareasDelPuntoPorResponder(itemsTareas, tareas, puntoConTareas.checkpointId).length > 0;
+
+  const tareasRetomadas = useRef(false);
+  useEffect(() => {
+    if (tareasRetomadas.current || !itemsTareas.length) return;
+    tareasRetomadas.current = true;
+    const local = cargarEstadoTareas(patrol.id);
+    const registros = cargarEstadoRonda(patrol.id).puntos;
+    const candidato = puntoConTareasParaRetomar(itemsTareas, local, registros);
+    if (!candidato) return;
+    const { checkpointId, ...registro } = candidato;
+    const punto = puntos.find((p) => p.id === checkpointId);
+    if (!punto) return;
+    setPuntoConTareas({ checkpointId, nombre: punto.name, clientScanId: registro.clientScanId,
+      ...(registro.scanId ? { scanId: registro.scanId } : {}) });
+    setVista('ronda');
+  }, [itemsTareas, patrol.id, puntos]);
 
   useEffect(() => {
     if (puntoConTareas && !tareasEnPantalla && estado.cierre && !fotoDePunto) {

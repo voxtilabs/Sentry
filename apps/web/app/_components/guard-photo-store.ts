@@ -272,9 +272,9 @@ export function listarPendientes(): Promise<FotoPendiente[]> {
   return conRespaldo(
     async () => {
       const registros = await conAlmacen<RegistroFoto[]>('readonly', (a) => a.getAll());
-      return registros.map(metadatos);
+      return registros.filter((r) => !r.photoId).map(metadatos);
     },
-    () => Array.from(memoria.values(), metadatos),
+    () => Array.from(memoria.values()).filter((r) => !r.photoId).map(metadatos),
   );
 }
 

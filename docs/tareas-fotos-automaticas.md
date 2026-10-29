@@ -38,6 +38,14 @@ de Play debe comprobarse al procesar el nuevo archivo: no se deduce solo de acti
 un flag. Referencias: [Android vitals](https://developer.android.com/google/play/vitals/code-optimization)
 y [optimización con R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
 
+El AAB firmado del 29 de octubre contiene **7,603 MiB de DEX** (el v7 tenía
+30,43 MiB). Su `BUNDLE-METADATA/com.android.tools/r8.json` confirma optimización,
+reducción y ofuscación activas, modo completo. Las métricas `noObfuscationPercentage`,
+`noOptimizationPercentage` y `noShrinkingPercentage` son 17,64%, 18,09% y 17,48%
+respectivamente. Son los porcentajes **sin** esas transformaciones; no deben
+presentarse como si fueran los porcentajes ofuscados. La firma coincide con la
+clave de subida del v7.
+
 Los APK se generan a demanda; un push de cambios del servidor no vuelve a
 compilar Gradle. APK y AAB cancelan una compilación anterior de la misma rama
 cuando se pide otra, para evitar consumo duplicado de Actions.
