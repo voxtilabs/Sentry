@@ -36,6 +36,7 @@ import {
   tareasDelPuntoPorResponder,
   tareaCubreFotoDelPunto,
   puntoConTareasParaRetomar,
+  vistaConEvidenciaPendiente,
   type EstadoTareas,
   type ItemTarea,
   type PlantillaTareas,
@@ -361,6 +362,9 @@ function Ronda({
   const [idsDeEscaneo] = useState(nuevoRegistroIdsDeEscaneo);
   // Las tareas del turno (#265): la plantilla y lo respondido en esta ronda.
   const [itemsTareas, setItemsTareas] = useState<ItemTarea[]>([]);
+  const [plantillaLista, setPlantillaLista] = useState(false);
+  const [errorPlantilla, setErrorPlantilla] = useState(false);
+  const [reintentoPlantilla, setReintentoPlantilla] = useState(0);
   const [tareas, setTareas] = useState<EstadoTareas>(() => estadoTareasInicial(patrol.id));
   const [puntoConTareas, setPuntoConTareas] = useState<{
     checkpointId: string;
@@ -444,29 +448,32 @@ function Ronda({
   useEffect(() => {
     let vivo = true;
     const guardada = cargarPlantillaTareas(patrol.id);
-    if (guardada) setItemsTareas(itemsDeLaPlantilla(guardada));
+    if (guardada) { setItemsTareas(itemsDeLaPlantilla(guardada)); setPlantillaLista(true); }
     const local = cargarEstadoTareas(patrol.id);
     setTareas(local);
 
     void (async () => {
       const registros = cargarEstadoRonda(patrol.id).puntos;
-      await sincronizarTareasGuardadas(apiUrl, patrol.id, registros);
+      void sincronizarTareasGuardadas(apiUrl, patrol.id, registros).catch(() => undefined);
 
       try {
         const respuesta = await pedirApi(apiUrl, `/checklists/patrols/${patrol.id}/template`);
-        if (!respuesta.ok || !vivo) return;
+        if (!respuesta.ok) throw new Error('No se pudo descargar la plantilla');
+        if (!vivo) return;
         const plantilla = (await respuesta.json()) as PlantillaTareas;
         guardarPlantillaTareas(patrol.id, plantilla);
         setItemsTareas(itemsDeLaPlantilla(plantilla));
+        setPlantillaLista(true);
+        setErrorPlantilla(false);
       } catch {
-        // Sin señal manda la plantilla guardada: para eso se guarda.
+        if (vivo && !guardada) setErrorPlantilla(true);
       }
     })();
 
     return () => {
       vivo = false;
     };
-  }, [actualizarTareas, apiUrl, patrol.id]);
+  }, [actualizarTareas, apiUrl, patrol.id, reintentoPlantilla]);
 
   // Al montar (o al reabrir tras cerrar el WebView), rehidrata las fotos que
   // quedaron sin subir: las que ya tienen id de servidor se reintentan ahora, y
@@ -608,6 +615,8 @@ function Ronda({
   const tareasEnPantalla =
     puntoConTareas !== undefined &&
     tareasDelPuntoPorResponder(itemsTareas, tareas, puntoConTareas.checkpointId).length > 0;
+  const vistaVisible = vistaConEvidenciaPendiente(vista, { plantillaLista,
+    fotoPendiente: fotoDePunto !== undefined, tareasPendientes: tareasEnPantalla });
 
   const tareasRetomadas = useRef(false);
   useEffect(() => {
@@ -626,9 +635,10 @@ function Ronda({
   }, [itemsTareas, patrol.id, puntos]);
 
   useEffect(() => {
-    if (puntoConTareas && !tareasEnPantalla && estado.cierre && !fotoDePunto) {
+    if (puntoConTareas && !tareasEnPantalla && !fotoDePunto) {
       setPuntoConTareas(undefined);
-      setVista('resumen');
+      setVista(estado.cierre ? 'resumen' : 'ronda');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [puntoConTareas, tareasEnPantalla, estado.cierre, fotoDePunto]);
 
@@ -658,6 +668,7 @@ function Ronda({
    * fotografía y se reusa— y el supervisor tiene derecho a distinguirlos (#227).
    */
   async function marcarPunto(metodo: MetodoEscaneo) {
+    if (!plantillaLista) return;
     const destino = siguiente;
     if (destino === undefined) return;
     const esQr = metodo === 'qr';
@@ -854,12 +865,16 @@ function Ronda({
   }) {
     if (!tareasDelPuntoPorResponder(itemsTareas, tareas, punto.checkpointId).length) return;
     setPuntoConTareas(punto);
+    setVista('ronda');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function pedirFotoDelPunto(pendiente: FotoDePunto, anuncioPropio?: string) {
     setAvisoFotoPunto(undefined);
     setFotoPuntoGuardada(false);
     setFotoDePunto(pendiente);
+    setVista('ronda');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     /*
      * El permiso de camara se pide justo aca, que es cuando el guardia va a
      * fotografiar el acceso y entiende para que se lo piden.
@@ -1099,12 +1114,18 @@ function Ronda({
       </section>
 
       <nav className="guardia-vistas-ronda" aria-label="Acciones del turno">
-        <button aria-current={vista === 'ronda' ? 'page' : undefined} className={vista === 'ronda' ? 'activo' : ''} onClick={() => cambiarVista('ronda')} type="button">Ronda</button>
-        <button aria-current={vista === 'novedad' ? 'page' : undefined} className={vista === 'novedad' ? 'activo' : ''} onClick={() => cambiarVista('novedad')} type="button">Novedad</button>
-        <button aria-current={vista === 'resumen' ? 'page' : undefined} className={vista === 'resumen' ? 'activo' : ''} disabled={!estado.cierre} onClick={() => cambiarVista('resumen')} type="button">Resumen</button>
+        <button aria-current={vistaVisible === 'ronda' ? 'page' : undefined} className={vistaVisible === 'ronda' ? 'activo' : ''} onClick={() => cambiarVista('ronda')} type="button">Ronda</button>
+        <button aria-current={vistaVisible === 'novedad' ? 'page' : undefined} className={vistaVisible === 'novedad' ? 'activo' : ''} onClick={() => cambiarVista('novedad')} type="button">Novedad</button>
+        <button aria-current={vistaVisible === 'resumen' ? 'page' : undefined} className={vistaVisible === 'resumen' ? 'activo' : ''} disabled={!estado.cierre || !plantillaLista || !!fotoDePunto || tareasEnPantalla} onClick={() => cambiarVista('resumen')} type="button">Resumen</button>
       </nav>
 
-      {vista === 'ronda' && fotoDePunto ? (
+      {!plantillaLista ? <div className="guardia-aviso" role="status">
+        <p>{errorPlantilla ? 'Necesitamos conexión para descargar las tareas de esta ronda antes de escanear.' : 'Descargando las tareas de esta ronda…'}</p>
+        {errorPlantilla ? <button className="guardia-boton-secundario ancho" type="button"
+          onClick={() => { setErrorPlantilla(false); setReintentoPlantilla((n) => n + 1); }}>Reintentar descarga</button> : null}
+      </div> : null}
+
+      {vistaVisible === 'ronda' && fotoDePunto ? (
         <GuardScanPhoto
           esperando={guardandoFotoPunto}
           guardadaSinSubir={fotoPuntoGuardada}
@@ -1126,7 +1147,7 @@ function Ronda({
 
       {/* Las tareas van DESPUÉS de la foto obligatoria del acceso: esa es la
           evidencia que no se puede perder y el panel es uno solo a la vez. */}
-      {vista === 'ronda' && !fotoDePunto && puntoConTareas ? (
+      {vistaVisible === 'ronda' && !fotoDePunto && puntoConTareas ? (
         <GuardTareasPunto
           apiUrl={apiUrl}
           {...(puente.fase === 'listo' ? { pedirPermisoCamara: puente.pedirPermiso } : {})}
@@ -1143,7 +1164,6 @@ function Ronda({
           items={itemsTareas}
           nombrePunto={puntoConTareas.nombre}
           onEstado={actualizarTareas}
-          onListo={() => { setPuntoConTareas(undefined); if (estado.cierre) setVista('resumen'); }}
           {...(puntoConTareas.scanId ? { scanId: puntoConTareas.scanId } : {})}
         />
       ) : null}
@@ -1164,7 +1184,7 @@ function Ronda({
         de ruta con tiles offline es trabajo hecho y probado (#76), y esta es
         una decisión de dónde mostrarlo, no de si sirve.
       */}
-      {vista === 'ronda' ? (
+      {vistaVisible === 'ronda' ? (
         <>
           <GuardCheckpointList
             anuncio={anuncio}
@@ -1176,10 +1196,8 @@ function Ronda({
             // Con una foto obligatoria en pantalla no se marca el punto
             // siguiente: la evidencia del que se acaba de marcar va primero.
             esperandoFoto={fotoDePunto !== undefined}
-            // Y con las tareas del punto abiertas, lo mismo: no bloquean la
-            // ronda —«Seguir con la ronda» las cierra en un toque— pero mientras
-            // están en pantalla, el punto de al lado espera.
-            esperandoTareas={tareasEnPantalla}
+            // Las fotos y respuestas se completan antes de habilitar el siguiente punto.
+            esperandoTareas={!plantillaLista || tareasEnPantalla}
             puntos={puntos}
             registros={estado.puntos}
             saltados={saltados}
@@ -1202,7 +1220,7 @@ function Ronda({
             * terminar no. Ofrecer primero la salida que se deshace evita que
             * el guardia cierre una ronda que solo queria detener un rato.
             */}
-          {!enPausa && !confirmandoCierre ? (
+          {!estado.cierre && !enPausa && !confirmandoCierre ? (
             <div className="pausar-ronda">
               <button
                 className="pausar-ronda-boton"
@@ -1216,7 +1234,7 @@ function Ronda({
             </div>
           ) : null}
 
-          <div className="terminar-ronda">
+          {!estado.cierre ? <div className="terminar-ronda">
             {confirmandoCierre ? (
               <div className="terminar-ronda-alerta" role="alertdialog" aria-labelledby="alerta-fin">
                 <h3 id="alerta-fin">¿Terminar la ronda ahora?</h3>
@@ -1273,11 +1291,11 @@ function Ronda({
                 Terminar la ronda
               </button>
             )}
-          </div>
+          </div> : null}
         </>
       ) : null}
 
-      {vista === 'novedad' ? (
+      {vistaVisible === 'novedad' ? (
         <>
           <PanicoPanel
             apiUrl={apiUrl}
@@ -1299,7 +1317,7 @@ function Ronda({
         </>
       ) : null}
 
-      {vista === 'resumen' ? (
+      {vistaVisible === 'resumen' ? (
         <GuardShiftSummary
           apiUrl={apiUrl}
           estado={estado}

@@ -628,7 +628,7 @@ describe('GuardService.registerScan', () => {
     // bitacora, en vez del texto plano que mandaba este servicio. Aca se prueba
     // que el cierre lo dispara; el contenido y los destinatarios se prueban en
     // envio-informe.service.spec.ts, que es donde vive esa decision.
-    expect(envio.alCerrarRonda).toHaveBeenCalledWith('patrol-id');
+    expect(envio.alCerrarRonda).toHaveBeenCalledWith('patrol-id', { closingCheckpointId: 'cp-2' });
     // Y ya no manda el aviso por su cuenta: dos correos por la misma ronda mala
     // fue justo lo que hubo que evitar al enganchar.
     expect(correo.enqueue).not.toHaveBeenCalled();

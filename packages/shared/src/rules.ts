@@ -304,6 +304,8 @@ export const patrolRulesSchema = z.object({
   patrolStartNoticeMin: z.number().int().min(0).max(120).default(10),
   /** Tope del PDF adjunto al correo; sobre esto se manda enlace (#86). */
   reportMailMaxAttachmentMB: z.number().int().min(1).max(25).default(8),
+  /** Espera las fotos y respuestas del último punto antes de enviar el informe. */
+  reportEvidenceGraceSeconds: z.number().int().min(0).max(600).default(180),
 
   /* ------------------------------------------------------------------ *
    * Plan de muestreo del recorrido (#77)
@@ -1078,6 +1080,18 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     max: 25,
     default: DEFAULT_PATROL_RULES.reportMailMaxAttachmentMB,
     scopes: SOLO_EMPRESA,
+    group: 'avisos',
+  },
+  reportEvidenceGraceSeconds: {
+    key: 'reportEvidenceGraceSeconds',
+    label: 'Espera de evidencia al cerrar la ronda',
+    description: 'Tiempo máximo para recibir las fotos y respuestas del último punto antes de enviar el informe. Se envía antes si la evidencia ya está completa. En cero, el envío es inmediato.',
+    type: 'integer',
+    unit: 'seconds',
+    min: 0,
+    max: 600,
+    default: DEFAULT_PATROL_RULES.reportEvidenceGraceSeconds,
+    scopes: HASTA_RECINTO,
     group: 'avisos',
   },
   patrolStartNoticeMin: {

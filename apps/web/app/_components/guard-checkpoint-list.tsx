@@ -119,12 +119,12 @@ export function GuardCheckpointList({
             Punto {Math.min(hechos + 1, total)} de {total}
           </p>
           <h2 className="guardia-destino" id="guardia-destino">
-            {siguiente ? siguiente.name : 'Ronda completa'}
+            {siguiente ? siguiente.name : esperandoFoto || esperandoTareas ? 'Completa la evidencia del último punto' : 'Ronda completa'}
           </h2>
         </>
       )}
       {siguiente?.isClosingPoint ? (
-        <p className="guardia-nota">Al escanear este punto se cierra la ronda.</p>
+        <p className="guardia-nota">Este es el último punto. Después de escanearlo, completa sus fotos y respuestas.</p>
       ) : null}
       {/* Se avisa ANTES de llegar: el guardia tiene que saber que además de
           marcar hay que fotografiar, no enterarse con la etiqueta ya leída. */}

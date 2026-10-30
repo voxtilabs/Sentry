@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TareaPuntoFormulario } from './guard-tareas-punto';
-import { cantidadesDeFotos, puntoConTareasParaRetomar, estadoTareasInicial, type ItemTarea } from './guard-tareas-modelo';
+import { cantidadesDeFotos, puntoConTareasParaRetomar, estadoTareasInicial, vistaConEvidenciaPendiente, type ItemTarea } from './guard-tareas-modelo';
 
 const tarea: ItemTarea = { id: 'tarea', position: 1, label: '¿Está cerrada la cortina?',
   responseType: 'si_no', requiresPhoto: true, requiresPhotoOnFail: false, photoMinCount: 2, photoMaxCount: 3 };
@@ -13,6 +13,18 @@ function formulario(item: ItemTarea, cantidad: number, value = '') {
   }));
 }
 describe('tareas: foto antes de la pregunta y envío sin confirmación extra', () => {
+  it.each([
+    { plantillaLista: false, fotoPendiente: false, tareasPendientes: false },
+    { plantillaLista: true, fotoPendiente: true, tareasPendientes: false },
+    { plantillaLista: true, fotoPendiente: false, tareasPendientes: true },
+  ])('el resumen del último NFC no tapa el trabajo pendiente: %j', (trabajo) => {
+    expect(vistaConEvidenciaPendiente('resumen', trabajo)).toBe('ronda');
+  });
+  it('presenta el término de ronda una vez completas las fotos y respuestas', () => {
+    expect(vistaConEvidenciaPendiente('resumen', {
+      plantillaLista: true, fotoPendiente: false, tareasPendientes: false,
+    })).toBe('resumen');
+  });
   it('pide la primera foto antes de ofrecer la respuesta binaria', () => {
     const html = formulario(tarea, 0);
     expect(html).toContain('Tomar foto');

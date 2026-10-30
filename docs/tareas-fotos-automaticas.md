@@ -20,6 +20,13 @@ o número tiene un solo botón verde **Enviar**. Solo fotos termina automáticam
 al cumplir el mínimo. No hay botón Guardar tarea ni una segunda cámara para la
 foto general del punto si una tarea ya la exige.
 
+Tampoco hay un botón Seguir con la ronda: al terminar las capturas y responder,
+se presenta la siguiente tarea o el siguiente punto automáticamente. La plantilla
+de esa ronda debe estar descargada antes de habilitar el escaneo; sin señal se
+usa la copia persistida. El resumen del último NFC nunca tapa una foto o pregunta
+pendiente. Al terminar aparece **Término de ronda**, que vuelve al inicio sin
+marcar la salida de jornada.
+
 Sin conexión se conservan fotos, texto y respuesta. El servidor no acepta la
 respuesta hasta recibir todas las fotos capturadas y exige el mínimo configurado.
 El estado de cada tarea se confirma en IndexedDB antes de avanzar en pantalla;
@@ -63,3 +70,18 @@ clave de subida del v7.
 Los APK se generan a demanda; un push de cambios del servidor no vuelve a
 compilar Gradle. APK y AAB cancelan una compilación anterior de la misma rama
 cuando se pide otra, para evitar consumo duplicado de Actions.
+
+El correo usa la misma configuración de fotos y recorrido que el panel. Al cerrar
+por NFC, el job conserva el punto final y el requisito de foto resuelto por el
+servidor. Espera las fotos y respuestas de ese punto hasta
+`reportEvidenceGraceSeconds` (180 segundos por defecto, configurable por empresa
+y recinto, 0–600). Sondea cada cinco segundos sin consumir los reintentos de fallos
+ni crear correos duplicados. Cuando la evidencia llega, genera el PDF y renueva la
+copia cacheada; si se agota la espera, envía el informe con la evidencia disponible.
+
+Las fotografías del PDF se optimizan en el servidor, una por vez, hasta 1280 px
+por lado y JPEG de calidad 85, sin ampliar imágenes ni reemplazar una copia por
+otra más pesada. Las imágenes pequeñas se conservan. Es una copia para visualizar
+e imprimir: los originales de evidencia y sus huellas permanecen intactos. El texto
+y el recorrido siguen siendo vectoriales y los streams del PDF están comprimidos.
+El máximo de adjunto continúa resolviéndose con `reportMailMaxAttachmentMB`.

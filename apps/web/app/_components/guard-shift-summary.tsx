@@ -1,14 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 
 import { GuardChecklist } from './guard-checklist';
-import { marcarSalidaDeJornada } from './guard-outbox';
 import {
   ETIQUETAS_CRITICIDAD,
   hayPendientesDeSubir,
-  olvidarEstadoRonda,
   puntosPorQr,
   puntosSinFoto,
   type EstadoRonda,
@@ -16,7 +13,7 @@ import {
 } from './guard-shift-state';
 
 /**
- * Cierre y resumen del turno (#93).
+ * Cierre y resumen de la ronda. La jornada continúa aunque termine un recorrido.
  *
  * Aparece sola al escanear el punto de cierre: el servidor cierra la ronda con
  * su porcentaje real y esta pantalla lo muestra. El porcentaje NO se calcula
@@ -48,8 +45,6 @@ export function GuardShiftSummary({
   onVolver: () => void;
 }) {
   const router = useRouter();
-  const [salida, setSalida] = useState<string>();
-  const [marcando, setMarcando] = useState(false);
   const cierre = estado.cierre;
   if (!cierre) return null;
 
@@ -60,21 +55,10 @@ export function GuardShiftSummary({
   // conteo no le dice al guardia a qué puerta tiene que volver.
   const sinFoto = puntosSinFoto(puntos, estado.puntos);
 
-  async function terminarJornada() {
-    setMarcando(true);
-    const resultado = await marcarSalidaDeJornada(apiUrl);
-    setSalida(resultado.mensaje);
-    setMarcando(false);
-    if (resultado.ok && !pendientes) {
-      olvidarEstadoRonda(estado.patrolId);
-      router.refresh();
-    }
-  }
-
   return (
     <section className="guardia-resumen" aria-labelledby="guardia-resumen-titulo">
       <h2 id="guardia-resumen-titulo">
-        {cierre.confirmado ? 'Ronda cerrada' : 'Ronda terminada, falta subirla'}
+        Término de ronda
       </h2>
 
       {cierre.pct === undefined ? (
@@ -170,17 +154,12 @@ export function GuardShiftSummary({
 
       <button
         className="guardia-boton-primario"
-        disabled={marcando}
-        onClick={() => void terminarJornada()}
+        onClick={() => router.refresh()}
         type="button"
       >
-        {marcando ? 'Marcando…' : 'Marcar salida de jornada'}
+        Término de ronda
       </button>
-      {salida ? (
-        <p className="guardia-anuncio" role="status" aria-live="polite">
-          {salida}
-        </p>
-      ) : null}
+      <p className="guardia-nota">Puedes iniciar otra ronda. Tu jornada sigue abierta.</p>
       {pendientes ? (
         <p className="guardia-aviso">
           Todavía queda trabajo por subir. No cierres la app hasta que la barra de arriba diga

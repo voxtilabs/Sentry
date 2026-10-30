@@ -1036,7 +1036,10 @@ export class GuardService {
        * correos por la misma ronda mala.
        */
       try {
-        await this.envioInforme.alCerrarRonda(patrolId);
+        await this.envioInforme.alCerrarRonda(patrolId, {
+          closingCheckpointId: target.checkpoint_id,
+          ...(photoRequired === null ? {} : { closingPhotoRequired: photoRequired }),
+        });
       } catch (error) {
         // Fallar al encolar no puede tumbar el escaneo: la ronda ya esta cerrada
         // con su cumplimiento persistido, y el barrido de rezagadas la recoge.

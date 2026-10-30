@@ -132,6 +132,13 @@ export function tareaCubreFotoDelPunto(items: readonly ItemTarea[], checkpointId
     (item.requiresPhoto === true || item.responseType === 'foto'));
 }
 
+/** El cierre del servidor no puede tapar la evidencia que aún pide el último punto. */
+export function vistaConEvidenciaPendiente(vista: 'ronda' | 'novedad' | 'resumen',
+  trabajo: { plantillaLista: boolean; fotoPendiente: boolean; tareasPendientes: boolean }) {
+  return vista === 'resumen' && (!trabajo.plantillaLista || trabajo.fotoPendiente || trabajo.tareasPendientes)
+    ? 'ronda' : vista;
+}
+
 /** Reabre el último punto escaneado que aún tenga trabajo, incluso tras cerrar el WebView. */
 export function puntoConTareasParaRetomar(items: readonly ItemTarea[], estado: EstadoTareas,
   registros: Readonly<Record<string, { scannedAt: string; clientScanId: string; scanId?: string }>>) {

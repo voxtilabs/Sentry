@@ -13,13 +13,13 @@ import {
 
 /** Una tarea a la vez: cámara → pregunta → envío, sin confirmaciones duplicadas. */
 export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScanId, scanId,
-  items, estado, foto, idDelEscaneo, onEstado, onListo, pedirPermisoCamara,
+  items, estado, foto, idDelEscaneo, onEstado, pedirPermisoCamara,
 }: {
   apiUrl: string; nombrePunto: string; checkpointId: string; clientScanId: string; scanId?: string;
   items: readonly ItemTarea[]; estado: EstadoTareas;
   foto: { sitio: string; ruta: string; zonaHoraria?: string; objetivoBytes?: number };
   idDelEscaneo: () => string | undefined;
-  onEstado: (estado: EstadoTareas) => void; onListo: () => void;
+  onEstado: (estado: EstadoTareas) => void;
   pedirPermisoCamara?: PedirPermisoCamara;
 }) {
   const [ocupada, setOcupada] = useState(false);
@@ -108,8 +108,7 @@ export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScan
       onResponder={(value) => void responder(item, value)}
       {...(pedirPermisoCamara ? { pedirPermisoCamara } : {})} />
     {aviso ? <p className="guardia-anuncio" role="status">{aviso}</p> : null}
-    <button className="guardia-boton-texto" disabled={ocupada} onClick={onListo} type="button">Seguir con la ronda</button>
-    <p className="guardia-nota">Las tareas que dejes pendientes aparecerán en el informe.</p>
+    <p className="guardia-nota">Al completar las fotos y la respuesta pasarás automáticamente al siguiente punto.</p>
   </section>;
 }
 

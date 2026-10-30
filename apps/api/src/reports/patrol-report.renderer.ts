@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { fotoParaPdf } from './pdf-photo';
 
 import { desvioDeTurno, redactarAtrasoDeTarea, redactarDuracion } from './desvio-de-turno';
 import {
@@ -164,6 +165,7 @@ export async function renderizarInformeRonda(
   opciones: OpcionesRender,
 ): Promise<ResumenRender> {
   const doc = new PDFDocument({
+    compress: true,
     size: 'A4',
     margin: MARGEN,
     info: {
@@ -859,7 +861,7 @@ async function pintarEvidencia(
 
   let ok = false;
   if (lectura.ok) {
-    ok = dibujarImagen(doc, lectura.contenido, caja);
+    ok = dibujarImagen(doc, await fotoParaPdf(lectura.contenido), caja);
     if (!ok) {
       opciones.onEvidenciaFallida?.(foto.id, 'ilegible');
       dibujarHuecoEvidencia(doc, caja, MOTIVO_TEXTO.ilegible);
@@ -1121,7 +1123,7 @@ async function dibujarAnexo(
 
     const caja = { x: celda.x, y: celda.y, ancho: celda.ancho, alto: celda.alto - ALTO_LEYENDA };
     if (lectura.ok) {
-      const dibujada = dibujarImagen(doc, lectura.contenido, caja);
+      const dibujada = dibujarImagen(doc, await fotoParaPdf(lectura.contenido), caja);
       if (dibujada) {
         incluidas += 1;
       } else {
