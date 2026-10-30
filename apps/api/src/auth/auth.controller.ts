@@ -30,7 +30,7 @@ import { CodeLoginDto } from './dto/code-login.dto';
 import { CompanyCardDto, SelectCompanyGuardDto } from './dto/company-card.dto';
 import { NfcLoginDto } from './dto/nfc-login.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
-import { clearSessionCookies, setSessionCookies } from './session-cookies';
+import { clearSessionCookies, setSessionCookies, setCompanyCookie, clearCompanyCookie } from './session-cookies';
 
 class SessionParam {
   @IsUUID()
@@ -125,8 +125,31 @@ export class AuthController {
   @Post('company-card')
   @HttpCode(HttpStatus.OK)
   @Public()
-  companyCard(@Body() input: CompanyCardDto, @Req() request: Request) {
-    return this.auth.companyCard(input.cardUid, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+  async companyCard(@Body() input: CompanyCardDto, @Req() request: Request,
+    @Res({ passthrough: true }) response: Response) {
+    const { contextToken, ...picker } = await this.auth.companyCard(input.cardUid, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+    setCompanyCookie(response, contextToken);
+    response.setHeader('Cache-Control', 'no-store');
+    return picker;
+  }
+
+  @Get('company-picker')
+  @Public()
+  async companyPicker(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    return this.auth.companyPicker(request.cookies?.sentrycore_company, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+  }
+
+  @Post('guard-day/end')
+  @HttpCode(HttpStatus.OK)
+  @Permissions('patrols:execute')
+  async endGuardDay(@Req() request: Request & { user: AuthenticatedUser },
+    @Res({ passthrough: true }) response: Response) {
+    const token = await this.auth.endGuardDay(request.user, request.get('user-agent') ?? '');
+    await this.auth.revokeCompanyContext(request.cookies?.sentrycore_company);
+    setCompanyCookie(response, token);
+    clearSessionCookies(response);
+    return { next: '/?guardias=1' };
   }
 
   @Post('company-card/select')
@@ -147,6 +170,8 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     await this.auth.logout(request.cookies?.sentrycore_refresh);
+    await this.auth.revokeCompanyContext(request.cookies?.sentrycore_company);
+    clearCompanyCookie(response);
     clearSessionCookies(response);
   }
 

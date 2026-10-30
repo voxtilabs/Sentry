@@ -55,6 +55,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
         // el servidor (`checkpoints:manage` + supervisor_sites). Si esta entrada
         // faltara, `resolvePanelView` mandaria la vista a 'resumen' y la pantalla
         // quedaria inalcanzable aunque la API la acepte.
+        { view: 'ronda-patron', icon: '⌖', label: 'Ronda patrón' },
         { view: 'terreno', icon: '▣', label: 'Puntos y etiquetas' },
         { view: 'monitoreo', icon: '●', label: 'Monitoreo en vivo' },
         { view: 'visitas', icon: '+', label: 'Registro de visitas' },
@@ -103,6 +104,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
     SUPERVISOR: {
       resumen: { title: 'Mis recintos', subtitle: 'Estado actual de los recintos que tienes asignados.' },
       planificacion: { title: 'Planificación', subtitle: 'Programa turnos, recorridos y tareas de terreno.' },
+      'ronda-patron': { title: 'Ronda patrón', subtitle: 'Registra el recorrido de referencia y la posición GPS de cada NFC.' },
       terreno: { title: 'Puntos y etiquetas', subtitle: 'Da de alta puntos de control y vincula sus etiquetas NFC en tus recintos.' },
       monitoreo: { title: 'Monitoreo en vivo', subtitle: 'Sigue las rondas activas de tus recintos asignados.' },
       visitas: { title: 'Registro de visitas', subtitle: 'Ingresos y salidas de los recintos autorizados.' },

@@ -1,3 +1,4 @@
+import { stopReference } from './src/geo/reference-native';
 import { crearConsultaPublica, VistaConsultaPublica } from './src/visits/public-vehicle';
 import { crearCamaraOcr, VistaCamaraOcr } from './src/visits/ocr-camera';
 import { StatusBar } from 'expo-status-bar';
@@ -225,7 +226,10 @@ function AppShell({ portal }: { portal: URL }) {
     () => ({ ...crearManejadoresNfc(puertoNfcAndroid, camaraQr.lector), escanearOcr: camaraOcr.scan, cancelarOcr: camaraOcr.cancel, consultarVehiculoPublico: consultaPublica.start, cancelarConsultaPublica: consultaPublica.cancel }),
     [camaraQr, camaraOcr, consultaPublica],
   );
+  const referenceAllowed=useRef(false);
+  referenceAllowed.current=new URL(urlActual).pathname.startsWith('/app/supervisor');
   const puente = useMemo(() => crearPuenteNativo({
+    puedeCapturarReferencia: () => referenceAllowed.current,
     portalOrigen: portal.origin,
     appVersion: mobilePackage.version,
     inyectar: (javaScript) => webView.current?.injectJavaScript(javaScript),
@@ -382,6 +386,7 @@ function AppShell({ portal }: { portal: URL }) {
         onShouldStartLoadWithRequest={allowNavigation}
         onNavigationStateChange={(navState) => {
           setUrlActual(navState.url);
+          try { if (!new URL(navState.url).pathname.startsWith('/app/supervisor')) stopReference(); } catch { stopReference(); }
         }}
         onLoadStart={() => {
           if (!cargadoInicialmente.current) {

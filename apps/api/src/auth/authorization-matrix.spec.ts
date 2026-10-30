@@ -1,3 +1,4 @@
+import { ReferenceController } from '../reference/reference.controller';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import {
   hasPermission,
@@ -76,11 +77,14 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
  * verdad ejecutable de rol × endpoint.
  */
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
+  ...['catalog','start','detail','samples','scan','finish','cancel'].map(handler => secured(ReferenceController,handler,['routes:manage'],['SUPERVISOR'],true)),
   ...['context','list','register','exit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
   ...['context','list'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),
   publicEndpoint(AuthController, 'companyCard'),
+  publicEndpoint(AuthController, 'companyPicker'),
+  secured(AuthController, 'endGuardDay', ['patrols:execute'], ['GUARDIA']),
   publicEndpoint(AuthController, 'selectCompanyGuard'),
   secured(PlatformController, 'companyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
   secured(PlatformController, 'setCompanyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
@@ -170,6 +174,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
     ['ADMIN', 'SUPERVISOR'],
     true,
   ),
+  secured(GuardController, 'confirmRoundFlow', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'home', ['patrols:execute'], ['GUARDIA'], true),
   // Los DOS roles que abren la app en un telefono. Que aparezca SUPERVISOR aca
   // es el arreglo de #231: con `patrols:execute` recibia 403 y se quedaba sin
@@ -432,6 +437,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
 ] as const;
 
 const CONTROLLERS = [
+  ReferenceController,
   VisitsGuardController,
   VisitsManagementController,
   AuthController,

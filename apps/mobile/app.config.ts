@@ -104,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.3.1',
+  version: '0.3.2',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',

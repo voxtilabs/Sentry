@@ -17,8 +17,6 @@ import {
   enviarNovedad,
   iniciarAutoSync,
   pedirApi,
-  subirFotoNovedad,
-  subirFotoPunto,
   suscribirVeredictos,
   type Criticidad,
   type PayloadNovedad,
@@ -52,6 +50,7 @@ import {
   puntoExigeFoto,
   puntosFaltantes,
   reconciliarConServidor,
+  restaurarCierreServidor,
   registrarCierre,
   registrarEscaneo,
   registrarNovedad,
@@ -70,16 +69,15 @@ import {
   nuevoRegistroIdsDeEscaneo,
   type FotoDePunto,
 } from './guard-scan-photo-flow';
+import { subirFotoPersistida } from './guard-evidence-upload';
 import { GuardShiftSummary } from './guard-shift-summary';
 import { procesarFoto } from './guard-photo';
 import {
   borrarFoto,
   clasificarPendientes,
-  conSubidaExclusiva,
   contarPendientes,
   fijarServerId,
   guardarFoto,
-  leerFoto,
   listarPendientes,
 } from './guard-photo-store';
 import { escribirJson, leerJson, nuevoUuid } from './guard-storage';
@@ -120,6 +118,8 @@ export interface GuardShiftData {
   patrol?: {
     id: string;
     status: string;
+    closedAt?: string | null;
+    compliancePct?: number | null;
     siteName: string;
     /** Zona horaria del RECINTO, que manda la API. Ver guard-photo.ts. */
     timezone?: string;
@@ -151,28 +151,6 @@ const hora = new Intl.DateTimeFormat('es-CL', {
  * si el WebView se cierra antes de sincronizar, la foto no se pierde y se sube al
  * reabrir o al recuperar señal.
  */
-function subirFotoPersistida(
-  apiUrl: string,
-  clientEventId: string,
-  serverId: string,
-): Promise<boolean | undefined> {
-  // Una sola subida por foto aunque la pidan dos caminos a la vez: el del
-  // veredicto de la cola y el de la foto recien tomada se cruzan justo cuando la
-  // señal vuelve a mitad del procesado. Ver conSubidaExclusiva.
-  return conSubidaExclusiva(clientEventId, async () => {
-    const guardada = await leerFoto(clientEventId);
-    if (!guardada || guardada.destino === 'tarea') return undefined;
-    // Se manda la hora de CAPTURA que quedo guardada con la foto, no la de ahora:
-    // esta subida puede ocurrir horas despues, al recuperar señal.
-    //
-    // El destino decide el endpoint: la foto de un punto cuelga del escaneo y la
-    // de una novedad, del evento. El almacén guarda las dos y por eso lo dice.
-    const subir = guardada.destino === 'escaneo' ? subirFotoPunto : subirFotoNovedad;
-    const subida = await subir(apiUrl, serverId, guardada.blob as File, guardada.takenAtDevice);
-    if (subida) await borrarFoto(clientEventId);
-    return subida;
-  });
-}
 
 export function GuardShift({ data, apiUrl }: { data: GuardShiftData; apiUrl: string }) {
   useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
@@ -398,12 +376,13 @@ function Ronda({
   // por el servidor gana; lo pendiente en cola gana el teléfono.
   // Se lee después de montar para no romper la hidratación.
   useEffect(() => {
-    const reconciliado = reconciliarConServidor(cargarEstadoRonda(patrol.id), puntos);
+    const reconciliado = restaurarCierreServidor(reconciliarConServidor(cargarEstadoRonda(patrol.id), puntos),puntos,{status:patrol.status,closedAt:patrol.closedAt,compliancePct:patrol.compliancePct});
     // Se persiste de inmediato: si el estado viejo tenía un fantasma, dejarlo
     // en el disco es dejarlo listo para reaparecer en la próxima recarga.
     guardarEstadoRonda(reconciliado);
     setEstado(reconciliado);
-  }, [patrol.id, puntos]);
+    if (reconciliado.cierre) setVista('resumen');
+  }, [patrol.id, patrol.status, patrol.closedAt, patrol.compliancePct, puntos]);
 
   useEffect(() => iniciarAutoSync(apiUrl), [apiUrl]);
 

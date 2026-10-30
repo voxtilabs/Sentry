@@ -30,6 +30,8 @@ interface PatrolRow {
   scheduled_start_at: Date;
   scheduled_end_at: Date;
   started_at: Date | null;
+  closed_at?: Date | null;
+  compliance_pct?: number | string | null;
   site_id: string;
   /** Puntos esperados con al menos un escaneo aceptado. Lo calcula el SQL. */
   completed_checkpoint_count: number;
@@ -92,6 +94,8 @@ export const CONSULTA_HOME = `
           p.scheduled_start_at,
           p.scheduled_end_at,
           p.started_at,
+          p.closed_at,
+          p.compliance_pct,
           p.site_id,
           -- Cuantos puntos ESPERADOS tienen al menos un escaneo aceptado. Es el
           -- dato que estuvo anos como un cero escrito a mano (con un test que
@@ -168,7 +172,7 @@ export const CONSULTA_HOME = `
           -- desaparece de la pantalla y el guardia cree que no tiene ninguna.
           -- Lo mismo en el vencimiento (una pausa olvidada tiene que vencer
           -- igual) y en la guarda de una-ronda-a-la-vez.
-          AND p.status IN ('pendiente', 'en_curso', 'pausada')
+          AND (p.status IN ('pendiente', 'en_curso', 'pausada') OR (p.status IN ('completada','incompleta') AND NOT p.guard_flow_completed))
           -- El recinto que ELIGIO el guardia (#231). Sin esta linea el
           -- selector no servia para nada: el parametro llegaba a getHome, se
           -- devolvia como selectedSiteId y la consulta seguia trayendo la
@@ -185,7 +189,7 @@ export const CONSULTA_HOME = `
         -- sites, y Postgres aborta con 42803 al pedir s.timezone.
         GROUP BY p.id, s.id, r.id
         ORDER BY
-          CASE p.status WHEN 'en_curso' THEN 0 ELSE 1 END,
+          CASE p.status WHEN 'en_curso' THEN 0 WHEN 'pausada' THEN 0 WHEN 'pendiente' THEN 2 ELSE 1 END,
           p.scheduled_start_at DESC
         LIMIT 1
       `;
@@ -256,6 +260,19 @@ export class GuardService {
     // siempre). Opcional por lo mismo que los dos de arriba.
     private readonly patrolReport?: PatrolReportService,
   ) {}
+
+  async confirmRoundFlow(patrolId: string, guardId: string) {
+    const rows = await this.tenantContext.manager.query(`SELECT id,checklist_template_id FROM patrols
+      WHERE id=$1 AND guard_id=$2 AND status IN('completada','incompleta','vencida') FOR UPDATE`,[patrolId,guardId]);
+    if (!rows[0]) throw new ConflictException('La ronda aún no ha terminado');
+    const missing = await this.tenantContext.manager.query(`SELECT i.id FROM checklist_items i
+      WHERE i.template_id=$2 AND (i.checkpoint_id IS NULL OR EXISTS(SELECT 1 FROM scans s
+        WHERE s.patrol_id=$1 AND s.checkpoint_id=i.checkpoint_id))
+      AND NOT EXISTS(SELECT 1 FROM checklist_responses r WHERE r.patrol_id=$1 AND r.item_id=i.id) LIMIT 1`,[patrolId,rows[0].checklist_template_id]);
+    if (missing.length) throw new ConflictException('Completa y envía las tareas de la ronda antes de terminar.');
+    await this.tenantContext.manager.query('UPDATE patrols SET guard_flow_completed=true WHERE id=$1',[patrolId]);
+    return { completed: true };
+  }
 
   async getHome(guardId: string, siteId?: string) {
     const rows = await this.tenantContext.manager.query<PatrolRow[]>(
@@ -438,6 +455,8 @@ export class GuardService {
         isFreeRoam: patrol.es_libre === true,
         estimatedDurationMin: patrol.estimated_duration_min,
         startedAt: patrol.started_at,
+        closedAt: patrol.closed_at ?? null,
+        compliancePct: patrol.compliance_pct == null ? null : Number(patrol.compliance_pct),
         completedCheckpointCount: patrol.completed_checkpoint_count,
         checkpoints: patrol.checkpoints,
       },

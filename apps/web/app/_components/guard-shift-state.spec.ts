@@ -1,3 +1,4 @@
+import { restaurarCierreServidor } from './guard-shift-state';
 /**
  * La foto obligatoria del punto, vista desde el teléfono.
  *
@@ -254,5 +255,18 @@ describe('dejar un punto para después (reporte de terreno del 21-09-2026)', () 
     // nada es peor que ninguno cuando el guardia está en la calle.
     const puntos = ruta(3);
     expect(sePuedeSaltar(puntos, marcados(['p1']), ['p3'], puntos[1])).toBe(false);
+  });
+});
+
+
+describe('recuperación del último punto tras recargar Android',()=>{
+  it('conserva un cierre confirmado por el servidor hasta terminar el formulario',()=>{
+    const estado=estadoInicial('p');
+    const resultado=restaurarCierreServidor(estado,[],{status:'completada',closedAt:'2026-10-29T20:23:00Z',compliancePct:100});
+    expect(resultado.cierre).toMatchObject({confirmado:true,cerradaAt:'2026-10-29T20:23:00Z',pct:100});
+  });
+  it('no cierra una ronda que sigue abierta en el servidor',()=>{
+    const estado=estadoInicial('p');
+    expect(restaurarCierreServidor(estado,[],{status:'en_curso'}).cierre).toBeUndefined();
   });
 });

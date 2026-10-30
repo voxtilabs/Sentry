@@ -209,6 +209,7 @@ export class PurgaRetencionService implements OnModuleInit {
 
         // La función trabaja sin contexto tenant y aplica RLS dentro de su transacción.
         await this.dataSource.query('SELECT retencion_purgar_visitas($1,$2,$3)', [tenantId,reglas.visitorRetentionDays,5000]);
+        await this.dataSource.query('SELECT retencion_purgar_referencia($1,$2,$3)', [tenantId,reglas.gpsTrackRetentionDays,25]);
         trazas += await this.purgarTrazas(tenantId, reglas.gpsTrackRetentionDays);
 
         const rondas = await this.purgarFotos(

@@ -12,6 +12,7 @@ android {
   }
 }
 dependencies {
+  implementation 'com.google.android.gms:play-services-location:21.0.1'
   // Modelo latino incluido: funciona desde el primer uso en modo avión.
   implementation 'com.google.mlkit:text-recognition:16.0.1'
 }

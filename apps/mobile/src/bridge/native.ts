@@ -55,6 +55,7 @@ export class ErrorEscaneo extends Error {
 }
 
 export interface ManejadoresNativos {
+  readonly referencia?: (command: import('./protocol').ReferenceCommand) => Promise<import('./protocol').ReferenceState>;
   readonly consultarVehiculoPublico?: (plate: string) => Promise<import('./protocol').ResultadoConsultaPublicaPayload>;
   readonly cancelarConsultaPublica?: () => void;
   readonly escanearOcr?: (kind: 'identity' | 'plate') => Promise<import('./protocol').ResultadoOcrPayload>;
@@ -92,6 +93,7 @@ export interface ManejadoresNativos {
 }
 
 export interface OpcionesPuente {
+  readonly puedeCapturarReferencia?: () => boolean;
   /** Origen exacto del portal, p.ej. `https://control.voxtilabs.cl`. */
   readonly portalOrigen: string;
   /** `version` de app.config.ts. Se muestra en soporte, no decide nada. */
@@ -370,6 +372,12 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     }
 
     switch (mensaje.type) {
+      case 'reference.command':
+        if (!manejadores.referencia || (mensaje.payload.action !== 'stop' && opciones.puedeCapturarReferencia?.() !== true)) { responderErrorPuente(mensaje.id); return; }
+        void manejadores.referencia(mensaje.payload)
+          .then(result => enviar(armarSobre('reference.result', result, { replyTo: mensaje.id, prefijo: 'gps' })))
+          .catch(() => responderErrorPuente(mensaje.id));
+        return;
       case 'vehicle.public.start':
         if (!manejadores.consultarVehiculoPublico) { responderErrorPuente(mensaje.id); return; }
         void manejadores.consultarVehiculoPublico(mensaje.payload.plate)
@@ -522,6 +530,6 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     // El WebView se remonta al reintentar, y con el se va el portal que pidio
     // la traza: el watcher NO puede sobrevivirlo — quedaria muestreando sin
     // nadie que suba los puntos, y ademas fuera del control de la ronda.
-    detener: () => { manejadores.detenerTraza(); manejadores.cancelarOcr?.(); manejadores.cancelarConsultaPublica?.(); },
+    detener: () => { void manejadores.referencia?.({action:'stop'}).catch(() => undefined); manejadores.detenerTraza(); manejadores.cancelarOcr?.(); manejadores.cancelarConsultaPublica?.(); },
   };
 }

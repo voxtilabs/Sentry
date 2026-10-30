@@ -59,7 +59,7 @@ export const PUENTE = 'sentrycore.bridge' as const;
  */
 export const PROTOCOLO_MAJOR = 1;
 /** MINOR 6: OCR local y operaciones de visitas; los shells anteriores conservan sus funciones. */
-export const PROTOCOLO_MINOR = 6;
+export const PROTOCOLO_MINOR = 7;
 
 /**
  * Versiones mayores que este shell todavia entiende. Se agrega la anterior al
@@ -228,7 +228,26 @@ export interface ResultadoOcrPayload {
   readonly plates?: readonly string[];
 }
 
+export interface ReferencePoint {
+  clientPointId: string; recordedAt: string; latitude: number; longitude: number;
+  accuracyM: number; speedMps?: number; heading?: number; stationary: boolean;
+  accelSamples: number; gyroSamples: number; satellitesUsed: number;
+  accelRmsG?: number; gyroRmsRadS?: number;
+}
+export type ReferenceCommand =
+  | { action: 'start'; walkId: string; maxDurationSeconds: number }
+  | { action: 'stop' | 'state'; walkId?: string }
+  | { action: 'pending'; walkId: string }
+  | { action: 'ack'; walkId: string; pointIds: string[] };
+export interface ReferenceState {
+  active: boolean; walkId: string | null; accuracyM: number | null; speedMps: number | null;
+  satellitesUsed: number; accelerometer: boolean; gyroscope: boolean;
+  accelSamples: number; gyroSamples: number; fullGnss: boolean; pending: number;
+  points: ReferencePoint[]; error: string | null;
+}
+
 export type MensajePortal =
+  | Sobre<'reference.command', ReferenceCommand>
   | Sobre<'vehicle.public.start', { readonly plate: string }>
   | Sobre<'vehicle.public.cancel', Record<string, never>>
   | Sobre<'ocr.scan.start', { readonly kind: 'identity' | 'plate' }>
@@ -250,6 +269,7 @@ export type MensajePortal =
   | Sobre<'track.stop', Record<string, never>>;
 
 export const TIPOS_PORTAL: readonly MensajePortal['type'][] = [
+  'reference.command',
   'vehicle.public.start',
   'vehicle.public.cancel',
   'ocr.scan.start',
@@ -276,6 +296,7 @@ export const TIPOS_PORTAL: readonly MensajePortal['type'][] = [
 // ---------------------------------------------------------------------------
 
 export interface CapacidadesDispositivo {
+  readonly gpsReferencia?: boolean;
   /**
    * El equipo trae antena NFC. `false` NO deja al guardia sin ronda: desde el
    * MINOR 4 el portal ofrece el respaldo por QR (`qr.scan.start`). Sigue siendo
@@ -434,6 +455,7 @@ export interface ErrorPuentePayload {
 }
 
 export type MensajeShell =
+  | Sobre<'reference.result', ReferenceState>
   | Sobre<'vehicle.public.result', ResultadoConsultaPublicaPayload>
   | Sobre<'ocr.scan.result', ResultadoOcrPayload>
   | Sobre<'ready', ListoPayload>
@@ -453,6 +475,7 @@ export type MensajeShell =
   | Sobre<'error', ErrorPuentePayload>;
 
 export const TIPOS_SHELL: readonly MensajeShell['type'][] = [
+  'reference.result',
   'vehicle.public.result',
   'ocr.scan.result',
   'ready',
@@ -598,6 +621,15 @@ function clavesPermitidas(valor: Record<string, unknown>, claves: readonly strin
 function payloadPortalValido(type: string, payload: unknown): boolean {
   if (!esRegistro(payload)) return false;
   switch (type) {
+    case 'reference.command': {
+      if (!clavesPermitidas(payload, ['action', 'walkId', 'maxDurationSeconds', 'pointIds'])) return false;
+      const action = payload['action'];
+      if (action === 'state' || action === 'stop') return payload['walkId'] === undefined || esUuid(payload['walkId']);
+      if (!esUuid(payload['walkId'])) return false;
+      if (action === 'pending') return true;
+      if (action === 'start') return Number.isInteger(payload['maxDurationSeconds']) && Number(payload['maxDurationSeconds']) >= 60 && Number(payload['maxDurationSeconds']) <= 14400;
+      return action === 'ack' && Array.isArray(payload['pointIds']) && payload['pointIds'].length <= 50 && payload['pointIds'].every(esUuid);
+    }
     case 'vehicle.public.start':
       return clavesPermitidas(payload,['plate']) && typeof payload['plate'] === 'string' && /^[A-Z0-9]{5,6}$/.test(payload['plate']);
     case 'ocr.scan.start':
@@ -699,6 +731,15 @@ const PERMISOS: readonly Permiso[] = [
 function payloadShellValido(type: string, payload: unknown): boolean {
   if (!esRegistro(payload)) return false;
   switch (type) {
+    case 'reference.result':
+      return clavesPermitidas(payload, ['active','walkId','accuracyM','speedMps','satellitesUsed','accelerometer','gyroscope','accelSamples','gyroSamples','fullGnss','pending','points','error']) &&
+        typeof payload['active'] === 'boolean' && (payload['walkId'] === null || esUuid(payload['walkId'])) &&
+        ['accelerometer','gyroscope','fullGnss'].every(k => typeof payload[k] === 'boolean') &&
+        ['satellitesUsed','accelSamples','gyroSamples','pending'].every(k => Number.isInteger(payload[k]) && Number(payload[k]) >= 0) &&
+        ['accuracyM','speedMps'].every(k => payload[k] === null || (typeof payload[k] === 'number' && Number.isFinite(payload[k]) && Number(payload[k]) >= 0)) &&
+        (payload['error'] === null || (typeof payload['error'] === 'string' && /^[a-z-]{1,60}$/.test(payload['error']))) &&
+        Array.isArray(payload['points']) && payload['points'].length <= 50 && payload['points'].every(referencePointValido);
+
     case 'vehicle.public.result':
       return clavesPermitidas(payload,['source','plate','stolenStatus','checkedAt']) && payload['source'] === 'autoseguro' &&
         typeof payload['plate'] === 'string' && /^[A-Z0-9]{5,6}$/.test(payload['plate']) &&
@@ -771,6 +812,14 @@ function payloadShellValido(type: string, payload: unknown): boolean {
  * 0/0 o un NaN serializado como null no puede entrar a la traza como si fuera
  * una posicion real del guardia.
  */
+function referencePointValido(p: unknown): boolean {
+  if (!esRegistro(p) || !clavesPermitidas(p, ['clientPointId','recordedAt','latitude','longitude','accuracyM','speedMps','heading','stationary','accelSamples','gyroSamples','satellitesUsed','accelRmsG','gyroRmsRadS'])) return false;
+  return esUuid(p['clientPointId']) && esFecha(p['recordedAt']) && esLatitud(p['latitude']) && esLongitud(p['longitude']) &&
+    typeof p['accuracyM'] === 'number' && Number.isFinite(p['accuracyM']) && p['accuracyM'] > 0 &&
+    typeof p['stationary'] === 'boolean' && ['accelSamples','gyroSamples','satellitesUsed'].every(k => Number.isInteger(p[k]) && Number(p[k]) >= 0) &&
+    ['speedMps','heading','accelRmsG','gyroRmsRadS'].every(k => p[k] === undefined || (typeof p[k] === 'number' && Number.isFinite(p[k]) && Number(p[k]) >= 0));
+}
+
 function esLatitud(valor: unknown): valor is number {
   return typeof valor === 'number' && Number.isFinite(valor) && valor >= -90 && valor <= 90;
 }

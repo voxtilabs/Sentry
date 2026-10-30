@@ -62,7 +62,9 @@ export interface GuardHomeData {
   photoPolicy?: PoliticaFoto;
   patrol?: {
     id: string;
-    status: 'pendiente' | 'en_curso';
+    status: 'pendiente' | 'en_curso' | 'pausada' | 'completada' | 'incompleta' | 'vencida';
+    closedAt?: string | null;
+    compliancePct?: number | null;
     siteId?: string;
     siteName: string;
     /** Zona horaria del RECINTO. La marca de agua de la foto la usa. */
@@ -196,7 +198,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
     if (!data.hasAssignment || !data.patrol || !data.shift) return;
     void guardarRutaOffline({
       patrolId: data.patrol.id,
-      status: data.patrol.status,
+      status: data.patrol.status === 'pendiente' ? 'pendiente' : 'en_curso',
       siteName: data.patrol.siteName,
       routeName: data.patrol.routeName,
       scheduledStartAt: data.shift.scheduledStartAt,

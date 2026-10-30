@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { pedirApi } from './guard-outbox';
 import { useRouter } from 'next/navigation';
 
 import { GuardChecklist } from './guard-checklist';
@@ -45,6 +47,16 @@ export function GuardShiftSummary({
   onVolver: () => void;
 }) {
   const router = useRouter();
+  const [closing,setClosing]=useState(false);
+  const [finishError,setFinishError]=useState('');
+  async function finish() {
+    setClosing(true);setFinishError('');
+    try {
+      const r=await pedirApi(apiUrl,`/guard/patrols/${estado.patrolId}/confirm-flow`,{method:'POST'});
+      if (!r.ok) { const body=await r.json().catch(()=>null) as {message?:string}|null; throw new Error(body?.message ?? 'No pudimos confirmar el cierre. Intenta nuevamente.'); }
+      router.refresh();
+    } catch(e) { setFinishError(e instanceof Error?e.message:'Conéctate para confirmar el cierre de la ronda.');setClosing(false); }
+  }
   const cierre = estado.cierre;
   if (!cierre) return null;
 
@@ -58,7 +70,7 @@ export function GuardShiftSummary({
   return (
     <section className="guardia-resumen" aria-labelledby="guardia-resumen-titulo">
       <h2 id="guardia-resumen-titulo">
-        Término de ronda
+        {closing ? 'Confirmando…' : 'TÉRMINO DE RONDA'}
       </h2>
 
       {cierre.pct === undefined ? (
@@ -154,11 +166,13 @@ export function GuardShiftSummary({
 
       <button
         className="guardia-boton-primario"
-        onClick={() => router.refresh()}
+        disabled={closing || pendientes}
+        onClick={() => void finish()}
         type="button"
       >
-        Término de ronda
+        {closing ? 'Confirmando…' : 'TÉRMINO DE RONDA'}
       </button>
+      {finishError ? <p role="alert">{finishError}</p> : null}
       <p className="guardia-nota">Puedes iniciar otra ronda. Tu jornada sigue abierta.</p>
       {pendientes ? (
         <p className="guardia-aviso">

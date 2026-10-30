@@ -25,7 +25,8 @@ se presenta la siguiente tarea o el siguiente punto automáticamente. La plantil
 de esa ronda debe estar descargada antes de habilitar el escaneo; sin señal se
 usa la copia persistida. El resumen del último NFC nunca tapa una foto o pregunta
 pendiente. Al terminar aparece **Término de ronda**, que vuelve al inicio sin
-marcar la salida de jornada.
+marcar la salida de jornada. El cierre del recorrido se confirma en el servidor
+y se recupera después de una recarga hasta terminar la evidencia y pulsar ese botón.
 
 Sin conexión se conservan fotos, texto y respuesta. El servidor no acepta la
 respuesta hasta recibir todas las fotos capturadas y exige el mínimo configurado.

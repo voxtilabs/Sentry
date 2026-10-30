@@ -73,7 +73,7 @@ describe('track.point atraviesa el validador del portal (#280)', () => {
       'nfc.scan.result', 'qr.scan.result', 'nfc.scan.error', 'qr.scan.error',
       'permission.result', 'offline.route.saved', 'sync.queue.enqueued',
       'sync.queue.flushed', 'device.signature.registered', 'connectivity.state',
-      'error', 'hello.ack', 'ready', 'incompatible',
+      'error', 'hello.ack', 'ready', 'incompatible', 'reference.result',
     ];
     expect(sinValidacion.filter((t) => !esperados.includes(t))).toEqual([]);
   });

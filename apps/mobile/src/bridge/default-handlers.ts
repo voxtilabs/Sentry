@@ -1,3 +1,4 @@
+import { referenceAvailable, referenceCommand } from '../geo/reference-native';
 import { Camera, CameraView } from 'expo-camera';
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
@@ -118,7 +119,9 @@ async function permiso(permisoSolicitado: Permiso, pedir: boolean) {
  */
 export function crearManejadoresBase(): ManejadoresNativos {
   return {
+    referencia: referenceCommand,
     capacidades: async () => ({
+      gpsReferencia: referenceAvailable,
       tieneNfc: false,
       nfcActivado: false,
       // `CameraView.isAvailableAsync()` es SOLO web (expo-camera lo marca

@@ -488,3 +488,13 @@ export const ETIQUETAS_CRITICIDAD: Record<Criticidad, string> = {
   alta: 'Alta',
   panico: 'PÁNICO',
 };
+
+/** A confirmed server close survives an Android/WebView restart until evidence is reviewed. */
+export function restaurarCierreServidor(estado: EstadoRonda, puntos: readonly PuntoRuta[],
+  cierre: { status: string; closedAt?: string | null; compliancePct?: number | null }): EstadoRonda {
+  if (!['completada','incompleta','vencida'].includes(cierre.status)) return estado;
+  const faltantes=puntosFaltantes(puntos,estado.puntos);
+  return registrarCierre(estado,{cerradaAt:cierre.closedAt??estado.cierre?.cerradaAt??new Date().toISOString(),
+    scanned:puntos.length-faltantes.length,expected:puntos.length,faltantes: faltantes.map(p=>p.id),
+    ...(cierre.compliancePct==null?{}:{pct:cierre.compliancePct}),alertaEnviada:false,confirmado:true});
+}

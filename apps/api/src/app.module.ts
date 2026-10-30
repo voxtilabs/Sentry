@@ -1,3 +1,4 @@
+import { ReferenceModule } from './reference/reference.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -59,6 +60,7 @@ import { SyncModule } from './sync/sync.module';
     AuthModule,
     GuardModule,
     VisitsModule,
+    ReferenceModule,
     MailModule,
     EscalationModule,
     EvidenceModule,

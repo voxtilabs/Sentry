@@ -14,6 +14,7 @@ import {
 } from '../_lib/codigo-empresa';
 import { leerCredenciales } from './login-form-data';
 import { rutaDelPanel } from './login-navegacion';
+import { LogoutButton } from './logout-button';
 
 /**
  * Plazo maximo para el login. Existe porque una peticion sin respuesta dejaba
@@ -64,10 +65,12 @@ export function LoginScreen() {
     cardBusy.current = true;
     setStatus('loading');
     try {
+      const refreshed = await fetch(`${apiUrl}/auth/company-picker`, { credentials: 'include', cache: 'no-store' });
+      const current = refreshed.ok ? await refreshed.json() as NonNullable<typeof companyPicker> : companyPicker;
       const response = await fetch(`${apiUrl}/auth/company-card/select`, {
         method: 'POST', credentials: 'include', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ticket: companyPicker.ticket, guardId }),
+        body: JSON.stringify({ ticket: current.ticket, guardId }),
       });
       if (!response.ok) {
         setCompanyPicker(null);
@@ -137,7 +140,12 @@ export function LoginScreen() {
 
   useEffect(() => {
     setCodigoEmpresa(leerCodigoEmpresa());
-  }, []);
+    const controller = new AbortController();
+    void fetch(`${apiUrl}/auth/company-picker`, { credentials: 'include', cache: 'no-store', signal: controller.signal })
+      .then(async r => { if (r.ok) setCompanyPicker(await r.json() as NonNullable<typeof companyPicker>); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiUrl]);
 
   useEffect(() => {
     function readActionLink() {
@@ -408,6 +416,7 @@ export function LoginScreen() {
   }
 
   if (companyPicker) return <main className="login-shell company-guard-picker">
+    <div className="company-picker-logout"><LogoutButton /></div>
     <section className="login-panel">
       <div className="login-card">
         <Brand />
@@ -421,8 +430,6 @@ export function LoginScreen() {
           </li>)}
         </ul>
         {errorMessage ? <p role="alert">{errorMessage}</p> : null}
-        <button className="text-button" type="button" disabled={status === 'loading'}
-          onClick={() => { setCompanyPicker(null); setStatus('idle'); setErrorMessage(''); }}>Volver</button>
       </div>
     </section>
   </main>;

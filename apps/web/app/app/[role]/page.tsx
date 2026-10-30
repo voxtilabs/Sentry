@@ -1,3 +1,4 @@
+import { ReferencePatrol } from '../../_components/reference-patrol';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 
@@ -349,6 +350,8 @@ export default async function RoleDashboard({
         <CrashReportsSummary apiUrl={publicApiUrl()} />
       </div>
     );
+  } else if (isSupervisor && view === 'ronda-patron') {
+    panel = <div className="panel-view" data-view="ronda-patron"><ReferencePatrol apiUrl={publicApiUrl()} /></div>;
   } else if (isSupervisor && view === 'consentimiento') {
     panel = (
       <div className="panel-view" data-view="consentimiento">

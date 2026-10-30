@@ -35,6 +35,8 @@ import type {
   LoginResult,
 } from './auth.types';
 import { AUTH_REDIS } from './redis.provider';
+import { CompanyContext } from './company-context';
+import type { AuthenticatedUser } from './auth.guard';
 
 // Hash Argon2id válido de una contraseña aleatoria que nunca se acepta.
 // Obliga a ejecutar el mismo trabajo costoso cuando la identidad no existe.
@@ -426,9 +428,10 @@ export class AuthService {
     }
     const ticket = randomBytes(32).toString('base64url');
     const key = this.companyTicketKey(ticket);
-    await this.redis.set(key, JSON.stringify({ uid, tenantId: rows[0]!.tenant_id,
+    const contextToken = await new CompanyContext(this.dataSource, this.redis).issue({ uid, tenantId: rows[0]!.tenant_id! }, device);
+    await this.redis.set(key, JSON.stringify({ contextToken, tenantId: rows[0]!.tenant_id,
       binding: this.companyTicketBinding(sourceIp, device) }), 'EX', 300);
-    return { ticket, tenantName: rows[0]!.tenant_name, tenantSlug: rows[0]!.tenant_slug,
+    return { ticket, contextToken, tenantName: rows[0]!.tenant_name, tenantSlug: rows[0]!.tenant_slug,
       guards: rows.map((row) => ({ id: row.user_id, name: row.guard_name })) };
   }
 
@@ -437,12 +440,13 @@ export class AuthService {
     const key = this.companyTicketKey(input.ticket);
     const serialized = await this.redis.get(key);
     if (!serialized) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
-    const ticket = JSON.parse(serialized) as { uid: string; tenantId: string; binding: string };
+    const ticket = JSON.parse(serialized) as { uid?: string; contextToken?: string; tenantId: string; binding: string };
     if (ticket.binding !== this.companyTicketBinding(sourceIp, device)) {
       throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
     }
     // Recheck card, tenant, membership and active user at selection time.
-    const rows = await this.companyCardGuards(ticket.uid);
+    const rows = ticket.uid ? await this.companyCardGuards(ticket.uid)
+      : (await new CompanyContext(this.dataSource, this.redis).guards(ticket.contextToken, device)).guards;
     const guard = rows.find((row) => row.user_id === input.guardId && row.tenant_id === ticket.tenantId);
     if (!guard) throw new UnauthorizedException('Guardia no disponible para esta empresa');
     const consumed = await this.redis.eval(
@@ -451,6 +455,31 @@ export class AuthService {
     );
     if (Number(consumed) !== 1) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
     return this.createSession(guard, device);
+  }
+
+  async companyPicker(contextToken: string | undefined, sourceIp: string, device: string) {
+    if (this.redis.status === 'wait') await this.redis.connect();
+    const { context, guards } = await new CompanyContext(this.dataSource, this.redis).guards(contextToken, device);
+    const ticket = randomBytes(32).toString('base64url');
+    await this.redis.set(this.companyTicketKey(ticket), JSON.stringify({ tenantId: context.tenantId,
+      contextToken, binding: this.companyTicketBinding(sourceIp, device) }), 'EX', 300);
+    return { ticket, tenantName: guards[0]!.tenant_name, tenantSlug: guards[0]!.tenant_slug,
+      guards: guards.map(g => ({ id: g.user_id, name: g.guard_name })) };
+  }
+
+  async endGuardDay(user: AuthenticatedUser, device: string) {
+    if (user.role !== 'GUARDIA' || !user.tenant_id) throw new ForbiddenException();
+    if (this.redis.status === 'wait') await this.redis.connect();
+    const contexts = new CompanyContext(this.dataSource, this.redis);
+    await contexts.tenantGuards(user.tenant_id, user.sub, true);
+    const contextToken = await contexts.issue({ tenantId: user.tenant_id, issuerId: user.sub }, device);
+    await this.revokeFamily(user.sid);
+    return contextToken;
+  }
+
+  async revokeCompanyContext(token?: string) {
+    if (this.redis.status === 'wait') await this.redis.connect();
+    await new CompanyContext(this.dataSource, this.redis).revoke(token);
   }
 
   private companyTicketKey(ticket: string) {

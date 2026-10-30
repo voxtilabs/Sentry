@@ -305,6 +305,8 @@ export const patrolRulesSchema = z.object({
   /** Tope del PDF adjunto al correo; sobre esto se manda enlace (#86). */
   reportMailMaxAttachmentMB: z.number().int().min(1).max(25).default(8),
   /** Espera las fotos y respuestas del último punto antes de enviar el informe. */
+  referenceGpsTargetAccuracyM: z.number().int().min(1).max(50).default(5),
+  referenceCaptureMaxMinutes: z.number().int().min(15).max(240).default(120),
   reportEvidenceGraceSeconds: z.number().int().min(0).max(600).default(180),
 
   /* ------------------------------------------------------------------ *
@@ -1081,6 +1083,18 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     default: DEFAULT_PATROL_RULES.reportMailMaxAttachmentMB,
     scopes: SOLO_EMPRESA,
     group: 'avisos',
+  },
+  referenceGpsTargetAccuracyM: {
+    key: 'referenceGpsTargetAccuracyM', label: 'Precisión objetivo de ronda patrón',
+    description: 'Incertidumbre GPS máxima para validar cada punto de la ronda patrón. No cambia las coordenadas de los puntos existentes.',
+    type: 'integer', unit: 'meters', min: 1, max: 50,
+    default: DEFAULT_PATROL_RULES.referenceGpsTargetAccuracyM, scopes: HASTA_RECINTO, group: 'ubicacion',
+  },
+  referenceCaptureMaxMinutes: {
+    key: 'referenceCaptureMaxMinutes', label: 'Duración máxima de ronda patrón',
+    description: 'Límite de la captura GPS de alta frecuencia del supervisor; al cumplirse, el teléfono detiene los sensores.',
+    type: 'integer', unit: 'minutes', min: 15, max: 240,
+    default: DEFAULT_PATROL_RULES.referenceCaptureMaxMinutes, scopes: HASTA_RECINTO, group: 'ubicacion',
   },
   reportEvidenceGraceSeconds: {
     key: 'reportEvidenceGraceSeconds',

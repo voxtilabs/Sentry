@@ -78,6 +78,12 @@ export class GuardController {
     return this.guardService.registerScan(patrolId, request.user.sub, input);
   }
 
+  @Post('patrols/:patrolId/confirm-flow')
+  @Permissions('patrols:execute')
+  confirmRoundFlow(@Param('patrolId', ParseUUIDPipe) id: string, @Req() r: Request & { user: AuthenticatedUser }) {
+    return this.guardService.confirmRoundFlow(id,r.user.sub);
+  }
+
   @Post('shift/start')
   @Permissions('patrols:execute')
   startShift(@Body() input: ShiftMarkDto, @Req() request: Request & { user: AuthenticatedUser }) {

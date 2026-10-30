@@ -93,6 +93,7 @@ interface Pendiente {
 }
 
 export interface ClientePuente {
+  readonly referencia: (command: import('./protocol').ReferenceCommand) => Promise<import('./protocol').ReferenceState>;
   readonly consultarVehiculoPublico: (plate: string) => Promise<ResultadoConsultaPublicaPayload>;
   readonly cancelarConsultaPublica: () => void;
   readonly escanearOcr: (kind: 'identity' | 'plate') => Promise<ResultadoOcrPayload>;
@@ -296,6 +297,11 @@ export function crearClientePuente(): ClientePuente {
       throw new ErrorEscaneoPortal('error-desconocido', 'Respuesta inesperada del shell.', true);
     },
 
+    referencia: async (command) => {
+      const r = await pedir('reference.command', command, 8000);
+      if (r.type !== 'reference.result') throw new Error('La captura GPS no está disponible.');
+      return r.payload;
+    },
     consultarVehiculoPublico: async (plate) => {
       const response = await pedir('vehicle.public.start', { plate }, 305_000);
       if (response.type === 'vehicle.public.result') return response.payload;
