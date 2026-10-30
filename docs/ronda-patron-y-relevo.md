@@ -11,8 +11,8 @@ asignación del recinto en cada operación. Un guardia no tiene acceso a estos
 endpoints. Las rutas sin todos sus NFC instalados no pueden iniciar la captura.
 
 La captura Android usa Fused HIGH_ACCURACY a 1 s (mínimo 500 ms), GPS directo y,
-cuando el equipo lo permite, mediciones GNSS con `fullTracking`. Lee aceleración
-y giroscopio a 200 Hz para distinguir reposo y movimiento al calibrar los puntos.
+cuando el equipo lo permite, mediciones GNSS con `fullTracking`. Solicita aceleración
+y giroscopio a 200 Hz (la frecuencia efectiva depende del equipo) para distinguir reposo y movimiento al calibrar los puntos.
 Un servicio en primer plano, notificación con **Detener captura**, bloqueo de
 suspensión y pantalla encendida mantienen el muestreo. Android y el hardware
 siguen determinando la señal disponible: no se inventa precisión ni se integra

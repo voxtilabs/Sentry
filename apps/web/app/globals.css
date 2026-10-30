@@ -631,6 +631,10 @@ label.guardia-boton-secundario { display: flex; align-items: center; justify-con
 .guardia-invisible { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .company-guard-picker { display: flex; min-height: 100dvh; justify-content: center; }
 .company-guard-picker .login-panel { width: 100%; min-width: 0; }
+.company-guard-picker .login-card { display: flex; flex-direction: column; align-items: stretch; gap: .65rem; padding-top: 3rem; }
+.company-guard-picker .login-card .brand { align-self: flex-start; }
+.company-guard-picker .login-card h2 { font-size: 2rem; line-height: 1.15; margin: .4rem 0; }
+.company-guard-picker .login-card .eyebrow { display: block; }
 .company-picker-logout { position: absolute; top: max(1rem, env(safe-area-inset-top)); right: 1rem; z-index: 2; }
 .company-picker-logout button { font-size: .8rem; min-height: 2.75rem; padding: .4rem .7rem; }
 .guard-end-day { max-width: 22rem; }
