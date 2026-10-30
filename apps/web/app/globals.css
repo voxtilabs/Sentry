@@ -528,13 +528,21 @@ a { color: inherit; text-decoration: none; }
 .dashboard-shell[data-role="GUARDIA"] .guardia-resumen,
 .dashboard-shell[data-role="GUARDIA"] .guardia-foto-punto { box-shadow: none; }
 
-.guardia-conexion { position: sticky; top: 0; z-index: 5; display: grid; gap: .45rem; margin-bottom: .8rem; border-radius: .75rem; padding: .7rem .8rem; color: white; background: var(--guardia-ink); }
-.guardia-conexion-linea { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; margin: 0; font-size: 1rem; font-weight: 700; }
+.guardia-conexion { position: sticky; top: 0; z-index: 5; margin-bottom: .65rem; border-radius: .65rem; padding: .35rem .65rem; color: white; background: var(--guardia-ink); }
+.guardia-conexion > summary { min-height: 2.25rem; cursor: pointer; list-style: none; }
+.guardia-conexion > summary::-webkit-details-marker { display: none; }
+.guardia-conexion-resumen { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: .4rem; min-width: 0; }
+.guardia-conexion-resumen strong, .guardia-conexion-resumen .guardia-cola { white-space: nowrap; }
+.guardia-conexion-expandir { flex: 0 0 auto; padding: .15rem; font-size: 1rem; }
+.guardia-conexion[open] .guardia-conexion-expandir { transform: rotate(180deg); }
+.guardia-conexion-detalle { display: grid; gap: .5rem; margin-top: .45rem; padding: .6rem 0 .3rem; border-top: 1px solid #ffffff30; }
+.guardia-conexion-detalle .guardia-boton-secundario { min-height: 2.75rem; padding: .4rem .65rem; }
+.guardia-conexion-linea { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0; font-size: .9rem; font-weight: 700; }
 .guardia-conexion-linea small { color: #c3cbdd; font-size: .82rem; font-weight: 600; }
 .guardia-senal { display: inline-block; width: .8rem; height: .8rem; border-radius: 50%; }
 .guardia-senal.ok { background: #3ddc91; }
 .guardia-senal.sin { background: #ff8f7a; }
-.guardia-cola { margin-left: auto; border-radius: 99px; padding: .25rem .6rem; color: #0b1220; background: #d7f5e6; font-size: .9rem; font-weight: 800; }
+.guardia-cola { margin-left: auto; border-radius: 99px; padding: .15rem .5rem; color: #0b1220; background: #d7f5e6; font-size: .9rem; font-weight: 800; }
 .guardia-cola.alerta { color: #3a2400; background: #ffd479; }
 .guardia-rechazos { display: grid; gap: .5rem; border: 2px solid #ff8f7a; border-radius: .7rem; padding: .7rem; color: white; background: #4a0d13; font-size: .95rem; }
 .guardia-rechazos ul { margin: 0; padding-left: 1.1rem; line-height: 1.5; }

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { pedirApi } from './guard-outbox';
-import { useRouter } from 'next/navigation';
+import { confirmarTerminoDeRonda } from './guard-round-finish';
 
 import { GuardChecklist } from './guard-checklist';
 import {
@@ -46,15 +45,12 @@ export function GuardShiftSummary({
   apiUrl: string;
   onVolver: () => void;
 }) {
-  const router = useRouter();
   const [closing,setClosing]=useState(false);
   const [finishError,setFinishError]=useState('');
   async function finish() {
     setClosing(true);setFinishError('');
     try {
-      const r=await pedirApi(apiUrl,`/guard/patrols/${estado.patrolId}/confirm-flow`,{method:'POST'});
-      if (!r.ok) { const body=await r.json().catch(()=>null) as {message?:string}|null; throw new Error(body?.message ?? 'No pudimos confirmar el cierre. Intenta nuevamente.'); }
-      router.refresh();
+      await confirmarTerminoDeRonda(apiUrl,estado.patrolId,(path)=>window.location.replace(path));
     } catch(e) { setFinishError(e instanceof Error?e.message:'Conéctate para confirmar el cierre de la ronda.');setClosing(false); }
   }
   const cierre = estado.cierre;

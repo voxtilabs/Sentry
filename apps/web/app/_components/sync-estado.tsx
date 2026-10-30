@@ -447,14 +447,18 @@ export function SyncEstado({
   const ocupado = enviando || cola.sincronizando;
 
   return (
-    <div className="guardia-conexion">
-      <p className="guardia-conexion-linea" role="status" aria-live="polite">
+    <details className="guardia-conexion" open={cola.rechazadas.length ? true : undefined}>
+      <summary className="guardia-conexion-linea" aria-label="Estado de conexión. Mostrar u ocultar detalles de sincronización.">
+        <span className="guardia-conexion-resumen" role="status" aria-live="polite">
         <span className={`guardia-senal ${enLinea ? 'ok' : 'sin'}`} aria-hidden="true" />
         <strong>{enLinea ? 'Con señal' : 'Sin señal'}</strong>
         <span className={clasePildora(resumen.estado)}>{resumen.titulo}</span>
-        {horaUltimoEnvio ? <small>Último envío {horaUltimoEnvio}</small> : null}
-      </p>
+        </span>
+        <span className="guardia-conexion-expandir" aria-hidden="true">⌄</span>
+      </summary>
 
+      <div className="guardia-conexion-detalle">
+      {horaUltimoEnvio ? <p className="guardia-conexion-linea"><small>Último envío {horaUltimoEnvio}</small></p> : null}
       <p className="guardia-conexion-linea">
         <small>{resumen.detalle}</small>
       </p>
@@ -508,7 +512,8 @@ export function SyncEstado({
           </button>
         </div>
       ) : null}
-    </div>
+      </div>
+    </details>
   );
 }
 
