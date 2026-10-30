@@ -170,12 +170,11 @@ export function efectoDelDesenlace(
   nombrePunto: string,
 ): EfectoDelDesenlace {
   if (desenlace.clase === 'sin_subir') {
-    // Guardada y no subida. Se reintenta sola, pero el guardia se tiene que
-    // enterar y poder repetirla ahora, no descubrirlo al final del turno.
+    // La captura ya quedó a salvo. Se avisa y se continúa automáticamente;
+    // el reintento de la subida no requiere otro botón del guardia.
     return {
-      mantenerPanel: true,
+      mantenerPanel: false,
       guardadaSinSubir: true,
-      aviso: 'La foto quedó guardada, pero no se pudo subir. Se envía sola después.',
       anuncio: `La foto de ${nombrePunto} quedó guardada en el teléfono. Todavía no se pudo subir.`,
     };
   }

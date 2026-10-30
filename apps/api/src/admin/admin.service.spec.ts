@@ -308,3 +308,98 @@ describe('AdminService cuotas por plan (#100, ADR 0106)', () => {
   });
 });
 
+
+describe('AdminService eliminar recinto', () => {
+  /*
+   * Pedido de terreno: se creo un recinto por error y el panel solo ofrecia
+   * darlo de baja, con lo cual quedaba para siempre en la lista de todos.
+   *
+   * La linea entre lo que se puede borrar y lo que no ya estaba dibujada en el
+   * esquema: configuracion en CASCADE, evidencia en RESTRICT. Estas pruebas
+   * fijan que el servicio respete esa linea y no invente una propia.
+   */
+  const sitio = [{ id: 'site-1', name: 'Edificio' }];
+
+  it('borra el recinto recien creado, sin rondas ni novedades', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce(sitio)
+      .mockResolvedValueOnce([{ rondas: '0', novedades: '0' }])
+      .mockResolvedValueOnce(undefined)
+      // La etiqueta del actor para el resumen de auditoria.
+      .mockResolvedValueOnce([{ label: 'Ana Pérez' }]);
+    const { admin, record } = service(query);
+
+    await expect(admin.deleteSite('site-1', { actorId: 'admin-1' })).resolves.toEqual({
+      id: 'site-1',
+      deleted: true,
+    });
+    expect(query.mock.calls.some(([sql]: [string]) => /DELETE FROM sites/.test(sql))).toBe(true);
+    // Queda en la auditoria: borrar un recinto no puede ser invisible.
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'recinto.eliminado', entityId: 'site-1' }),
+    );
+  });
+
+  it('NO borra un recinto con rondas: eso es evidencia del trabajo del guardia', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce(sitio)
+      .mockResolvedValueOnce([{ rondas: '12', novedades: '0' }]);
+    const { admin } = service(query);
+
+    await expect(admin.deleteSite('site-1', { actorId: 'admin-1' })).rejects.toThrow(
+      /12 rondas/,
+    );
+    expect(query.mock.calls.some(([sql]: [string]) => /DELETE FROM sites/.test(sql))).toBe(false);
+  });
+
+  it('tampoco con novedades, y el mensaje dice cuantas hay de cada cosa', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce(sitio)
+      .mockResolvedValueOnce([{ rondas: '3', novedades: '1' }]);
+    const { admin } = service(query);
+
+    await expect(admin.deleteSite('site-1', { actorId: 'admin-1' })).rejects.toThrow(
+      /3 rondas y 1 novedad/,
+    );
+  });
+
+  it('el mensaje ofrece la salida que si existe: darlo de baja', async () => {
+    // Un "no se puede" sin alternativa deja al administrador sin saber que hacer.
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce(sitio)
+      .mockResolvedValueOnce([{ rondas: '1', novedades: '0' }]);
+    const { admin } = service(query);
+
+    await expect(admin.deleteSite('site-1', { actorId: 'admin-1' })).rejects.toThrow(
+      /[Dd]alo de baja/,
+    );
+  });
+
+  it('si aparece trabajo entre la cuenta y el borrado, manda el RESTRICT de la base', async () => {
+    // La cuenta es para el MENSAJE; la garantia es del esquema. Sin esto, una
+    // ronda iniciada en ese instante se perderia con el recinto.
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce(sitio)
+      .mockResolvedValueOnce([{ rondas: '0', novedades: '0' }])
+      .mockRejectedValueOnce(Object.assign(new Error('fk'), { code: '23503' }));
+    const { admin } = service(query);
+
+    await expect(admin.deleteSite('site-1', { actorId: 'admin-1' })).rejects.toThrow(
+      /mientras se borraba/,
+    );
+  });
+
+  it('un recinto que no existe es 404 y no un borrado silencioso', async () => {
+    const query = jest.fn().mockResolvedValueOnce([]);
+    const { admin } = service(query);
+
+    await expect(admin.deleteSite('site-fantasma', { actorId: 'admin-1' })).rejects.toThrow(
+      'Recinto no encontrado',
+    );
+  });
+});

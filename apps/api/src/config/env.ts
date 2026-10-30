@@ -17,6 +17,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().url(),
   SCAN_SYNC_QUEUE_NAME: z.string().min(1).default('scan-sync'),
   SCAN_SYNC_LAG_ALERT_SECONDS: z.coerce.number().int().positive().default(300),
+  VEHICLE_LOOKUP_WORKER_URL: z.union([z.literal(''), z.string().url()]).default(''),
+  VEHICLE_LOOKUP_WORKER_TOKEN: z.string().default(''),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET debe tener al menos 32 caracteres'),
   JWT_ACCESS_TTL: z.string().default('15m'),
@@ -37,7 +39,14 @@ const envSchema = z.object({
   // El driver `smtp` generico cubre cualquier proveedor. No agregamos un
   // adaptador por marca hasta que se decida y haya una razon concreta para
   // usar su API en vez de SMTP.
-  MAIL_DRIVER: z.enum(['mailpit', 'smtp']).default('mailpit'),
+  /*
+   * `resend` entrega por HTTPS y no por SMTP. Se agrego porque desde el VPS de
+   * produccion los puertos 465 y 2465 mueren en timeout y no salia ni un
+   * correo; el 443 si sale. `smtp` se mantiene para quien se autohospeda con
+   * su propio relay.
+   */
+  MAIL_DRIVER: z.enum(['mailpit', 'smtp', 'resend']).default('mailpit'),
+  RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default('SentryCore <no-reply@localhost>'),
   MAILPIT_HOST: z.string().default('localhost'),
   MAILPIT_PORT: z.coerce.number().int().positive().default(1025),
@@ -147,15 +156,30 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   }
 
   const env = parsed.data;
+  if (env.VEHICLE_LOOKUP_WORKER_URL && env.VEHICLE_LOOKUP_WORKER_TOKEN.length < 32) {
+    throw new Error('VEHICLE_LOOKUP_WORKER_URL requiere una credencial interna de al menos 32 caracteres');
+  }
 
   // Coherencia entre el driver de correo y sus credenciales: si no se valida
   // aca, el error aparece recien cuando alguien no recibe su invitacion.
   if (env.MAIL_DRIVER === 'smtp' && !env.SMTP_HOST) {
     throw new Error('MAIL_DRIVER=smtp requiere SMTP_HOST');
   }
+  if (env.MAIL_DRIVER === 'resend' && !env.RESEND_API_KEY) {
+    throw new Error('MAIL_DRIVER=resend requiere RESEND_API_KEY');
+  }
 
-  if (env.NODE_ENV === 'production' && env.MAIL_DRIVER !== 'smtp') {
-    throw new Error('en produccion MAIL_DRIVER debe ser smtp');
+  /*
+   * En produccion no se usa `mailpit`: captura todo y no manda nada, asi que el
+   * sistema pareceria funcionar mientras ningun cliente recibe su informe.
+   *
+   * La guarda decia `!== 'smtp'` porque smtp era el UNICO driver real. Al
+   * agregar `resend` eso paso a prohibir un driver legitimo, y tumbo produccion
+   * dos veces: la API se negaba a arrancar y el sitio quedaba en 404. Lo que
+   * hay que prohibir es el driver que NO entrega, no exigir uno en concreto.
+   */
+  if (env.NODE_ENV === 'production' && env.MAIL_DRIVER === 'mailpit') {
+    throw new Error('en produccion MAIL_DRIVER no puede ser mailpit: no entrega nada');
   }
 
   // En produccion no se envia correo real por un canal sin cifrar.

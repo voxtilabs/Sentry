@@ -74,7 +74,7 @@ describeDatabase('privilegios efectivos de sentrycore_app', () => {
     );
   });
 
-  it.each(['field_events', 'scan_photos', 'event_photos', 'audit_log'])(
+  it.each(['field_events', 'scan_photos', 'event_photos', 'audit_log', 'checklist_response_photos'])(
     '%s sigue siendo append-only',
     async (tabla) => {
       expect(await codigoDeError(`DELETE FROM ${tabla}`)).toBe(SIN_PRIVILEGIO);

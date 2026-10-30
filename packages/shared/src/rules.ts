@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** Límites de seguridad del formulario; la cantidad operativa es configurable. */
+export const TASK_PHOTO_COUNT_RANGE = { min: 1, max: 10 } as const;
+
 /**
  * Reglas configurables de SentryCore.
  *
@@ -203,10 +206,15 @@ export const patrolRulesSchema = z.object({
   reportRecipients: z.array(z.string().email()).max(10).default([]),
 
   /** Dias que se conserva la evidencia fotografica. */
+  visitorRetentionDays: z.number().int().min(1).max(90).default(30),
+
   photoRetentionDays: z.number().int().min(30).max(3650).default(365),
 
   /** Tamaño maximo de cada foto de evidencia, en megabytes (#13). */
   photoMaxSizeMB: z.number().int().min(1).max(50).default(10),
+  /** Valores heredados por las tareas que no tienen una cantidad propia. */
+  taskPhotoMinCount: z.number().int().min(1).max(10).default(1),
+  taskPhotoMaxCount: z.number().int().min(1).max(10).default(3),
   /**
    * Peso al que el telefono COMPRIME la foto antes de subirla, en kilobytes.
    *
@@ -296,6 +304,10 @@ export const patrolRulesSchema = z.object({
   patrolStartNoticeMin: z.number().int().min(0).max(120).default(10),
   /** Tope del PDF adjunto al correo; sobre esto se manda enlace (#86). */
   reportMailMaxAttachmentMB: z.number().int().min(1).max(25).default(8),
+  /** Espera las fotos y respuestas del último punto antes de enviar el informe. */
+  referenceGpsTargetAccuracyM: z.number().int().min(1).max(50).default(5),
+  referenceCaptureMaxMinutes: z.number().int().min(15).max(240).default(120),
+  reportEvidenceGraceSeconds: z.number().int().min(0).max(600).default(180),
 
   /* ------------------------------------------------------------------ *
    * Plan de muestreo del recorrido (#77)
@@ -817,6 +829,13 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     scopes: ['tenant', 'site'],
     group: 'avisos',
   },
+  visitorRetentionDays: {
+    key: 'visitorRetentionDays',
+    label: 'Retención del registro de visitas',
+    description: 'Días que se conservan los datos personales de visitas antes de eliminarlos automáticamente.',
+    type: 'integer', unit: 'days', min: 1, max: 90,
+    default: DEFAULT_PATROL_RULES.visitorRetentionDays, scopes: SOLO_EMPRESA, group: 'retencion',
+  },
   photoRetentionDays: {
     key: 'photoRetentionDays',
     label: 'Retencion de fotos',
@@ -855,6 +874,22 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     default: DEFAULT_PATROL_RULES.photoMaxSizeMB,
     scopes: SOLO_EMPRESA,
     group: 'evidencia',
+  },
+  taskPhotoMinCount: {
+    key: 'taskPhotoMinCount',
+    label: 'Fotos mínimas por tarea',
+    description: 'Cantidad mínima cuando una tarea exige fotos. El supervisor puede elegir una cantidad propia en cada tarea. Si supera el máximo heredado, el máximo se amplía hasta este mínimo.',
+    type: 'integer', unit: null, min: 1, max: 10,
+    default: DEFAULT_PATROL_RULES.taskPhotoMinCount,
+    scopes: TODOS_LOS_NIVELES, group: 'evidencia',
+  },
+  taskPhotoMaxCount: {
+    key: 'taskPhotoMaxCount',
+    label: 'Fotos máximas por tarea',
+    description: 'Hasta cuántas fotos puede agregar el guardia antes de responder. El supervisor puede elegir otro máximo en cada tarea; nunca queda por debajo del mínimo requerido.',
+    type: 'integer', unit: null, min: 1, max: 10,
+    default: DEFAULT_PATROL_RULES.taskPhotoMaxCount,
+    scopes: TODOS_LOS_NIVELES, group: 'evidencia',
   },
   excelExportMaxRows: {
     key: 'excelExportMaxRows',
@@ -1047,6 +1082,30 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     max: 25,
     default: DEFAULT_PATROL_RULES.reportMailMaxAttachmentMB,
     scopes: SOLO_EMPRESA,
+    group: 'avisos',
+  },
+  referenceGpsTargetAccuracyM: {
+    key: 'referenceGpsTargetAccuracyM', label: 'Precisión objetivo de ronda patrón',
+    description: 'Incertidumbre GPS máxima para validar cada punto de la ronda patrón. No cambia las coordenadas de los puntos existentes.',
+    type: 'integer', unit: 'meters', min: 1, max: 50,
+    default: DEFAULT_PATROL_RULES.referenceGpsTargetAccuracyM, scopes: HASTA_RECINTO, group: 'ubicacion',
+  },
+  referenceCaptureMaxMinutes: {
+    key: 'referenceCaptureMaxMinutes', label: 'Duración máxima de ronda patrón',
+    description: 'Límite de la captura GPS de alta frecuencia del supervisor; al cumplirse, el teléfono detiene los sensores.',
+    type: 'integer', unit: 'minutes', min: 15, max: 240,
+    default: DEFAULT_PATROL_RULES.referenceCaptureMaxMinutes, scopes: HASTA_RECINTO, group: 'ubicacion',
+  },
+  reportEvidenceGraceSeconds: {
+    key: 'reportEvidenceGraceSeconds',
+    label: 'Espera de evidencia al cerrar la ronda',
+    description: 'Tiempo máximo para recibir las fotos y respuestas del último punto antes de enviar el informe. Se envía antes si la evidencia ya está completa. En cero, el envío es inmediato.',
+    type: 'integer',
+    unit: 'seconds',
+    min: 0,
+    max: 600,
+    default: DEFAULT_PATROL_RULES.reportEvidenceGraceSeconds,
+    scopes: HASTA_RECINTO,
     group: 'avisos',
   },
   patrolStartNoticeMin: {

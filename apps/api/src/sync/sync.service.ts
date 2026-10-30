@@ -9,6 +9,8 @@ import type { PatrolRules } from '@sentrycore/shared';
 import { plainToInstance, type ClassConstructor } from 'class-transformer';
 import { validate, type ValidationError } from 'class-validator';
 
+import { VisitsService } from '../visits/visits.service';
+import { RegisterVisitDto, ExitVisitDto } from '../visits/visits.dto';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { CreateScanDto } from '../guard/dto/create-scan.dto';
 import { ReportEventDto } from '../guard/dto/report-event.dto';
@@ -61,6 +63,7 @@ export class SyncService {
     private readonly guard: GuardService,
     private readonly rules: RulesService,
     private readonly conflicts: SyncConflictsService,
+    private readonly visits?: VisitsService,
   ) {}
 
   /**
@@ -354,6 +357,7 @@ export class SyncService {
     operacion: SyncOperationDto,
     contexto: ContextoDeLote,
   ): Promise<Veredicto> {
+    if (operacion.type === 'visit' || operacion.type === 'visit-exit') return this.ejecutarVisita(guardId, operacion);
     return operacion.type === 'scan'
       ? this.ejecutarEscaneo(guardId, operacion, contexto)
       : this.ejecutarEvento(guardId, operacion);
@@ -454,6 +458,14 @@ export class SyncService {
     });
   }
 
+  private async ejecutarVisita(guardId: string, operation: SyncOperationDto): Promise<Veredicto> {
+    if (!this.visits) throw new BadRequestException('Registro de visitas no disponible');
+    const result = operation.type === 'visit'
+      ? await this.visits.register(guardId, await this.validarPayload(RegisterVisitDto, { ...operation.payload, clientVisitId: this.claveDeIdempotencia(operation, 'clientVisitId') }))
+      : await this.visits.exit(guardId, await this.validarPayload(ExitVisitDto, operation.payload));
+    return { status: result.replay ? 'duplicado' : 'aplicado', serverId: result.id };
+  }
+
   private async ejecutarEvento(guardId: string, operacion: SyncOperationDto): Promise<Veredicto> {
     const payload = await this.validarPayload(ReportEventDto, {
       ...operacion.payload,
@@ -475,7 +487,7 @@ export class SyncService {
    */
   private claveDeIdempotencia(
     operacion: SyncOperationDto,
-    campo: 'clientScanId' | 'clientEventId',
+    campo: 'clientScanId' | 'clientEventId' | 'clientVisitId',
   ): string {
     const enPayload = operacion.payload[campo];
     if (enPayload !== undefined && enPayload !== operacion.clientId) {

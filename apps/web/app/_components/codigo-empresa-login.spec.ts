@@ -35,9 +35,11 @@ describe('código de empresa en la pantalla de ingreso', () => {
    * lo necesita mas que ninguno: sin la empresa, seis digitos no identifican a
    * nadie.
    */
-  it('los tres ingresos mandan el código fijado', () => {
+  it('contraseña y código personal mandan la empresa; la tarjeta resuelve su propia empresa', () => {
     const envios = pantalla.match(/tenantSlug: codigoEmpresa/g) ?? [];
-    expect(envios).toHaveLength(3);
+    expect(envios).toHaveLength(2);
+    expect(pantalla).toContain('/auth/company-card');
+    expect(pantalla).toContain('guardarCodigoEmpresa(companyPicker.tenantSlug)');
   });
 
   /*
@@ -45,7 +47,6 @@ describe('código de empresa en la pantalla de ingreso', () => {
    * manda sobre el código guardado: es una elección explícita y recién hecha.
    */
   it('el código guardado no pisa a la empresa recién elegida', () => {
-    expect(pantalla).toContain('!tenantId && codigoEmpresa');
     expect(pantalla).toContain('!credenciales.tenantId && codigoEmpresa');
   });
 
@@ -56,7 +57,7 @@ describe('código de empresa en la pantalla de ingreso', () => {
    */
   it('un código que no corresponde reabre el campo para corregirlo', () => {
     const reaperturas = pantalla.match(/TENANT_CODE_MISMATCH'\) abrirEdicionDeCodigo\(\)/g) ?? [];
-    expect(reaperturas).toHaveLength(2);
+    expect(reaperturas).toHaveLength(1);
     expect(pantalla).toContain("result.code === 'TENANT_CODE_MISMATCH'");
   });
 

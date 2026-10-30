@@ -20,6 +20,8 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
+import { reportarCaida } from '../observability/crash-reporter';
+
 const TAREA = 'sentrycore-traza-en-segundo-plano';
 
 /**
@@ -28,9 +30,43 @@ const TAREA = 'sentrycore-traza-en-segundo-plano';
  */
 let destino: { patrolId: string; apiBaseUrl: string } | null = null;
 
+/**
+ * La tarea puede fallar en cada tick. Se reporta UNA vez por corrida del
+ * proceso: el sistema la despierta cada pocos segundos y un fallo persistente
+ * —permiso revocado a mitad de ronda, servicio que Android no pudo levantar—
+ * llenaria la cola con veinte copias del mismo problema y gastaria la bateria
+ * del guardia en contarlo.
+ */
+let falloYaReportado = false;
+
 if (!TaskManager.isTaskDefined(TAREA)) {
   TaskManager.defineTask(TAREA, async ({ data, error }) => {
-    if (error || !destino) return;
+    if (error) {
+      /*
+       * Este es el fallo que NADIE ve (#273): ocurre con el telefono en el
+       * bolsillo y la pantalla apagada. Sin reporte, la ronda aparece sin
+       * traza y la unica explicacion disponible es "se habra ido la señal",
+       * que fue exactamente lo que creimos en Janssen.
+       */
+      if (!falloYaReportado) {
+        falloYaReportado = true;
+        try {
+          const fallo = new Error(String(error.message ?? error));
+          // El nombre es lo que agrupa en el panel: sin el, esto se mezcla con
+          // cualquier otro 'Error' y el jefe de operaciones no puede distinguir
+          // "la traza de fondo se cayo" de una pantalla rota.
+          fallo.name = 'TrazaEnSegundoPlanoError';
+          await reportarCaida(fallo, {
+            fatal: false,
+            apiUrl: destino?.apiBaseUrl,
+          });
+        } catch {
+          // Reportar no puede tumbar la tarea del sistema.
+        }
+      }
+      return;
+    }
+    if (!destino) return;
     const posiciones = (data as { locations?: Location.LocationObject[] } | null)?.locations ?? [];
     if (posiciones.length === 0) return;
 
@@ -44,7 +80,7 @@ if (!TaskManager.isTaskDefined(TAREA)) {
     }));
 
     try {
-      await fetch(`${destino.apiBaseUrl}/geo/patrols/${destino.patrolId}/track`, {
+      const respuesta = await fetch(`${destino.apiBaseUrl}/geo/patrols/${destino.patrolId}/track`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -61,6 +97,32 @@ if (!TaskManager.isTaskDefined(TAREA)) {
         },
         body: JSON.stringify({ points }),
       });
+
+      /*
+       * EL SERVIDOR ES QUIEN SABE SI LA RONDA SIGUE VIVA.
+       *
+       * Un 4xx aqui significa que esta ronda ya no acepta posiciones: se
+       * cerro, se pauso, o el guardia retiro el consentimiento. Cuando eso
+       * pasa, el servicio en primer plano tiene que MORIR — si no, el telefono
+       * sigue despertando el GPS y mostrando "Ronda en curso" cuando no hay
+       * ninguna. Visto en el telefono de prueba: ronda cerrada, notificacion
+       * puesta y la tarea disparando cada pocos segundos.
+       *
+       * El portal manda `track.stop` al cerrar, y eso sigue siendo el camino
+       * normal. Esto es la red debajo: el muestreo lo registra ANDROID y
+       * sobrevive a que el portal se recargue, se quede sin WebView o muera el
+       * proceso, asi que no puede depender solo de que alguien se acuerde de
+       * apagarlo. La regla es la misma que ya rige en el servidor: fuera de la
+       * ronda no se registra nada.
+       *
+       * Los 5xx NO cuentan: ahi el servidor esta caido, no cerrando la ronda, y
+       * apagar la traza por un error pasajero perderia el recorrido de verdad.
+       */
+      if (!respuesta.ok && respuesta.status >= 400 && respuesta.status < 500) {
+        destino = null;
+        await detenerTrazaEnSegundoPlano();
+        return;
+      }
     } catch (fallo) {
       console.warn('[traza-fondo] fallo la subida:', String(fallo));
       /*

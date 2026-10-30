@@ -22,7 +22,13 @@ a { color: inherit; text-decoration: none; }
 
 .brand { display: inline-flex; align-items: center; gap: .72rem; }
 .brand-mark { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: .78rem; background: var(--blue); }
-.brand-mark svg { width: 1.75rem; fill: none; stroke: white; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+/*
+ * El isotipo trae su propio grosor de trazo (viewBox 168) y usa currentColor.
+ * El CSS ya NO fija `stroke` ni `stroke-width`: aqui la hoja de estilo gana
+ * sobre el atributo del SVG, y forzar 2.3 sobre un dibujo de 168 unidades lo
+ * dejaba en un hilo invisible.
+ */
+.brand-mark svg { width: 1.6rem; height: auto; color: white; }
 .brand > span:last-child { display: flex; align-items: baseline; gap: .25rem; font-size: 1.25rem; letter-spacing: -.04em; }
 .brand small { color: #9ca8c8; font-size: .72em; font-weight: 600; letter-spacing: .02em; }
 
@@ -103,6 +109,16 @@ a { color: inherit; text-decoration: none; }
 .role-icon { display: grid; width: 2.15rem; height: 2.15rem; place-items: center; border-radius: .65rem; color: white; font-size: .76rem; font-weight: 850; }
 .role-guardia { background: #18a66a; }.role-supervisor { background: #4263eb; }.role-admin { background: #8a55d7; }.role-superadmin { background: #172033; }
 .login-panel footer { align-self: end; color: #a2a7b4; font-size: .68rem; }
+
+/*
+ * El convenio con Vigilab en la pantalla de ingreso. Va en tono menor: es una
+ * credencial, no el encabezado. El logo es negro y rojo sobre transparente, y
+ * este panel es claro, asi que se lee sin caja — a diferencia de la landing,
+ * que tiene modo noche.
+ */
+.login-pie { display: flex; flex-direction: column; gap: .45rem; }
+.login-convenio { display: flex; align-items: center; gap: .5rem; }
+.login-convenio img { width: 68px; height: auto; display: block; opacity: .85; }
 
 .dashboard-shell { --blue: var(--marca-secundario, #4263eb); --blue-dark: var(--marca-secundario, #3048bc); display: grid; min-height: 100dvh; grid-template-columns: 1fr; align-content: start; background: var(--canvas); }
 .dashboard-shell[data-role="GUARDIA"] { --guardia-azul: var(--marca-secundario, #1d3ec8); background: #f2f2f7; }
@@ -412,7 +428,61 @@ a { color: inherit; text-decoration: none; }
   .guard-shift-grid span { padding: .7rem .55rem; }
   .guard-shift-grid strong { overflow-wrap: anywhere; }
 }
-@media (max-width: 900px) { .sidebar nav .nav-item.active { order: -1; } }
+/*
+ * La barra del supervisor en el telefono (#231).
+ *
+ * Con siete secciones y items de ~150 px solo entraban DOS Y MEDIO en 390 px:
+ * el supervisor tenia que arrastrar de lado a ciegas para llegar a "Monitoreo
+ * en vivo", que es justo la que mira desde la calle.
+ *
+ * El icono pasa ARRIBA de la etiqueta: cada item baja a ~72 px y entran cinco.
+ * Es la misma forma que ya usa la barra del guardia, asi que las dos pantallas
+ * se leen igual.
+ *
+ * NO se reordena poniendo la activa primero, como estaba antes: la barra
+ * cambiaba de orden al navegar y el supervisor perdia la referencia de donde
+ * estaba parado. Ahora el orden es fijo y la activa se marca donde esta.
+ */
+@media (max-width: 900px) {
+  .sidebar nav { gap: .15rem; }
+
+  .nav-item {
+    flex-direction: column;
+    gap: .3rem;
+    min-width: 4.2rem;
+    /*
+     * El tope de ancho es lo que hace entrar cinco: sin el, "Puntos y
+     * etiquetas" y "Monitoreo en vivo" estiran su item a lo que mida el texto
+     * en una linea y volvemos a tener tres.
+     */
+    max-width: 5.4rem;
+    /* 56 px de alto: se toca de pie y a veces con una sola mano. */
+    min-height: 3.5rem;
+    justify-content: flex-start;
+    padding: .5rem .35rem;
+    font-size: .64rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    /* Dos lineas, cortando por palabra: "Puntos y / etiquetas". */
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  .nav-item span { width: auto; font-size: 1.1rem; }
+
+  /*
+   * La activa se marca con una barra ABAJO y no a la izquierda: el `inset 3px 0`
+   * es un borde lateral, que en una barra horizontal queda como un palito
+   * suelto entre dos items.
+   */
+  .nav-item.active,
+  .dashboard-shell[data-role="ADMIN"] .nav-item.active,
+  .dashboard-shell[data-role="SUPERVISOR"] .nav-item.active {
+    box-shadow: inset 0 -3px var(--marca-primario-texto, #fff);
+    background: rgba(255, 255, 255, .14);
+  }
+}
 @media (max-width: 700px) {
   .hours-row { grid-template-columns: 1fr 5.3rem auto 5.3rem; }
   .holiday-add { grid-template-columns: 1fr; }
@@ -458,13 +528,21 @@ a { color: inherit; text-decoration: none; }
 .dashboard-shell[data-role="GUARDIA"] .guardia-resumen,
 .dashboard-shell[data-role="GUARDIA"] .guardia-foto-punto { box-shadow: none; }
 
-.guardia-conexion { position: sticky; top: 0; z-index: 5; display: grid; gap: .45rem; margin-bottom: .8rem; border-radius: .75rem; padding: .7rem .8rem; color: white; background: var(--guardia-ink); }
-.guardia-conexion-linea { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; margin: 0; font-size: 1rem; font-weight: 700; }
+.guardia-conexion { position: sticky; top: 0; z-index: 5; margin-bottom: .65rem; border-radius: .65rem; padding: .35rem .65rem; color: white; background: var(--guardia-ink); }
+.guardia-conexion > summary { min-height: 2.25rem; cursor: pointer; list-style: none; }
+.guardia-conexion > summary::-webkit-details-marker { display: none; }
+.guardia-conexion-resumen { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: .4rem; min-width: 0; }
+.guardia-conexion-resumen strong, .guardia-conexion-resumen .guardia-cola { white-space: nowrap; }
+.guardia-conexion-expandir { flex: 0 0 auto; padding: .15rem; font-size: 1rem; }
+.guardia-conexion[open] .guardia-conexion-expandir { transform: rotate(180deg); }
+.guardia-conexion-detalle { display: grid; gap: .5rem; margin-top: .45rem; padding: .6rem 0 .3rem; border-top: 1px solid #ffffff30; }
+.guardia-conexion-detalle .guardia-boton-secundario { min-height: 2.75rem; padding: .4rem .65rem; }
+.guardia-conexion-linea { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0; font-size: .9rem; font-weight: 700; }
 .guardia-conexion-linea small { color: #c3cbdd; font-size: .82rem; font-weight: 600; }
 .guardia-senal { display: inline-block; width: .8rem; height: .8rem; border-radius: 50%; }
 .guardia-senal.ok { background: #3ddc91; }
 .guardia-senal.sin { background: #ff8f7a; }
-.guardia-cola { margin-left: auto; border-radius: 99px; padding: .25rem .6rem; color: #0b1220; background: #d7f5e6; font-size: .9rem; font-weight: 800; }
+.guardia-cola { margin-left: auto; border-radius: 99px; padding: .15rem .5rem; color: #0b1220; background: #d7f5e6; font-size: .9rem; font-weight: 800; }
 .guardia-cola.alerta { color: #3a2400; background: #ffd479; }
 .guardia-rechazos { display: grid; gap: .5rem; border: 2px solid #ff8f7a; border-radius: .7rem; padding: .7rem; color: white; background: #4a0d13; font-size: .95rem; }
 .guardia-rechazos ul { margin: 0; padding-left: 1.1rem; line-height: 1.5; }
@@ -559,6 +637,18 @@ label.guardia-boton-secundario { display: flex; align-items: center; justify-con
 .guardia-foto { display: grid; gap: .3rem; }
 /* Visible para lectores y enfocable con teclado, invisible en pantalla. */
 .guardia-invisible { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.company-guard-picker { display: flex; min-height: 100dvh; justify-content: center; }
+.company-guard-picker .login-panel { width: 100%; min-width: 0; }
+.company-guard-picker .login-card { display: flex; flex-direction: column; align-items: stretch; gap: .65rem; padding-top: 3rem; }
+.company-guard-picker .login-card .brand { align-self: flex-start; }
+.company-guard-picker .login-card h2 { font-size: 2rem; line-height: 1.15; margin: .4rem 0; }
+.company-guard-picker .login-card .eyebrow { display: block; }
+.company-picker-logout { position: absolute; top: max(1rem, env(safe-area-inset-top)); right: 1rem; z-index: 2; }
+.company-picker-logout button { font-size: .8rem; min-height: 2.75rem; padding: .4rem .7rem; }
+.guard-end-day { max-width: 22rem; }
+.guard-end-day [role="alert"] { font-size: .9rem; color: var(--danger, #b42318); }
+.company-guard-list { display: grid; gap: .75rem; max-height: 55dvh; overflow-y: auto; padding: .25rem; list-style: none; }
+.company-guard-list button { width: 100%; min-height: 3.5rem; height: auto; padding: .8rem 1rem; font-size: 1.1rem; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 
 .guardia-panico { margin-top: 1.8rem; border-top: .3rem solid var(--guardia-rojo); padding-top: 1rem; }
 .guardia-panico h3 { margin: 0 0 .5rem; color: var(--guardia-rojo); font-size: 1.25rem; }
@@ -1089,3 +1179,243 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .captura-en-terreno { width: 100%; min-height: 2.75rem; cursor: pointer; font-size: .78rem; }
 .captura-en-terreno:disabled { color: #8a91a2; cursor: progress; }
 .captura-aviso { margin: .1rem 0 .4rem; color: var(--ink); text-align: left; }
+
+/*
+ * Recorrido libre (#231). Va en tono menor a proposito: es la excepcion, no el
+ * camino normal. Un guardia que ve dos botones del mismo peso elige el que no
+ * le pide elegir ruta, y este no acredita ningun punto de control.
+ */
+.recorrido-libre { margin-top: 1.25rem; border-top: 1px solid var(--line); padding-top: .9rem; }
+.recorrido-libre > summary {
+  cursor: pointer; font-size: .82rem; color: var(--text-muted, #6E7488);
+  min-height: 2.75rem; display: flex; align-items: center;
+}
+.recorrido-libre > summary:focus-visible { outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px; }
+.recorrido-libre p { margin: .5rem 0 .9rem; font-size: .82rem; line-height: 1.55; color: var(--text-muted, #6E7488); }
+.recorrido-libre .secondary-button { width: 100%; min-height: 2.75rem; cursor: pointer; }
+
+.recorrido-libre-en-curso {
+  margin-top: 1rem; padding: .9rem 1rem; border: 1px solid var(--line);
+  border-radius: .9rem; background: var(--bg-rest, #E6E9F2);
+}
+.recorrido-libre-en-curso p { margin: 0 0 .7rem; font-size: .85rem; line-height: 1.55; }
+.recorrido-libre-en-curso .secondary-button { width: 100%; min-height: 2.75rem; cursor: pointer; }
+
+/*
+ * Cerrar el recorrido libre, desde la pantalla de la ronda en curso — que es
+ * la que el guardia tiene delante mientras camina. Estaba en GuardHome, que
+ * NUNCA se monta con una ronda abierta: era un boton que no veia nadie.
+ */
+.recorrido-libre-cierre { margin-top: .9rem; }
+.recorrido-libre-cierre .secondary-button {
+  width: 100%; min-height: var(--guardia-toque, 2.9rem); cursor: pointer;
+}
+
+
+
+
+/*
+ * Terminar la ronda (#231). Va al FINAL de la vista y en tono menor: la accion
+ * del guardia es marcar puntos, no salirse. Estaba arriba del boton de
+ * escanear y lo primero que veia era como abandonar.
+ *
+ * Todo lo tocable mide 56 px. Esto se usa de pie, en la calle, de noche y a
+ * veces con guantes: el minimo de 44 px es el piso, no el objetivo.
+ */
+.terminar-ronda { margin-top: 1.5rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.terminar-ronda-boton {
+  width: 100%; min-height: 3.5rem; cursor: pointer;
+  border: 1px solid var(--border-strong, #CBD0DE); border-radius: .75rem;
+  background: transparent; color: var(--text-muted, #6E7488);
+  font-family: Outfit, system-ui, sans-serif; font-weight: 650; font-size: 1rem;
+}
+.terminar-ronda-boton:focus-visible { outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px; }
+
+/* La alerta de confirmacion: grande, con la consecuencia dicha en una frase. */
+.terminar-ronda-alerta {
+  border: 2px solid var(--bad, #E23D5C); border-radius: .9rem;
+  padding: 1.1rem; background: var(--bad-soft, #FFEEF1);
+}
+.terminar-ronda-alerta h3 {
+  margin: 0 0 .6rem; font-family: Outfit, system-ui, sans-serif;
+  font-size: 1.25rem; font-weight: 700; color: var(--bad-text, #A6203C);
+}
+.terminar-ronda-alerta p { margin: 0 0 .9rem; font-size: .95rem; line-height: 1.55; color: var(--ink, #12141C); }
+.terminar-ronda-alerta label { display: grid; gap: .3rem; margin-bottom: 1rem; font-size: .88rem; font-weight: 600; }
+.terminar-ronda-alerta label span { font-weight: 400; color: var(--text-muted, #6E7488); font-size: .8rem; }
+.terminar-ronda-alerta input {
+  min-height: 3.25rem; padding: 0 .9rem; font-size: 1rem;
+  border: 1px solid var(--border-strong, #CBD0DE); border-radius: .6rem; background: white;
+}
+
+/*
+ * "Seguir la ronda" va PRIMERO y relleno; "terminar" debajo y en contorno. El
+ * orden y el peso dicen cual es la salida segura sin que nadie tenga que leer.
+ */
+.terminar-ronda-seguir, .terminar-ronda-confirmar {
+  width: 100%; min-height: 3.5rem; cursor: pointer; border-radius: .75rem;
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+}
+.terminar-ronda-seguir {
+  border: 0; background: var(--action, #3D5AFE); color: white; margin-bottom: .6rem;
+}
+/* El destructivo se distingue por TEXTO y color, nunca solo por color. */
+.terminar-ronda-confirmar {
+  border: 2px solid var(--bad, #E23D5C); background: transparent; color: var(--bad-text, #A6203C);
+}
+.terminar-ronda-seguir:focus-visible, .terminar-ronda-confirmar:focus-visible {
+  outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px;
+}
+.terminar-ronda-seguir:disabled, .terminar-ronda-confirmar:disabled { opacity: .6; cursor: progress; }
+
+/*
+ * Ronda pausada (#231). El aviso va arriba de todo y usa el ambar de atencion,
+ * no el rojo: no es un error, es un estado que hay que notar. Mientras esta
+ * pausada NO se registra por donde va el guardia, y creerse que si es el error
+ * caro — por eso lo dice con todas las letras.
+ */
+.ronda-pausada {
+  margin-bottom: 1rem; padding: 1.1rem;
+  border: 2px solid var(--warn, #FFA51F); border-radius: .9rem;
+  background: var(--warn-soft, #FFF6E6);
+}
+.ronda-pausada h2 {
+  margin: 0 0 .5rem; font-family: Outfit, system-ui, sans-serif;
+  font-size: 1.3rem; font-weight: 700; color: var(--warn-text, #96560A);
+}
+.ronda-pausada p { margin: 0 0 .9rem; font-size: .95rem; line-height: 1.55; color: var(--ink, #12141C); }
+.ronda-pausada-reanudar {
+  width: 100%; min-height: 3.5rem; cursor: pointer; border: 0; border-radius: .75rem;
+  background: var(--action, #3D5AFE); color: white;
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+}
+.ronda-pausada-reanudar:focus-visible { outline: 2px solid var(--ink, #12141C); outline-offset: 2px; }
+.ronda-pausada-reanudar:disabled { opacity: .6; cursor: progress; }
+
+/*
+ * Pausar va ANTES de terminar y con mas peso: es reversible y terminar no.
+ * Ofrecer primero la salida que se deshace evita que el guardia cierre una
+ * ronda que solo queria detener un rato.
+ */
+.pausar-ronda { margin-top: 1.5rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.pausar-ronda-boton {
+  width: 100%; min-height: 3.5rem; cursor: pointer; border-radius: .75rem;
+  border: 2px solid var(--warn, #FFA51F); background: transparent;
+  color: var(--warn-text, #96560A);
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1rem;
+}
+.pausar-ronda-boton:focus-visible { outline: 2px solid var(--action, #3D5AFE); outline-offset: 2px; }
+.pausar-ronda-boton:disabled { opacity: .6; cursor: progress; }
+.pausar-ronda p { margin: .55rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--text-muted, #6E7488); text-align: center; }
+/* Sin el borde de arriba duplicado cuando ya lo puso "pausar". */
+.pausar-ronda + .terminar-ronda { margin-top: .9rem; padding-top: 0; border-top: 0; }
+
+/*
+ * Punto dejado para el final (reporte de terreno del 21-09-2026). Ambar y no
+ * rojo: no es una falla, es una decision de recorrido que hay que ver de un
+ * vistazo sin que parezca una alarma.
+ */
+.guardia-chip.saltado {
+  border: 1px solid var(--warn, #FFA51F);
+  background: var(--warn-soft, #FFF6E6);
+  color: var(--warn-text, #96560A);
+}
+.guardia-boton-secundario.dejar-para-despues {
+  min-height: 3.5rem;
+  border-color: var(--warn, #FFA51F);
+  color: var(--warn-text, #96560A);
+}
+
+/*
+ * La seccion de ronda voluntaria cuando en ESTE recinto no hay ninguna. Se
+ * pinta apagada y sin boton: explica una ausencia, no ofrece una accion.
+ */
+.ronda-voluntaria.vacia { border-style: dashed; opacity: .85; }
+.ronda-voluntaria.vacia p { margin: 0; }
+
+/*
+ * Divulgacion destacada de ubicacion. Va por ENCIMA de todo y no se cierra
+ * tocando el fondo: Play exige accion afirmativa, y un aviso que se despacha
+ * con un toque al costado no es una accion afirmativa.
+ */
+.divulgacion-fondo {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
+  justify-content: center; padding: 1.25rem; background: rgba(8, 10, 18, .72);
+  overflow-y: auto;
+}
+.divulgacion {
+  width: 100%; max-width: 32rem; max-height: 92vh; overflow-y: auto;
+  background: var(--surface, #fff); border-radius: 1.1rem; padding: 1.5rem;
+  box-shadow: 0 24px 60px rgba(8, 10, 18, .35);
+}
+.divulgacion h2 {
+  margin: .2rem 0 1rem; font-family: Outfit, system-ui, sans-serif;
+  font-size: 1.55rem; font-weight: 800; line-height: 1.2;
+}
+.divulgacion-principal {
+  margin: 0 0 1.1rem; font-size: 1.05rem; line-height: 1.55;
+  color: var(--ink, #12141C);
+}
+.divulgacion-puntos { margin: 0 0 1.4rem; padding-left: 1.1rem; }
+.divulgacion-puntos li { margin-bottom: .6rem; font-size: .95rem; line-height: 1.5; }
+.divulgacion-acciones { display: flex; flex-direction: column; gap: .6rem; }
+.divulgacion-continuar {
+  min-height: 3.5rem; border: 0; border-radius: .75rem; cursor: pointer;
+  background: var(--action, #3D5AFE); color: #fff;
+  font-family: Outfit, system-ui, sans-serif; font-weight: 700; font-size: 1.05rem;
+}
+.divulgacion-posponer {
+  min-height: 3.5rem; border: 1px solid var(--line, #d7dbe8); border-radius: .75rem;
+  cursor: pointer; background: transparent; color: var(--text-muted, #6E7488);
+  font-family: Outfit, system-ui, sans-serif; font-weight: 600; font-size: 1rem;
+}
+.divulgacion-continuar:disabled, .divulgacion-posponer:disabled { opacity: .6; cursor: progress; }
+.divulgacion-pie {
+  margin: 1rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--text-muted, #6E7488);
+}
+.guard-visits-button { width: 100%; max-width: 340px; margin-block: 1rem; min-height: 48px; }
+.visits-panel { width: 100%; max-width: 680px; margin-inline: auto; padding: 1rem; color: var(--text-primary, #172033); }
+.visits-panel form, .visits-step { display: flex; flex-direction: column; gap: 1rem; margin-block: 1rem; }
+.visits-panel label { display: flex; flex-direction: column; gap: .4rem; font-weight: 600; }
+.visits-panel input:not([type=checkbox]), .visits-panel select { width: 100%; min-width: 0; min-height: 48px; padding: .65rem; font: inherit; color: inherit; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+.visits-panel .visits-checkbox { display: flex; flex-direction: row; align-items: flex-start; gap: .75rem; font-weight: 400; }
+.visits-checkbox input { margin-top: .3rem; width: 24px; height: 24px; flex-shrink: 0; }
+.visits-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-block: 1rem; }
+.visits-heading h2, .visits-heading h3 { margin: 0; }
+.visits-list { padding: 0; list-style: none; }
+.visits-list li { display: flex; flex-direction: column; gap: .4rem; padding-block: 1rem; border-bottom: 1px solid #dbe1e8; overflow-wrap: anywhere; }
+.visits-list button { align-self: flex-start; margin-top: .5rem; min-height: 48px; }
+.visits-panel button { min-height: 48px; white-space: normal; }
+.visits-panel p { overflow-wrap: anywhere; line-height: 1.5; }
+.visits-notice { padding: .75rem; border-left: 3px solid #2563eb; background: #eff6ff; }
+.visits-error { color: #b91c1c; font-weight: 600; }
+.visits-vehicle-result { padding-block: .5rem; border-block: 1px solid #dbe1e8; }
+.visits-theft-alert {
+  color: #7f1d1d;
+  background-color: #fff1f2;
+  border: 2px solid #b91c1c;
+  border-radius: 6px;
+  padding: .85rem;
+  font-weight: 700;
+  animation: visits-theft-pulse 1.6s ease-in-out infinite;
+}
+@keyframes visits-theft-pulse {
+  0%, 100% { background-color: #fff1f2; }
+  50% { background-color: #fca5a5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visits-theft-alert { animation: none; background-color: #fee2e2; }
+}
+.guardia-boton-enviar {
+  border: 1px solid #15803d;
+  border-radius: 12px;
+  background: #15803d;
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+  padding: 0.9rem 1rem;
+  min-height: 52px;
+  cursor: pointer;
+}
+.guardia-boton-enviar:disabled { opacity: 0.5; cursor: default; }
+.guardia-boton-enviar:focus-visible { outline: 3px solid #166534; outline-offset: 3px; }

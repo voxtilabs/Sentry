@@ -1,0 +1,1 @@
+{"platforms":["android"],"android":{"modules":["cl.voxtilabs.sentryocr.SentryOcrModule","cl.voxtilabs.sentryocr.ReferenceGpsModule"]}}

@@ -1,3 +1,4 @@
+import { ReferenceController } from '../reference/reference.controller';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import {
   hasPermission,
@@ -6,6 +7,7 @@ import {
   type Role,
 } from '@sentrycore/shared';
 
+import { VisitsGuardController, VisitsManagementController } from '../visits/visits.controller';
 import { AdminController } from '../admin/admin.controller';
 import { HorarioHabilController } from '../admin/horario-habil.controller';
 import { PuntosSupervisorController } from '../admin/puntos-supervisor.controller';
@@ -38,6 +40,7 @@ import { TrazaMetricasController } from '../geo/traza-metricas.controller';
 import { PurgaRetencionController } from '../retention/purga-retencion.controller';
 import { PlatformController } from '../platform/platform.controller';
 import { SupportAccessController } from '../platform-data/support-access.controller';
+import { SKIP_TENANT_CONTEXT } from '../database/tenant-context/skip-tenant-context.decorator';
 import { TenantDataController } from '../platform-data/tenant-data.controller';
 import { ReportsController } from '../reports/reports.controller';
 import { PlatformRulesController } from '../rules/platform-rules.controller';
@@ -74,8 +77,21 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
  * verdad ejecutable de rol × endpoint.
  */
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
+  ...['catalog','start','detail','samples','scan','finish','cancel'].map(handler => secured(ReferenceController,handler,['routes:manage'],['SUPERVISOR'],true)),
+  ...['context','list','register','exit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
+  ...['context','list'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),
+  publicEndpoint(AuthController, 'companyCard'),
+  publicEndpoint(AuthController, 'companyPicker'),
+  secured(AuthController, 'endGuardDay', ['patrols:execute'], ['GUARDIA']),
+  publicEndpoint(AuthController, 'selectCompanyGuard'),
+  secured(PlatformController, 'companyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(PlatformController, 'setCompanyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(AdminController, 'companyCard', ['tenant:users:manage'], ['ADMIN'], true),
+  secured(AdminController, 'setCompanyCard', ['tenant:users:manage'], ['ADMIN'], true),
+  secured(SupervisorController, 'companyCard', ['shifts:manage'], ['SUPERVISOR'], true),
+  secured(SupervisorController, 'setCompanyCard', ['shifts:manage'], ['SUPERVISOR'], true),
   // Ingreso del guardia con codigo de empresa + seis digitos. Publico como el
   // resto de los ingresos: la credencial es el codigo, y su bloqueo va por
   // empresa + IP porque hasta que acierta no hay identidad.
@@ -107,6 +123,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   secured(AdminController, 'createSite', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'updateSite', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'setSiteActive', ['tenant:sites:manage'], ['ADMIN'], true),
+  secured(AdminController, 'deleteSite', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'listBusinessHours', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'replaceBusinessHours', ['tenant:sites:manage'], ['ADMIN'], true),
   secured(AdminController, 'listHolidays', ['tenant:sites:manage'], ['ADMIN'], true),
@@ -157,14 +174,31 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
     ['ADMIN', 'SUPERVISOR'],
     true,
   ),
+  secured(GuardController, 'confirmRoundFlow', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'home', ['patrols:execute'], ['GUARDIA'], true),
-  secured(GuardController, 'enrollDeviceKey', ['patrols:execute'], ['GUARDIA'], true),
+  // Los DOS roles que abren la app en un telefono. Que aparezca SUPERVISOR aca
+  // es el arreglo de #231: con `patrols:execute` recibia 403 y se quedaba sin
+  // lector NFC en la pantalla de puntos.
+  secured(
+    GuardController,
+    'enrollDeviceKey',
+    ['device:signing-key:enroll'],
+    ['SUPERVISOR', 'GUARDIA'],
+    true,
+  ),
   secured(GuardController, 'start', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'scan', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'reportEvent', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'startShift', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'endShift', ['patrols:execute'], ['GUARDIA'], true),
   secured(GuardController, 'startVoluntaryPatrol', ['patrols:execute'], ['GUARDIA'], true),
+  // El recorrido libre (#231) es del guardia, igual que la ronda voluntaria:
+  // lo lanza y lo cierra el, no el supervisor.
+  secured(GuardController, 'startFreeRoamPatrol', ['patrols:execute'], ['GUARDIA'], true),
+  secured(GuardController, 'finishFreeRoamPatrol', ['patrols:execute'], ['GUARDIA'], true),
+  secured(GuardController, 'pausePatrol', ['patrols:execute'], ['GUARDIA'], true),
+  secured(GuardController, 'resumePatrol', ['patrols:execute'], ['GUARDIA'], true),
+  secured(GuardController, 'finishPatrolEarly', ['patrols:execute'], ['GUARDIA'], true),
 
   secured(SupervisorController, 'listSites', ['patrols:monitor'], ['SUPERVISOR'], true),
   secured(SupervisorController, 'listRoutes', ['routes:manage'], ['SUPERVISOR'], true),
@@ -287,6 +321,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   secured(QrController, 'siteSheet', ['tenant:sites:manage'], ['ADMIN'], true),
 
   secured(PlatformOpsController, 'provision', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(PlatformOpsController, 'reponerAdmin', ['platform:tenants:manage'], ['SUPERADMIN']),
   secured(PlatformOpsController, 'platformMetrics', ['platform:metrics:read'], ['SUPERADMIN']),
 
   secured(EventsStreamController, 'stream', ['patrols:monitor'], ['SUPERVISOR'], true),
@@ -402,6 +437,9 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
 ] as const;
 
 const CONTROLLERS = [
+  ReferenceController,
+  VisitsGuardController,
+  VisitsManagementController,
   AuthController,
   AdminController,
   HorarioHabilController,
@@ -486,6 +524,31 @@ describe('matriz de autorización de endpoints', () => {
       if (!isPublic) expect(actualPermissions.length).toBeGreaterThan(0);
     },
   );
+
+  it('un endpoint SOLO de SUPERADMIN no puede exigir contexto de empresa', () => {
+    /*
+     * El SUPERADMIN no tiene tenant: si el interceptor global le exige uno, el
+     * endpoint responde 401 al UNICO rol que puede usarlo. Le paso exactamente
+     * eso al acceso de soporte auditado (#109): construido, desplegado y
+     * alcanzable por nadie, hasta que alguien intento usarlo de verdad.
+     *
+     * La prueba mira la METADATA del decorador, no la lista declarada: lo que
+     * se olvida al escribir un controlador nuevo es el decorador.
+     */
+    const soloSuperadmin = ENDPOINT_AUTHORIZATION.filter(
+      ({ roles, public: isPublic }) => !isPublic && roles.length === 1 && roles[0] === 'SUPERADMIN',
+    );
+    expect(soloSuperadmin.length).toBeGreaterThan(5);
+
+    const sinSalida = soloSuperadmin
+      .filter(({ controller, handler }) => {
+        const method = controller.prototype[handler as keyof typeof controller.prototype];
+        return overriddenMetadata<boolean>(SKIP_TENANT_CONTEXT, [method, controller]) !== true;
+      })
+      .map(({ controller, handler }) => endpointKey(controller, handler));
+
+    expect(sinSalida).toEqual([]);
+  });
 
   it('mantiene a SUPERADMIN fuera del contexto tenant y al resto dentro', () => {
     expect(TENANT_ROLES).not.toContain('SUPERADMIN');

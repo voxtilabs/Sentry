@@ -1,0 +1,207 @@
+# El AAB firmado que se sube a Google Play.
+#
+# Se compila AQUI y no en EAS. No es una preferencia: la cola gratuita de EAS
+# ya dejo al equipo sin builds a mitad de mes, y para publicar hace falta poder
+# compilar cuando se necesita, no cuando toca. Gradle hace exactamente lo mismo
+# que EAS hace por dentro.
+#
+# LA LLAVE ES LO UNICO IRREVERSIBLE DE TODO ESTO. Se firma con la llave de
+# SUBIDA, que llega por secretos del repositorio. Con el firmado de aplicaciones
+# de Google activado —que hay que activarlo al crear la ficha—, Google guarda la
+# llave definitiva y esta de aqui se puede reemplazar pidiendoselo al soporte.
+# Sin eso, perder esta llave significa no poder actualizar la app NUNCA: habria
+# que publicarla de cero con otro nombre de paquete y que todos la reinstalen.
+#
+# El APK de prueba (`apk-de-prueba.yml`) sigue firmandose con la llave de
+# depuracion y no toca ningun secreto. Son dos llaves distintas a proposito: una
+# se instala a mano en los telefonos del equipo, la otra publica.
+name: AAB de produccion
+
+on:
+  workflow_dispatch:
+    inputs:
+      portal:
+        description: 'A que portal apunta la app'
+        required: true
+        default: 'https://sentrycore.voxtilabs.cl'
+      version_code:
+        description: 'versionCode (Play lo exige mayor al anterior; vacio = numero de corrida)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aab-produccion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  aab:
+    name: construir el AAB firmado
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      # `packages` acotado: el valor por defecto incluye `tools`, que Google
+      # retiro, y sdkmanager muere antes de empezar (#412).
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Mismo guardia que el APK de prueba: el portal entra como DATO por el
+      # entorno, nunca interpolado en el shell (#296). Aqui ademas se exige que
+      # sea el de produccion: un AAB publicado apuntando a staging seria una app
+      # en Play que le habla a un servidor de pruebas.
+      - name: Validar el origen del portal
+        env:
+          PORTAL_URL: ${{ inputs.portal }}
+        run: |
+          node --input-type=module <<'NODE'
+          const raw = process.env.PORTAL_URL ?? '';
+          let url;
+          try {
+            url = new URL(raw);
+          } catch {
+            throw new Error('El portal debe ser una URL valida');
+          }
+          const esOrigenExacto = raw === url.origin || raw === `${url.origin}/`;
+          if (url.protocol !== 'https:' || url.username || url.password || !esOrigenExacto) {
+            throw new Error('El portal debe ser un origen HTTPS sin credenciales, ruta, query ni fragmento');
+          }
+          if (url.hostname.startsWith('test-') || url.hostname.startsWith('staging')) {
+            throw new Error('Un AAB para Play no puede apuntar a staging');
+          }
+          NODE
+
+      - name: Generar el proyecto Android
+        env:
+          NODE_ENV: production
+          EXPO_PUBLIC_WEB_URL: ${{ inputs.portal }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      # El versionCode tiene que SUBIR en cada entrega o Play rechaza el archivo
+      # con "ya se uso ese codigo de version". EAS lo llevaba en su servidor;
+      # aqui se usa el numero de corrida, que crece solo y nunca se repite. Se
+      # puede fijar a mano para retomar una numeracion anterior.
+      - name: Fijar el versionCode
+        env:
+          VERSION_CODE: ${{ inputs.version_code || github.run_number }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const ruta = 'android/app/build.gradle';
+          const codigo = Number(process.env.VERSION_CODE);
+          if (!Number.isInteger(codigo) || codigo < 1) {
+            throw new Error('versionCode invalido');
+          }
+          const original = readFileSync(ruta, 'utf8');
+          // Se comprueba que el patron EXISTA, no que el texto cambie: el
+          // prebuild escribe `versionCode 1`, asi que la primera entrega pide
+          // justamente el numero que ya estaba y un "no cambio nada" no es un
+          // error. Confundir las dos cosas tumbo la primera corrida.
+          if (!/versionCode\s+\d+/.test(original)) {
+            throw new Error('no se encontro versionCode en build.gradle');
+          }
+          writeFileSync(ruta, original.replace(/versionCode\s+\d+/, `versionCode ${codigo}`));
+          console.log(`versionCode = ${codigo}`);
+          NODE
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # El keystore se escribe FUERA del arbol de fuentes y se borra al final,
+      # pase lo que pase. Que un `git status` del runner no pueda verlo nunca es
+      # parte del punto.
+      - name: Preparar la llave de subida
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "Falta el secreto ANDROID_KEYSTORE_BASE64: sin llave no hay AAB publicable." >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/subida.jks"
+          test -s "$RUNNER_TEMP/subida.jks"
+
+      - name: Construir el AAB
+        working-directory: apps/mobile/android
+        env:
+          EXPO_PUBLIC_WEB_URL: ${{ inputs.portal }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/subida.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:bundleRelease --no-daemon --console=plain
+
+      # Comprobar la firma ANTES de publicar el artefacto: un AAB firmado con la
+      # llave de depuracion se ve igual de bien hasta que Play lo rechaza, y
+      # para entonces ya se perdio el viaje.
+      - name: Verificar que quedo firmado con la llave de subida
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -o pipefail
+          huella_aab=$(keytool -printcert -jarfile android/app/build/outputs/bundle/release/app-release.aab \
+            | grep -m1 'SHA256:' | tr -d ' ')
+          huella_llave=$(keytool -list -v -keystore "$RUNNER_TEMP/subida.jks" \
+            -storepass "$KEYSTORE_PASSWORD" | grep -m1 'SHA256:' | tr -d ' ')
+          echo "AAB:   $huella_aab"
+          echo "llave: $huella_llave"
+          if [ "$huella_aab" != "$huella_llave" ]; then
+            echo "El AAB NO quedo firmado con la llave de subida." >&2
+            exit 1
+          fi
+
+      - name: Publicar el AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentrycore-aab
+          path: apps/mobile/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Conservar mapas de R8
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentrycore-r8
+          path: apps/mobile/android/app/build/outputs/mapping/release/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Borrar la llave del runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/subida.jks"
+
+      - name: Como subirlo
+        env:
+          PORTAL_URL: ${{ inputs.portal }}
+          VERSION_CODE: ${{ inputs.version_code || github.run_number }}
+        run: |
+          {
+            echo "### AAB listo para Google Play"
+            echo ""
+            echo "Descargalo del artefacto **sentrycore-aab** de esta corrida."
+            echo ""
+            printf 'Apunta a: `%s` · versionCode `%s`\n' "$PORTAL_URL" "$VERSION_CODE"
+            echo ""
+            echo "La PRIMERA version de una app nueva se sube a mano desde Play"
+            echo "Console: la API de Google no puede crearla. Las siguientes ya"
+            echo "se pueden automatizar."
+          } >> "$GITHUB_STEP_SUMMARY"

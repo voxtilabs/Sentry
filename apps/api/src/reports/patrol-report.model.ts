@@ -109,6 +109,7 @@ export interface TareaRow {
   notes: string | null;
   failed: boolean | null;
   photo_id: string | null;
+  photo_ids?: string[] | null;
   late_minutes: number | string | null;
   responded_at: Date | null;
 }
@@ -186,6 +187,7 @@ export interface TareaInforme {
   /** Si esta respuesta tenia que traer foto (por la tarea o por ser falla). */
   readonly exigeFoto: boolean;
   readonly fotoId: string | null;
+  readonly fotoIds: readonly string[];
   /** Respondida, exigia foto y no la tiene: estado propio, se imprime. */
   readonly faltaFoto: boolean;
   /**
@@ -349,7 +351,7 @@ export function construirInformeRonda(entrada: EntradaModelo): InformeRonda {
   const tareasInforme = tareas.map((tarea) => armarTarea(tarea, numeroPorPunto));
   const tareaPorFoto = new Map<string, TareaInforme>();
   for (const tarea of tareasInforme) {
-    if (tarea.fotoId !== null) tareaPorFoto.set(tarea.fotoId, tarea);
+    for (const id of tarea.fotoIds) tareaPorFoto.set(id, tarea);
   }
 
   const evidencias = numerarEvidencias(fotos, numeroPorPunto, tareaPorFoto);
@@ -462,7 +464,8 @@ function armarTarea(
 ): TareaInforme {
   const respondida = tarea.response_id !== null && tarea.response_id !== undefined;
   const fallo = respondida && tarea.failed === true;
-  const fotoId = tarea.photo_id ?? null;
+  const fotoId = tarea.photo_id ?? tarea.photo_ids?.[0] ?? null;
+  const fotoIds = tarea.photo_ids?.length ? tarea.photo_ids : fotoId ? [fotoId] : [];
   // La foto la puede exigir la tarea (requires_photo, "fotografia el
   // refrigerador") o la falla (requires_photo_on_fail, el caso de #129). Las dos
   // terminan en lo mismo: una respuesta que tenia que traer evidencia.
@@ -478,11 +481,15 @@ function armarTarea(
     punto: tarea.checkpoint_name ?? null,
     horaPedida: horaLocal(tarea.due_local_time),
     estado: !respondida ? 'pendiente' : fallo ? 'falla' : 'cumplida',
-    respuesta: respondida ? tarea.value : null,
+    respuesta: respondida ? tarea.response_type === 'ok_falla'
+      ? tarea.value === 'ok' ? 'Sí' : tarea.value === 'falla' ? 'No' : tarea.value
+      : tarea.response_type === 'si_no' ? tarea.value === 'si' ? 'Sí' : 'No'
+        : tarea.response_type === 'foto' ? 'Fotos registradas' : tarea.value : null,
     observacion: tarea.notes?.trim() || null,
     respondidaEn: tarea.responded_at ?? null,
     exigeFoto,
     fotoId,
+    fotoIds,
     // Solo tiene sentido en lo ya respondido: en una tarea pendiente lo que
     // falta es la tarea entera, y marcarle ademas "sin foto" es ruido.
     faltaFoto: exigeFoto && fotoId === null,

@@ -1,5 +1,7 @@
 'use client';
 
+import type { EstadoTareas } from './guard-tareas-modelo';
+
 /**
  * Persistencia de las fotos de evidencia que todavía no llegaron al servidor
  * (#70).
@@ -26,7 +28,8 @@
 
 const NOMBRE_BD = 'sentrycore.guard.fotos';
 const ALMACEN = 'fotos';
-const VERSION_BD = 1;
+const VERSION_BD = 2;
+const ALMACEN_TAREAS = 'tareas';
 
 /**
  * A qué cuelga la foto, que es lo que decide el endpoint de subida:
@@ -38,7 +41,7 @@ const VERSION_BD = 1;
  * sería una migración, y perder fotos pendientes al actualizar es exactamente
  * lo que este almacén existe para evitar.
  */
-export type DestinoFoto = 'evento' | 'escaneo';
+export type DestinoFoto = 'evento' | 'escaneo' | 'tarea';
 
 export interface FotoPendiente {
   /**
@@ -55,6 +58,7 @@ export interface FotoPendiente {
 
 interface RegistroFoto extends FotoPendiente {
   blob: Blob;
+  photoId?: string;
 }
 
 /**
@@ -92,6 +96,7 @@ function abrir(): Promise<IDBDatabase> {
       if (!bd.objectStoreNames.contains(ALMACEN)) {
         bd.createObjectStore(ALMACEN, { keyPath: 'clientEventId' });
       }
+      if (!bd.objectStoreNames.contains(ALMACEN_TAREAS)) bd.createObjectStore(ALMACEN_TAREAS, { keyPath: 'patrolId' });
     };
     solicitud.onsuccess = () => resolver(solicitud.result);
     solicitud.onerror = () => rechazar(solicitud.error);
@@ -101,14 +106,19 @@ function abrir(): Promise<IDBDatabase> {
 async function conAlmacen<T>(
   modo: IDBTransactionMode,
   fn: (almacen: IDBObjectStore) => IDBRequest<T>,
+  nombre = ALMACEN,
 ): Promise<T> {
   const bd = await abrir();
   try {
     return await new Promise<T>((resolver, rechazar) => {
-      const tx = bd.transaction(ALMACEN, modo);
-      const solicitud = fn(tx.objectStore(ALMACEN));
-      solicitud.onsuccess = () => resolver(solicitud.result);
+      const tx = bd.transaction(nombre, modo);
+      const solicitud = fn(tx.objectStore(nombre));
+      let resultado!: T;
+      solicitud.onsuccess = () => { resultado = solicitud.result; };
       solicitud.onerror = () => rechazar(solicitud.error);
+      tx.oncomplete = () => resolver(resultado);
+      tx.onabort = () => rechazar(tx.error);
+      tx.onerror = () => rechazar(tx.error);
     });
   } finally {
     bd.close();
@@ -194,13 +204,14 @@ export async function fijarServerId(clientEventId: string, serverId: string): Pr
  */
 export function leerFoto(
   clientEventId: string,
-): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto } | undefined> {
+): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto; photoId?: string } | undefined> {
   const leida = (registro: RegistroFoto | undefined) =>
     registro
       ? {
           blob: registro.blob,
           takenAtDevice: registro.takenAtDevice,
           destino: registro.destino ?? ('evento' as const),
+          ...(registro.photoId ? { photoId: registro.photoId } : {}),
         }
       : undefined;
   return conRespaldo(
@@ -208,6 +219,18 @@ export function leerFoto(
       leida(await conAlmacen<RegistroFoto | undefined>('readonly', (a) => a.get(clientEventId))),
     () => leida(memoria.get(clientEventId)),
   );
+}
+
+/** Recibo duradero: se escribe antes de borrar el blob o enviar la respuesta. */
+export async function anotarReciboFotoTarea(clientPhotoId: string, photoId: string): Promise<void> {
+  const registro = await conRespaldo(
+    () => conAlmacen<RegistroFoto | undefined>('readonly', (a) => a.get(clientPhotoId)),
+    () => memoria.get(clientPhotoId),
+  );
+  if (!registro) return;
+  const siguiente = { ...registro, photoId };
+  await conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.put(siguiente)); },
+    () => { memoria.set(clientPhotoId, siguiente); });
 }
 
 /** Borra la foto: se llama recién cuando el servidor confirmó la subida. */
@@ -258,9 +281,9 @@ export function listarPendientes(): Promise<FotoPendiente[]> {
   return conRespaldo(
     async () => {
       const registros = await conAlmacen<RegistroFoto[]>('readonly', (a) => a.getAll());
-      return registros.map(metadatos);
+      return registros.filter((r) => !r.photoId).map(metadatos);
     },
-    () => Array.from(memoria.values(), metadatos),
+    () => Array.from(memoria.values()).filter((r) => !r.photoId).map(metadatos),
   );
 }
 
@@ -272,6 +295,24 @@ export async function contarPendientes(): Promise<number> {
 /** Solo para pruebas: vacía el respaldo en memoria entre casos. */
 export function _reiniciarMemoria(): void {
   memoria.clear();
+  tareasMemoria.clear();
   subidasEnCurso.clear();
   indexedDbUtilizable = undefined;
+}
+
+const tareasMemoria = new Map<string, EstadoTareas>();
+
+export function persistirTareasDurables(estado: EstadoTareas): Promise<void> {
+  return conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.put(estado), ALMACEN_TAREAS); },
+    () => { tareasMemoria.set(estado.patrolId, JSON.parse(JSON.stringify(estado)) as EstadoTareas); });
+}
+
+export function leerTareasDurables(): Promise<EstadoTareas[]> {
+  return conRespaldo(() => conAlmacen<EstadoTareas[]>('readonly', (a) => a.getAll(), ALMACEN_TAREAS),
+    () => JSON.parse(JSON.stringify([...tareasMemoria.values()])) as EstadoTareas[]);
+}
+
+export function borrarTareasDurables(patrolId: string): Promise<void> {
+  return conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.delete(patrolId), ALMACEN_TAREAS); },
+    () => { tareasMemoria.delete(patrolId); });
 }

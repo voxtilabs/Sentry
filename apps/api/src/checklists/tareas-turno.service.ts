@@ -11,7 +11,7 @@ interface FilaCatalogo {
   name: string;
   branch_name: string;
   timezone: string;
-  checkpoints: Array<{ id: string; name: string }>;
+  checkpoints: Array<{ id: string; name: string; tagUids: string[] }>;
   shifts: Array<{ id: string; name: string; startsAt: string; endsAt: string }>;
 }
 
@@ -68,7 +68,9 @@ export class TareasTurnoService {
        FROM supervisor_sites ss
        JOIN sites s ON s.tenant_id = ss.tenant_id AND s.id = ss.site_id AND s.is_active
        LEFT JOIN LATERAL (
-         SELECT COALESCE(jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name)
+         SELECT COALESCE(jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name,
+                  'tagUids', (SELECT COALESCE(jsonb_agg(tag.uid), '[]'::jsonb) FROM tags tag
+                    WHERE tag.checkpoint_id = c.id AND tag.tenant_id = c.tenant_id AND tag.is_active))
                 ORDER BY c.suggested_order, c.name), '[]'::jsonb) AS items
          FROM checkpoints c WHERE c.site_id = s.id AND c.is_active
        ) puntos ON true

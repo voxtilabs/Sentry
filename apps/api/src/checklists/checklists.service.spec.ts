@@ -110,7 +110,7 @@ describe('ChecklistsService — plantilla vigente (#129)', () => {
     await expect(service.templateForPatrol('patrol-1', 'guard-1')).resolves.toEqual({
       patrolId: 'patrol-1',
       hasChecklist: true,
-      template: { id: 'tpl-1', name: 'Ronda nocturna', items: [ITEM_SIMPLE, ITEM_CON_FOTO] },
+      template: { id: 'tpl-1', name: 'Ronda nocturna', items: [ITEM_SIMPLE, { ...ITEM_CON_FOTO, photoMinCount: 1, photoMaxCount: 3 }] },
     });
 
     const [sql, parametros] = query.mock.calls[1] as [string, unknown[]];
@@ -292,7 +292,7 @@ describe('ChecklistsService — respuestas y aviso de falla (#129)', () => {
     expect(query).toHaveBeenNthCalledWith(
       3,
       expect.stringContaining('FROM scan_photos'),
-      ['foto-ronda', 'patrol-1'],
+      ['foto-ronda', 'patrol-1', null],
     );
     expect(query).toHaveBeenNthCalledWith(
       4,
@@ -321,7 +321,7 @@ describe('ChecklistsService — respuestas y aviso de falla (#129)', () => {
       responses: [{ itemId: 'item-2', value: 'falla', photoId: 'foto-de-otra-ronda' }],
     });
 
-    expect(resultado.results[0]?.reason).toBe('La foto no pertenece a esta ronda');
+    expect(resultado.results[0]?.reason).toBe('La foto no pertenece a esta ronda o a este punto');
   });
 
   it('reenviar el lote offline no duplica la respuesta ni re-avisa', async () => {

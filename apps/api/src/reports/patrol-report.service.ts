@@ -49,9 +49,8 @@ export interface OpcionesInforme {
    */
   readonly requester?: Pick<AuthenticatedUser, 'sub' | 'role'> | null;
   /**
-   * El anexo fotografico puede pesar decenas de MB. El envio automatico por
-   * correo genera el informe SIN anexo (el job viaja por Redis y el adjunto por
-   * SMTP); la descarga del panel lo incluye.
+   * Permite solicitar explícitamente una versión sin imágenes. Por defecto,
+   * correo y panel respetan el módulo photoAppendix de la empresa.
    */
   readonly incluirAnexo?: boolean;
 }
@@ -83,7 +82,7 @@ export interface InformeRondaPdf {
  */
 export const SQL_TAREAS_DEL_TURNO = `
   WITH ronda AS (
-    SELECT rp.id, rp.site_id, sa.shift_id
+    SELECT rp.id, rp.site_id, sa.shift_id, rp.checklist_template_id
     FROM patrols rp
     LEFT JOIN shift_assignments sa
       ON sa.tenant_id = rp.tenant_id AND sa.id = rp.shift_assignment_id
@@ -104,9 +103,10 @@ export const SQL_TAREAS_DEL_TURNO = `
     (SELECT t.id
      FROM checklist_templates t, ronda
      WHERE NOT EXISTS (SELECT 1 FROM respondida)
-       AND t.is_active
-       AND (t.site_id IS NULL OR t.site_id = ronda.site_id)
-       AND (t.shift_id IS NULL OR t.shift_id = ronda.shift_id)
+       AND (t.id = ronda.checklist_template_id OR
+         (ronda.checklist_template_id IS NULL AND t.is_active
+           AND (t.site_id IS NULL OR t.site_id = ronda.site_id)
+           AND (t.shift_id IS NULL OR t.shift_id = ronda.shift_id)))
      ORDER BY (t.site_id IS NOT NULL)::int + (t.shift_id IS NOT NULL)::int DESC
      LIMIT 1)
   )
@@ -125,6 +125,8 @@ export const SQL_TAREAS_DEL_TURNO = `
     r.notes,
     r.failed,
     r.photo_id,
+    (SELECT array_agg(rp.photo_id ORDER BY rp.position)
+       FROM checklist_response_photos rp WHERE rp.tenant_id = r.tenant_id AND rp.response_id = r.id) AS photo_ids,
     r.late_minutes,
     r.responded_at
   FROM checklist_items i
@@ -207,8 +209,8 @@ export class PatrolReportService {
     // El anexo fotografico es un MODULO de plan (#286). Cuando el llamador no
     // opina —el PDF que se descarga desde el panel— manda el flag `photoAppendix`
     // de la empresa: antes se incluia SIEMPRE y prender/apagar el modulo no hacia
-    // nada. El envio por correo sigue pasando `false` explicito (el anexo no viaja
-    // en el adjunto, se baja del panel) y eso gana sobre el flag.
+    // nada. El correo usa el mismo default; solo una solicitud explícita de
+    // versión liviana puede omitir las imágenes.
     const incluirAnexo = opciones.incluirAnexo ?? (await this.features.isEnabled('photoAppendix'));
 
     const encabezados = await this.tenantContext.manager.query<EncabezadoRondaRow[]>(
@@ -308,8 +310,8 @@ export class PatrolReportService {
 
     // El recorrido (#79) se arma DESPUES del modelo porque necesita los puntos ya
     // resueltos (`FilaPunto`), no las filas crudas: el mapa ubica cada marca por
-    // su numero de punto. Solo va cuando el informe lleva anexo — el liviano del
-    // correo se manda sin mapa por lo mismo que sin fotos, que es pesar poco.
+    // su numero de punto. Solo va cuando el informe incluye imágenes; tanto
+    // el correo como el panel usan esa misma configuración.
     // `construir` devuelve null si el tenant apago la regla `reportIncludeMap`.
     const mapa = incluirAnexo
       ? await this.mapaRecorrido.construir(patrolId, modelo.puntos, { requester })
@@ -465,12 +467,13 @@ export class PatrolReportService {
   }
 
   /** Dibuja el informe ya resuelto sobre el destino que decida el llamador. */
-  async render(modelo: InformeRonda, destino: NodeJS.WritableStream): Promise<ResumenRender> {
+  async render(modelo: InformeRonda, destino: NodeJS.WritableStream,
+    opciones: { regenerarCache?: boolean } = {}): Promise<ResumenRender> {
     const tenantId = modelo.tenantId;
     const cerrada = this.esRondaCerrada(modelo.estado);
     const rutaCache = tenantId ? this.rutaCache(tenantId, modelo.patrolId, modelo.incluyeAnexo) : null;
 
-    if (cerrada && rutaCache && (await this.servirDesdeCache(rutaCache, destino))) {
+    if (!opciones.regenerarCache && cerrada && rutaCache && (await this.servirDesdeCache(rutaCache, destino))) {
       return { fotosIncluidas: 0, fotosOmitidas: 0, paginasAnexo: 0 };
     }
 
@@ -551,16 +554,12 @@ export class PatrolReportService {
   /**
    * El informe completo en memoria.
    *
-   * Existe para el adjunto del correo (#86), que necesita los bytes si o si.
-   * Por defecto va SIN anexo: un PDF de 40 fotos no es un adjunto, y el camino
-   * de descarga del panel —que si lleva anexo— nunca pasa por aca.
+   * Respeta la misma configuración que el streaming del panel. Quien necesite
+   * una versión liviana debe pedir incluirAnexo: false explícitamente.
    */
   async toBuffer(patrolId: string, opciones: OpcionesInforme = {}): Promise<InformeRondaPdf> {
-    const incluirAnexo = opciones.incluirAnexo ?? false;
-    const modelo = await this.buildModel(patrolId, {
-      ...opciones,
-      incluirAnexo,
-    });
+    const modelo = await this.buildModel(patrolId, opciones);
+    const incluirAnexo = modelo.incluyeAnexo;
 
     const tenantId = modelo.tenantId;
     const cerrada = this.esRondaCerrada(modelo.estado);

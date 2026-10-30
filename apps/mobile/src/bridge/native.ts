@@ -55,6 +55,11 @@ export class ErrorEscaneo extends Error {
 }
 
 export interface ManejadoresNativos {
+  readonly referencia?: (command: import('./protocol').ReferenceCommand) => Promise<import('./protocol').ReferenceState>;
+  readonly consultarVehiculoPublico?: (plate: string) => Promise<import('./protocol').ResultadoConsultaPublicaPayload>;
+  readonly cancelarConsultaPublica?: () => void;
+  readonly escanearOcr?: (kind: 'identity' | 'plate') => Promise<import('./protocol').ResultadoOcrPayload>;
+  readonly cancelarOcr?: () => void;
   readonly capacidades: () => Promise<CapacidadesDispositivo>;
   /** Rechaza con `ErrorEscaneo`. El timeout lo aplica quien implementa. */
   readonly escanearNfc: (peticion: EscaneoNfcPayload) => Promise<ResultadoEscaneoPayload>;
@@ -88,6 +93,7 @@ export interface ManejadoresNativos {
 }
 
 export interface OpcionesPuente {
+  readonly puedeCapturarReferencia?: () => boolean;
   /** Origen exacto del portal, p.ej. `https://control.voxtilabs.cl`. */
   readonly portalOrigen: string;
   /** `version` de app.config.ts. Se muestra en soporte, no decide nada. */
@@ -164,6 +170,13 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
   const registrar = opciones.alRegistrar ?? (() => undefined);
   let listo = false;
   let bloqueado = false;
+  /*
+   * El ultimo estado de red que se intento avisar. Los avisos llegan cuando
+   * Android quiere, y el WebView todavia puede no estar listo para recibirlos:
+   * sin esto el aviso se descartaba y la pantalla se quedaba con el estado que
+   * tuviera —en la practica, "sin señal" hasta cerrar la app—.
+   */
+  let ultimaConexion: EstadoConexionPayload | undefined;
 
   /*
    * A proposito NO hay temporizador de saludo. Lo hubo, y bloqueaba la app
@@ -258,6 +271,11 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     );
     bloqueado = false;
     listo = true;
+    // Lo que no se pudo avisar mientras cargaba se avisa ahora, no en el
+    // proximo cambio de red: puede no haber otro en toda la ronda.
+    if (ultimaConexion !== undefined) {
+      enviar(armarSobre('connectivity.state', ultimaConexion, { prefijo: 'net' }));
+    }
   }
 
   async function atenderEscaneo(id: string, payload: EscaneoNfcPayload): Promise<void> {
@@ -354,6 +372,30 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     }
 
     switch (mensaje.type) {
+      case 'reference.command':
+        if (!manejadores.referencia || (mensaje.payload.action !== 'stop' && opciones.puedeCapturarReferencia?.() !== true)) { responderErrorPuente(mensaje.id); return; }
+        void manejadores.referencia(mensaje.payload)
+          .then(result => enviar(armarSobre('reference.result', result, { replyTo: mensaje.id, prefijo: 'gps' })))
+          .catch(() => responderErrorPuente(mensaje.id));
+        return;
+      case 'vehicle.public.start':
+        if (!manejadores.consultarVehiculoPublico) { responderErrorPuente(mensaje.id); return; }
+        void manejadores.consultarVehiculoPublico(mensaje.payload.plate)
+          .then(result => enviar(armarSobre('vehicle.public.result', result, { replyTo: mensaje.id, prefijo: 'veh' })))
+          .catch(() => responderErrorPuente(mensaje.id));
+        return;
+      case 'vehicle.public.cancel':
+        manejadores.cancelarConsultaPublica?.();
+        return;
+      case 'ocr.scan.start':
+        if (!manejadores.escanearOcr) { responderErrorPuente(mensaje.id); return; }
+        void manejadores.escanearOcr(mensaje.payload.kind)
+          .then(result => enviar(armarSobre('ocr.scan.result', result, { replyTo: mensaje.id, prefijo: 'ocr' })))
+          .catch(() => responderErrorPuente(mensaje.id));
+        return;
+      case 'ocr.scan.cancel':
+        manejadores.cancelarOcr?.();
+        return;
       case 'hello':
         void atenderHola(mensaje.id, mensaje.payload);
         return;
@@ -480,6 +522,7 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     guionPrevio: construirGuionPrevio(opciones.appVersion),
     alRecibirMensaje,
     notificarConexion: (estado) => {
+      ultimaConexion = estado;
       if (listo && !bloqueado) {
         enviar(armarSobre('connectivity.state', estado, { prefijo: 'net' }));
       }
@@ -487,6 +530,6 @@ export function crearPuenteNativo(opciones: OpcionesPuente): PuenteNativo {
     // El WebView se remonta al reintentar, y con el se va el portal que pidio
     // la traza: el watcher NO puede sobrevivirlo — quedaria muestreando sin
     // nadie que suba los puntos, y ademas fuera del control de la ronda.
-    detener: () => manejadores.detenerTraza(),
+    detener: () => { void manejadores.referencia?.({action:'stop'}).catch(() => undefined); manejadores.detenerTraza(); manejadores.cancelarOcr?.(); manejadores.cancelarConsultaPublica?.(); },
   };
 }
