@@ -1,4 +1,5 @@
 import { ReferenceController } from '../reference/reference.controller';
+import { FeedbackController } from '../feedback/feedback.controller';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import {
   hasPermission,
@@ -77,6 +78,7 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
  * verdad ejecutable de rol × endpoint.
  */
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
+  publicEndpoint(FeedbackController, 'submit'),
   ...['catalog','start','detail','samples','scan','finish','cancel'].map(handler => secured(ReferenceController,handler,['routes:manage'],['SUPERVISOR'],true)),
   ...['context','list','register','exit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
   ...['context','list'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
@@ -437,6 +439,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
 ] as const;
 
 const CONTROLLERS = [
+  FeedbackController,
   ReferenceController,
   VisitsGuardController,
   VisitsManagementController,

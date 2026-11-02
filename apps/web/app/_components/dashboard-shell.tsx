@@ -4,6 +4,7 @@ import { Brand } from './brand';
 import { SesionViva } from './sesion-viva';
 import { LogoutButton } from './logout-button';
 import { GuardEndDay } from './guard-end-day';
+import { HelpButton } from './help-button';
 import { PANEL_NAVIGATION, type PanelRole } from './panel-navigation';
 
 /**
@@ -81,6 +82,7 @@ export function DashboardShell({
           </div>
           <div className="topbar-actions">
             <span className="live-badge">● En línea</span>
+            <HelpButton />
             {role === 'GUARDIA' ? <GuardEndDay /> : <LogoutButton />}
           </div>
         </header>

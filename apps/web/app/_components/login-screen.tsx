@@ -15,6 +15,7 @@ import {
 import { leerCredenciales } from './login-form-data';
 import { rutaDelPanel } from './login-navegacion';
 import { LogoutButton } from './logout-button';
+import { HelpButton } from './help-button';
 
 /**
  * Plazo maximo para el login. Existe porque una peticion sin respuesta dejaba
@@ -430,6 +431,7 @@ export function LoginScreen() {
           </li>)}
         </ul>
         {errorMessage ? <p role="alert">{errorMessage}</p> : null}
+        <HelpButton />
       </div>
     </section>
   </main>;
@@ -776,6 +778,7 @@ export function LoginScreen() {
           * marca del producto es lo que corresponde mostrar.
           */}
         <footer className="login-pie">
+          <HelpButton />
           <span>SentryCore · Acceso seguro</span>
           <span className="login-convenio">
             <span>VoxTi Labs · en convenio con</span>

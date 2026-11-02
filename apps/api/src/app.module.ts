@@ -1,4 +1,5 @@
 import { ReferenceModule } from './reference/reference.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -61,6 +62,7 @@ import { SyncModule } from './sync/sync.module';
     GuardModule,
     VisitsModule,
     ReferenceModule,
+    FeedbackModule,
     MailModule,
     EscalationModule,
     EvidenceModule,

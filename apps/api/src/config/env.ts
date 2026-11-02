@@ -48,6 +48,8 @@ const envSchema = z.object({
   MAIL_DRIVER: z.enum(['mailpit', 'smtp', 'resend']).default('mailpit'),
   RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default('SentryCore <no-reply@localhost>'),
+  // Buzón monitoreado del canal público de soporte y seguridad infantil.
+  SUPPORT_FEEDBACK_EMAIL: z.string().email().default('service@voxtilabs.cl'),
   MAILPIT_HOST: z.string().default('localhost'),
   MAILPIT_PORT: z.coerce.number().int().positive().default(1025),
   SMTP_HOST: z.string().optional(),
