@@ -8,7 +8,13 @@
  * transaccion con contexto de tenant — que ademas es lo correcto, porque entre
  * el cierre de la ronda y el despacho el admin pudo cambiar la lista.
  */
-export interface EnvioInformeJobData {
+export interface CierreParaInforme {
+  /** Requisito resuelto por el servidor al aceptar el último NFC. */
+  readonly closingCheckpointId?: string;
+  readonly closingPhotoRequired?: boolean;
+}
+
+export interface EnvioInformeJobData extends CierreParaInforme {
   /** El worker no tiene request: el tenant viaja para poder abrir su RLS. */
   readonly tenantId: string;
   readonly patrolId: string;
@@ -18,6 +24,7 @@ export interface EnvioInformeJobData {
 export type MotivoOmision =
   | 'ronda_inexistente'
   | 'ronda_sin_cerrar'
+  | 'evidencia_pendiente'
   | 'envio_desactivado'
   | 'sin_destinatarios'
   /**

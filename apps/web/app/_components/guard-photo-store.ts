@@ -1,5 +1,7 @@
 'use client';
 
+import type { EstadoTareas } from './guard-tareas-modelo';
+
 /**
  * Persistencia de las fotos de evidencia que todavía no llegaron al servidor
  * (#70).
@@ -14,9 +16,9 @@
  * la cuota y tumbaría también la cola de texto. IndexedDB guarda Blobs binarios
  * sin serializar a base64.
  *
- * Degrada con gracia igual que `guard-storage`: si el WebView tiene IndexedDB
- * bloqueado por política del dispositivo, se cae a un `Map` en memoria. Perder
- * la foto al cerrar la app es malo, pero romper la pantalla en terreno es peor.
+ * En el teléfono solo se confirma una foto después de persistirla en IndexedDB.
+ * Si falla el almacenamiento, se informa y se permite reintentar; no se presenta
+ * una copia volátil como evidencia guardada. El Map se reserva para SSR/tests.
  *
  * Lo que NO hace: subir en segundo plano con la app **cerrada**. Eso necesita el
  * shell nativo (WorkManager + base cifrada, #71/#72) y vive en `apps/mobile`.
@@ -26,7 +28,8 @@
 
 const NOMBRE_BD = 'sentrycore.guard.fotos';
 const ALMACEN = 'fotos';
-const VERSION_BD = 1;
+const VERSION_BD = 2;
+const ALMACEN_TAREAS = 'tareas';
 
 /**
  * A qué cuelga la foto, que es lo que decide el endpoint de subida:
@@ -38,7 +41,7 @@ const VERSION_BD = 1;
  * sería una migración, y perder fotos pendientes al actualizar es exactamente
  * lo que este almacén existe para evitar.
  */
-export type DestinoFoto = 'evento' | 'escaneo';
+export type DestinoFoto = 'evento' | 'escaneo' | 'tarea';
 
 export interface FotoPendiente {
   /**
@@ -51,10 +54,13 @@ export interface FotoPendiente {
   serverId: string | null;
   takenAtDevice: string;
   destino: DestinoFoto;
+  /** Si existe, la foto de punto espera el término de esta ronda. */
+  patrolId?: string;
 }
 
 interface RegistroFoto extends FotoPendiente {
   blob: Blob;
+  photoId?: string;
 }
 
 /**
@@ -78,7 +84,6 @@ export function clasificarPendientes(pendientes: readonly FotoPendiente[]): {
 
 /** Se usa solo si IndexedDB no está disponible. */
 const memoria = new Map<string, RegistroFoto>();
-let indexedDbUtilizable: boolean | undefined;
 
 function hayIndexedDb(): boolean {
   return typeof indexedDB !== 'undefined';
@@ -92,6 +97,7 @@ function abrir(): Promise<IDBDatabase> {
       if (!bd.objectStoreNames.contains(ALMACEN)) {
         bd.createObjectStore(ALMACEN, { keyPath: 'clientEventId' });
       }
+      if (!bd.objectStoreNames.contains(ALMACEN_TAREAS)) bd.createObjectStore(ALMACEN_TAREAS, { keyPath: 'patrolId' });
     };
     solicitud.onsuccess = () => resolver(solicitud.result);
     solicitud.onerror = () => rechazar(solicitud.error);
@@ -101,38 +107,35 @@ function abrir(): Promise<IDBDatabase> {
 async function conAlmacen<T>(
   modo: IDBTransactionMode,
   fn: (almacen: IDBObjectStore) => IDBRequest<T>,
+  nombre = ALMACEN,
 ): Promise<T> {
   const bd = await abrir();
   try {
     return await new Promise<T>((resolver, rechazar) => {
-      const tx = bd.transaction(ALMACEN, modo);
-      const solicitud = fn(tx.objectStore(ALMACEN));
-      solicitud.onsuccess = () => resolver(solicitud.result);
+      const tx = bd.transaction(nombre, modo);
+      const solicitud = fn(tx.objectStore(nombre));
+      let resultado!: T;
+      solicitud.onsuccess = () => { resultado = solicitud.result; };
       solicitud.onerror = () => rechazar(solicitud.error);
+      tx.oncomplete = () => resolver(resultado);
+      tx.onabort = () => rechazar(tx.error);
+      tx.onerror = () => rechazar(tx.error);
     });
   } finally {
     bd.close();
   }
 }
 
-/**
- * Corre la operación contra IndexedDB y, si falla o no existe, contra el `Map`
- * en memoria. Una vez que IndexedDB falla se marca inutilizable para no reintentar
- * en cada acción.
- */
+/** La evidencia solo se confirma cuando IndexedDB hizo commit. Un error de
+ * cuota/disco se propaga: memoria volátil no puede sustituir una foto durable. */
 async function conRespaldo<T>(
   operacionIdb: () => Promise<T>,
   operacionMemoria: () => T,
 ): Promise<T> {
-  if (indexedDbUtilizable === false || !hayIndexedDb()) return operacionMemoria();
-  try {
-    const resultado = await operacionIdb();
-    indexedDbUtilizable = true;
-    return resultado;
-  } catch {
-    indexedDbUtilizable = false;
-    return operacionMemoria();
-  }
+  if (hayIndexedDb()) return operacionIdb();
+  // SSR y pruebas no tienen disco de navegador. En una app real, fallar cerrado.
+  if (typeof document !== 'undefined') throw new Error('El almacenamiento local no está disponible');
+  return operacionMemoria();
 }
 
 function metadatos({
@@ -140,10 +143,11 @@ function metadatos({
   serverId,
   takenAtDevice,
   destino,
+  patrolId,
 }: RegistroFoto): FotoPendiente {
   // `destino` puede faltar en un registro escrito por la versión anterior:
   // entonces era siempre la foto de una novedad.
-  return { clientEventId, serverId, takenAtDevice, destino: destino ?? 'evento' };
+  return { clientEventId, serverId, takenAtDevice, destino: destino ?? 'evento', ...(patrolId ? { patrolId } : {}) };
 }
 
 // ------------------------------------------------------------- API pública
@@ -155,8 +159,9 @@ export function guardarFoto(
   takenAtDevice: string,
   serverId: string | null = null,
   destino: DestinoFoto = 'evento',
+  patrolId?: string,
 ): Promise<void> {
-  const registro: RegistroFoto = { clientEventId, blob, serverId, takenAtDevice, destino };
+  const registro: RegistroFoto = { clientEventId, blob, serverId, takenAtDevice, destino, ...(patrolId ? { patrolId } : {}) };
   return conRespaldo(
     async () => {
       await conAlmacen('readwrite', (almacen) => almacen.put(registro));
@@ -180,6 +185,7 @@ export async function fijarServerId(clientEventId: string, serverId: string): Pr
     registro.takenAtDevice,
     serverId,
     registro.destino ?? 'evento',
+    registro.patrolId,
   );
 }
 
@@ -194,13 +200,15 @@ export async function fijarServerId(clientEventId: string, serverId: string): Pr
  */
 export function leerFoto(
   clientEventId: string,
-): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto } | undefined> {
+): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto; patrolId?: string; photoId?: string } | undefined> {
   const leida = (registro: RegistroFoto | undefined) =>
     registro
       ? {
           blob: registro.blob,
           takenAtDevice: registro.takenAtDevice,
           destino: registro.destino ?? ('evento' as const),
+          ...(registro.patrolId ? { patrolId: registro.patrolId } : {}),
+          ...(registro.photoId ? { photoId: registro.photoId } : {}),
         }
       : undefined;
   return conRespaldo(
@@ -208,6 +216,18 @@ export function leerFoto(
       leida(await conAlmacen<RegistroFoto | undefined>('readonly', (a) => a.get(clientEventId))),
     () => leida(memoria.get(clientEventId)),
   );
+}
+
+/** Recibo duradero: se escribe antes de borrar el blob o enviar la respuesta. */
+export async function anotarReciboFotoTarea(clientPhotoId: string, photoId: string): Promise<void> {
+  const registro = await conRespaldo(
+    () => conAlmacen<RegistroFoto | undefined>('readonly', (a) => a.get(clientPhotoId)),
+    () => memoria.get(clientPhotoId),
+  );
+  if (!registro) return;
+  const siguiente = { ...registro, photoId };
+  await conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.put(siguiente)); },
+    () => { memoria.set(clientPhotoId, siguiente); });
 }
 
 /** Borra la foto: se llama recién cuando el servidor confirmó la subida. */
@@ -258,9 +278,9 @@ export function listarPendientes(): Promise<FotoPendiente[]> {
   return conRespaldo(
     async () => {
       const registros = await conAlmacen<RegistroFoto[]>('readonly', (a) => a.getAll());
-      return registros.map(metadatos);
+      return registros.filter((r) => !r.photoId).map(metadatos);
     },
-    () => Array.from(memoria.values(), metadatos),
+    () => Array.from(memoria.values()).filter((r) => !r.photoId).map(metadatos),
   );
 }
 
@@ -272,6 +292,23 @@ export async function contarPendientes(): Promise<number> {
 /** Solo para pruebas: vacía el respaldo en memoria entre casos. */
 export function _reiniciarMemoria(): void {
   memoria.clear();
+  tareasMemoria.clear();
   subidasEnCurso.clear();
-  indexedDbUtilizable = undefined;
+}
+
+const tareasMemoria = new Map<string, EstadoTareas>();
+
+export function persistirTareasDurables(estado: EstadoTareas): Promise<void> {
+  return conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.put(estado), ALMACEN_TAREAS); },
+    () => { tareasMemoria.set(estado.patrolId, JSON.parse(JSON.stringify(estado)) as EstadoTareas); });
+}
+
+export function leerTareasDurables(): Promise<EstadoTareas[]> {
+  return conRespaldo(() => conAlmacen<EstadoTareas[]>('readonly', (a) => a.getAll(), ALMACEN_TAREAS),
+    () => JSON.parse(JSON.stringify([...tareasMemoria.values()])) as EstadoTareas[]);
+}
+
+export function borrarTareasDurables(patrolId: string): Promise<void> {
+  return conRespaldo(async () => { await conAlmacen('readwrite', (a) => a.delete(patrolId), ALMACEN_TAREAS); },
+    () => { tareasMemoria.delete(patrolId); });
 }

@@ -25,3 +25,5 @@ export const ENVIO_INFORME_JOB_NAME = 'dispatch';
  */
 export const ENVIO_INFORME_JOB_ATTEMPTS = 5;
 export const ENVIO_INFORME_JOB_BACKOFF_MS = 5_000;
+/** Sondeo de la evidencia: no consume los reintentos destinados a fallos reales. */
+export const ENVIO_INFORME_EVIDENCE_POLL_MS = 5_000;

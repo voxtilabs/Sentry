@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { requestLogging } from './observability/request-logging.middleware';
 import { StructuredLogger } from './observability/structured-logger';
 import { csrfOriginProtection } from './security/csrf-origin.middleware';
+import { BoundedInputPipe } from './security/bounded-input.pipe';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -20,6 +21,7 @@ async function bootstrap() {
   app.use(cookieParser());
   app.use(csrfOriginProtection(process.env.WEB_PUBLIC_URL ?? 'http://localhost:3000'));
   app.useGlobalPipes(
+    new BoundedInputPipe(),
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.enableShutdownHooks();
