@@ -54,6 +54,8 @@ export interface FotoPendiente {
   serverId: string | null;
   takenAtDevice: string;
   destino: DestinoFoto;
+  /** Si existe, la foto de punto espera el término de esta ronda. */
+  patrolId?: string;
 }
 
 interface RegistroFoto extends FotoPendiente {
@@ -82,7 +84,6 @@ export function clasificarPendientes(pendientes: readonly FotoPendiente[]): {
 
 /** Se usa solo si IndexedDB no está disponible. */
 const memoria = new Map<string, RegistroFoto>();
-let indexedDbUtilizable: boolean | undefined;
 
 function hayIndexedDb(): boolean {
   return typeof indexedDB !== 'undefined';
@@ -125,24 +126,16 @@ async function conAlmacen<T>(
   }
 }
 
-/**
- * Corre la operación contra IndexedDB y, si falla o no existe, contra el `Map`
- * en memoria. Una vez que IndexedDB falla se marca inutilizable para no reintentar
- * en cada acción.
- */
+/** La evidencia solo se confirma cuando IndexedDB hizo commit. Un error de
+ * cuota/disco se propaga: memoria volátil no puede sustituir una foto durable. */
 async function conRespaldo<T>(
   operacionIdb: () => Promise<T>,
   operacionMemoria: () => T,
 ): Promise<T> {
-  if (indexedDbUtilizable === false || !hayIndexedDb()) return operacionMemoria();
-  try {
-    const resultado = await operacionIdb();
-    indexedDbUtilizable = true;
-    return resultado;
-  } catch {
-    indexedDbUtilizable = false;
-    return operacionMemoria();
-  }
+  if (hayIndexedDb()) return operacionIdb();
+  // SSR y pruebas no tienen disco de navegador. En una app real, fallar cerrado.
+  if (typeof document !== 'undefined') throw new Error('El almacenamiento local no está disponible');
+  return operacionMemoria();
 }
 
 function metadatos({
@@ -150,10 +143,11 @@ function metadatos({
   serverId,
   takenAtDevice,
   destino,
+  patrolId,
 }: RegistroFoto): FotoPendiente {
   // `destino` puede faltar en un registro escrito por la versión anterior:
   // entonces era siempre la foto de una novedad.
-  return { clientEventId, serverId, takenAtDevice, destino: destino ?? 'evento' };
+  return { clientEventId, serverId, takenAtDevice, destino: destino ?? 'evento', ...(patrolId ? { patrolId } : {}) };
 }
 
 // ------------------------------------------------------------- API pública
@@ -165,8 +159,9 @@ export function guardarFoto(
   takenAtDevice: string,
   serverId: string | null = null,
   destino: DestinoFoto = 'evento',
+  patrolId?: string,
 ): Promise<void> {
-  const registro: RegistroFoto = { clientEventId, blob, serverId, takenAtDevice, destino };
+  const registro: RegistroFoto = { clientEventId, blob, serverId, takenAtDevice, destino, ...(patrolId ? { patrolId } : {}) };
   return conRespaldo(
     async () => {
       await conAlmacen('readwrite', (almacen) => almacen.put(registro));
@@ -190,6 +185,7 @@ export async function fijarServerId(clientEventId: string, serverId: string): Pr
     registro.takenAtDevice,
     serverId,
     registro.destino ?? 'evento',
+    registro.patrolId,
   );
 }
 
@@ -204,13 +200,14 @@ export async function fijarServerId(clientEventId: string, serverId: string): Pr
  */
 export function leerFoto(
   clientEventId: string,
-): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto; photoId?: string } | undefined> {
+): Promise<{ blob: Blob; takenAtDevice: string; destino: DestinoFoto; patrolId?: string; photoId?: string } | undefined> {
   const leida = (registro: RegistroFoto | undefined) =>
     registro
       ? {
           blob: registro.blob,
           takenAtDevice: registro.takenAtDevice,
           destino: registro.destino ?? ('evento' as const),
+          ...(registro.patrolId ? { patrolId: registro.patrolId } : {}),
           ...(registro.photoId ? { photoId: registro.photoId } : {}),
         }
       : undefined;
@@ -297,7 +294,6 @@ export function _reiniciarMemoria(): void {
   memoria.clear();
   tareasMemoria.clear();
   subidasEnCurso.clear();
-  indexedDbUtilizable = undefined;
 }
 
 const tareasMemoria = new Map<string, EstadoTareas>();

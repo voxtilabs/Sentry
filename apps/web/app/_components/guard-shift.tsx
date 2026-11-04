@@ -901,7 +901,8 @@ function Ronda({
           ...(presupuestoFoto ? { objetivoBytes: presupuestoFoto.targetBytes } : {}),
         }),
       guardar: (clientScanId, foto, cuando, scanId) =>
-        guardarFoto(clientScanId, foto, cuando, scanId, 'escaneo'),
+        guardarFoto(clientScanId, foto, cuando, scanId, 'escaneo', patrol.id),
+      diferirHastaCierre: true,
       fijarId: fijarServerId,
       subir: (clientScanId, scanId) => subirFotoPersistida(apiUrl, clientScanId, scanId),
       idDelEscaneo: (clientScanId) => idsDeEscaneo.resolver(clientScanId),
@@ -1037,8 +1038,8 @@ function Ronda({
       {fotosPorSubir > 0 ? (
         <p className="guardia-anuncio" role="status" aria-live="polite">
           {fotosPorSubir === 1
-            ? 'Queda 1 foto por subir. Se envía sola al recuperar señal.'
-            : `Quedan ${fotosPorSubir} fotos por subir. Se envían solas al recuperar señal.`}
+            ? 'Queda 1 foto por subir. Las de la ronda se envían al terminar.'
+            : `Quedan ${fotosPorSubir} fotos por subir. Las de la ronda se envían al terminar.`}
         </p>
       ) : null}
 

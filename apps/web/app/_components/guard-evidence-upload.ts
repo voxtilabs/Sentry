@@ -1,5 +1,6 @@
 'use client';
 import { conSubidaExclusiva, leerFoto, borrarFoto } from './guard-photo-store';
+import { cargarEstadoTareas } from './guard-tareas-modelo';
 import { subirFotoPunto, subirFotoNovedad } from './guard-outbox';
 
 export function subirFotoPersistida(
@@ -13,6 +14,8 @@ export function subirFotoPersistida(
   return conSubidaExclusiva(clientEventId, async () => {
     const guardada = await leerFoto(clientEventId);
     if (!guardada || guardada.destino === 'tarea') return undefined;
+    if (guardada.destino === 'escaneo' && guardada.patrolId &&
+      !cargarEstadoTareas(guardada.patrolId).envioSolicitado) return false;
     // Se manda la hora de CAPTURA que quedo guardada con la foto, no la de ahora:
     // esta subida puede ocurrir horas despues, al recuperar señal.
     //

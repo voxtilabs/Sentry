@@ -182,6 +182,8 @@ export interface RespuestaTareaEnCola {
 
 export interface EstadoTareas {
   patrolId: string;
+  /** false = nueva ronda diferida; true = enviar/reintentar; ausente = cola de una versión anterior. */
+  envioSolicitado?: boolean;
   /** Lo respondido que todavía no aceptó el servidor. */
   cola: RespuestaTareaEnCola[];
   /** Items que el servidor ya tiene ('aplicado' o 'duplicado'): no se re-ofrecen. */
@@ -206,7 +208,7 @@ export interface ResultadoTarea {
 }
 
 export function estadoTareasInicial(patrolId: string): EstadoTareas {
-  return { patrolId, cola: [], enviadas: [] };
+  return { patrolId, cola: [], enviadas: [], envioSolicitado: false };
 }
 
 /**

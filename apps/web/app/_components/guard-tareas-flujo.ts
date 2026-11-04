@@ -125,6 +125,7 @@ export function sincronizarTareasGuardadas(apiUrl: string, patrolId: string,
   const promesa = (async () => {
     await rehidratarTareasDurables();
     const base = cargarEstadoTareas(patrolId);
+    if (base.envioSolicitado === false) return base;
     const adoptado = await adoptarFotosDeTareas(apiUrl, base, registros);
     const fotos = [...adoptado.cola.flatMap((r) => r.fotos ??
       (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId, photoId: r.photoId }] : [])),

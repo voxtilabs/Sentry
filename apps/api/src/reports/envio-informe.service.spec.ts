@@ -228,6 +228,15 @@ describe('EnvioInformeService', () => {
   });
 
   describe('despachar', () => {
+    it('espera el término y todo el lote aunque venza la gracia del último punto', async () => {
+      const ronda = { tenant_id: TENANT, site_id: SITIO, status: 'completada', compliance_pct: '100.00', guard_flow_completed: false };
+      const { service, mail, informe } = armar({ ronda: [ronda], reglas: { reportEvidenceGraceSeconds: 0 } });
+      expect((await service.despachar(TENANT, PATRULLA)).omitido).toBe('evidencia_pendiente');
+      expect(mail.enqueue).not.toHaveBeenCalled();
+      expect(informe.buildModel).not.toHaveBeenCalled();
+      ronda.guard_flow_completed = true;
+      expect((await service.despachar(TENANT, PATRULLA)).omitido).toBeNull();
+    });
     it('no congela el PDF al último NFC: espera su foto y envía una sola vez al recibirla', async () => {
       const modelo = { ...MODELO, ejecucion: { ...MODELO.ejecucion, cierre: new Date() } };
       const { service, mail, informe, atendidas } = armar({ modelo });
