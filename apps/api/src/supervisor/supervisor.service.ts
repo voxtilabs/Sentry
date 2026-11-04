@@ -12,6 +12,7 @@ import { QueryFailedError } from 'typeorm';
 import { generarCodigo, lookupDeCodigo, pepperDeCodigo } from '../auth/login-code';
 import { normalizarUidNfc } from '../admin/uid-nfc';
 import { readCompanyCard, writeCompanyCard } from '../auth/company-card-management';
+import { companyCodeStatus, renewCompanyCode } from '../auth/company-code';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { AuditService } from '../audit/audit.service';
 import { RulesService } from '../rules/rules.service';
@@ -85,6 +86,14 @@ export class SupervisorService {
   async companyCard(supervisorId: string) {
     await this.assertCompanyCardSupervisor(supervisorId);
     return readCompanyCard(this.tenantContext.manager);
+  }
+  async companyCode(supervisorId: string) {
+    await this.assertCompanyCardSupervisor(supervisorId);
+    return companyCodeStatus(this.tenantContext.manager);
+  }
+  async renewCompanyCode(supervisorId: string) {
+    await this.assertCompanyCardSupervisor(supervisorId);
+    return renewCompanyCode(this.tenantContext.manager);
   }
   async setCompanyCard(supervisorId: string, cardUid: string) {
     await this.assertCompanyCardSupervisor(supervisorId);

@@ -24,7 +24,7 @@ import { HelpButton } from './help-button';
  */
 const TIEMPO_MAXIMO_MS = 20_000;
 
-export function LoginScreen() {
+export function LoginScreen({ initialCompanyLogin = false }: { initialCompanyLogin?: boolean }) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api';
   const [showPassword, setShowPassword] = useState(false);
   const [identity, setIdentity] = useState('');
@@ -53,8 +53,8 @@ export function LoginScreen() {
   const [editandoCodigoEmpresa, setEditandoCodigoEmpresa] = useState(false);
   const [codigoEmpresaBorrador, setCodigoEmpresaBorrador] = useState('');
   const [nfcFeedback, setNfcFeedback] = useState<string | null>(null);
-  const [codigoGuardia, setCodigoGuardia] = useState('');
-  const [usandoCodigo, setUsandoCodigo] = useState(false);
+  const [companyMode, setCompanyMode] = useState(initialCompanyLogin);
+  const [companyAccessCode, setCompanyAccessCode] = useState('');
   const cardBusy = useRef(false);
   const [companyPicker, setCompanyPicker] = useState<{
     ticket: string; tenantName: string; tenantSlug: string;
@@ -75,7 +75,7 @@ export function LoginScreen() {
       });
       if (!response.ok) {
         setCompanyPicker(null);
-        throw new Error('Vuelve a acercar la tarjeta de empresa para elegir tu usuario.');
+        throw new Error('Vuelve a ingresar el código o acerca la tarjeta de empresa para elegir tu usuario.');
       }
       guardarCodigoEmpresa(companyPicker.tenantSlug);
       window.location.assign(rutaDelPanel('GUARDIA'));
@@ -85,18 +85,11 @@ export function LoginScreen() {
     } finally { cardBusy.current = false; }
   }
 
-  /**
-   * Ingreso del guardia con sus seis digitos.
-   *
-   * No pide usuario: el codigo identifica y autentica. Por eso el error que se
-   * muestra es siempre el mismo, diga lo que diga el servidor sobre por que
-   * fallo — distinguir "ese codigo no existe" de "ese codigo es de otra
-   * empresa" le serviria a quien esta probando, no al guardia.
-   */
-  async function entrarConCodigo(event: FormEvent<HTMLFormElement>) {
+  async function entrarConCodigoEmpresa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!/^\d{6}$/.test(codigoGuardia)) {
-      setErrorMessage('El código son 6 dígitos.');
+    if (cardBusy.current) return;
+    if (!/^[A-Z0-9]{10}$/.test(companyAccessCode)) {
+      setErrorMessage('Ingresa los 10 caracteres del código de tu empresa.');
       setStatus('error');
       return;
     }
@@ -106,37 +99,34 @@ export function LoginScreen() {
     }
     setStatus('loading');
     setErrorMessage('');
+    cardBusy.current = true;
     try {
-      const respuesta = await fetch(`${apiUrl}/auth/code-login`, {
+      const respuesta = await fetch(`${apiUrl}/auth/company-code`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tenantSlug: codigoEmpresa, code: codigoGuardia }),
+        body: JSON.stringify({ code: companyAccessCode }),
+        signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
       });
-      const resultado = (await respuesta.json().catch(() => null)) as {
-        user?: { role: Role };
-        message?: string | string[];
-        retryAfterSeconds?: number;
-      } | null;
+      const resultado = await respuesta.json().catch(() => null) as NonNullable<typeof companyPicker> | null;
 
-      if (!respuesta.ok || !resultado?.user) {
-        // El bloqueo SI se dice: el guardia tiene que saber que espere en vez
-        // de seguir probando y estirar el castigo.
+      if (!respuesta.ok || !resultado?.ticket || !Array.isArray(resultado.guards)) {
         setErrorMessage(
           respuesta.status === 429
-            ? 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.'
-            : 'Código incorrecto.',
+            ? 'Demasiados intentos. Espera un minuto e inténtalo de nuevo.'
+            : 'Código de empresa incorrecto o no disponible.',
         );
         setStatus('error');
-        setCodigoGuardia('');
         return;
       }
 
-      window.location.assign(rutaDelPanel(resultado.user.role));
+      setCompanyAccessCode('');
+      setCompanyPicker(resultado);
+      setStatus('idle');
     } catch {
       setErrorMessage('No pudimos conectar. Revisa tu señal e inténtalo de nuevo.');
-      setStatus('error');
-    }
+      setStatus(navigator.onLine ? 'error' : 'offline');
+    } finally { cardBusy.current = false; }
   }
 
   useEffect(() => {
@@ -472,7 +462,7 @@ export function LoginScreen() {
           </h2>
           <p className="login-intro">
             {mode === 'login'
-              ? 'Ingresa tus credenciales o acerca tu tarjeta NFC.'
+              ? companyMode ? 'Ingresa el código de tu empresa o acerca su tarjeta NFC.' : 'Acceso de supervisores y administración.'
               : mode === 'recovery'
                 ? 'Te enviaremos un enlace si el correo está registrado.'
                 : 'Define una contraseña segura para continuar.'}
@@ -497,7 +487,26 @@ export function LoginScreen() {
             </div>
           ) : null}
 
-          {mode === 'login' ? <form className="login-form" noValidate onSubmit={usandoCodigo ? entrarConCodigo : submit}>
+          {mode === 'login' && companyMode ? <form className="login-form" onSubmit={entrarConCodigoEmpresa}>
+            <label className="company-access-code-field">Código de acceso de la empresa
+              <input autoCapitalize="characters" autoComplete="off" autoCorrect="off"
+                inputMode="text" name="companyCode" minLength={10} maxLength={10} required spellCheck={false}
+                value={companyAccessCode} onChange={event => {
+                  setCompanyAccessCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10));
+                  setStatus('idle'); setErrorMessage('');
+                }} placeholder="10 caracteres" aria-describedby="company-code-help" />
+              <small id="company-code-help">Te lo entrega tu supervisor. Son 10 letras y números en mayúsculas.</small>
+            </label>
+            <p className="form-note">Después elige tu nombre en la lista de guardias.</p>
+            {status === 'error' ? <p className="form-message error" role="alert">{errorMessage}</p> : null}
+            {status === 'offline' ? <p className="form-message offline" role="alert">Estás sin conexión. Recupera la señal para identificar tu empresa. Las rondas ya iniciadas siguen disponibles sin conexión.</p> : null}
+            <button className="primary-button" disabled={status === 'loading'} type="submit">
+              {status === 'loading' ? 'Verificando…' : 'Ingresar a mi empresa'}
+            </button>
+            <p className="form-note">También puedes acercar la tarjeta NFC de la empresa, si está configurada.</p>
+          </form> : null}
+
+          {mode === 'login' && !companyMode ? <form className="login-form" noValidate onSubmit={submit}>
             {editandoCodigoEmpresa || !codigoEmpresa ? (
               <label className="codigo-empresa-campo">
                 Código de empresa
@@ -532,32 +541,7 @@ export function LoginScreen() {
               </p>
             )}
 
-            {/*
-              * Ingreso corto del guardia: la empresa ya esta guardada en el
-              * telefono, asi que le alcanza con sus seis digitos. Se ofrece solo
-              * cuando hay empresa recordada, porque sin ella el codigo no
-              * identifica a nadie.
-              */}
-            {codigoEmpresa && !editandoCodigoEmpresa && usandoCodigo ? (
-              <label className="codigo-guardia-campo">
-                Tu código
-                <input
-                  autoComplete="one-time-code"
-                  inputMode="numeric"
-                  maxLength={6}
-                  name="code"
-                  onChange={(evento) => {
-                    setCodigoGuardia(evento.target.value.replace(/\D/g, '').slice(0, 6));
-                    setStatus('idle');
-                    setErrorMessage('');
-                  }}
-                  placeholder="••••••"
-                  value={codigoGuardia}
-                />
-                <small>Los 6 dígitos que te dio tu supervisor.</small>
-              </label>
-            ) : null}
-            <label hidden={usandoCodigo}>
+            <label>
               Usuario o correo
               <input
                 autoComplete="username"
@@ -572,7 +556,7 @@ export function LoginScreen() {
                 value={identity}
               />
             </label>
-            <label hidden={usandoCodigo}>
+            <label>
               Contraseña
               <span className="password-field">
                 <input
@@ -641,29 +625,8 @@ export function LoginScreen() {
               {status === 'loading' ? 'Verificando…' : 'Ingresar'}
               <span aria-hidden="true">{status === 'loading' ? '···' : '→'}</span>
             </button>
-            {/*
-              * El atajo del guardia. Va DEBAJO del boton de ingresar y no
-              * arriba: quien tiene usuario y contraseña —supervisor, admin— no
-              * tiene por que tropezarse con el, y al guardia le alcanza con
-              * verlo una vez para no volver a usar el camino largo.
-              */}
-            {codigoEmpresa && !editandoCodigoEmpresa ? (
-              <button
-                className="text-button"
-                onClick={() => {
-                  setUsandoCodigo((antes) => !antes);
-                  setStatus('idle');
-                  setErrorMessage('');
-                  setCodigoGuardia('');
-                }}
-                type="button"
-              >
-                {usandoCodigo ? 'Entrar con usuario y contraseña' : 'Entrar con mi código'}
-              </button>
-            ) : null}
             <button
               className="text-button recovery-link"
-              hidden={usandoCodigo}
               onClick={() => {
                 setMode('recovery');
                 setStatus('idle');
@@ -673,6 +636,11 @@ export function LoginScreen() {
               ¿Olvidaste tu contraseña?
             </button>
           </form> : null}
+
+          {mode === 'login' ? <button className="text-button staff-access-switch" type="button"
+            disabled={status === 'loading'} onClick={() => { setCompanyMode(value => !value); setStatus('idle'); setErrorMessage(''); }}>
+            {companyMode ? 'Acceso de supervisores y administración' : 'Acceso de guardias con código de empresa'}
+          </button> : null}
 
           {mode === 'recovery' ? (
             <form className="login-form" noValidate onSubmit={requestRecovery}>

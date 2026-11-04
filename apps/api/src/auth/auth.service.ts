@@ -36,6 +36,7 @@ import type {
 } from './auth.types';
 import { AUTH_REDIS } from './redis.provider';
 import { CompanyContext } from './company-context';
+import { companyCodeLookup } from './company-code';
 import type { AuthenticatedUser } from './auth.guard';
 
 // Hash Argon2id válido de una contraseña aleatoria que nunca se acepta.
@@ -409,6 +410,24 @@ export class AuthService {
     return this.createSession(selected, device);
   }
 
+  /** Código de empresa: el mismo selector acotado que la tarjeta, sin sesión privilegiada. */
+  async companyCode(code: string, sourceIp: string, device: string) {
+    if (this.redis.status === 'wait') await this.redis.connect();
+    const ipHash = createHash('sha256').update(sourceIp).digest('hex');
+    const attempts = await this.redis.eval(
+      `local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],60) end; return n`,
+      1, `auth:company-code-rate:${ipHash}`,
+    );
+    if (Number(attempts) > 10) throw new HttpException('Demasiados intentos. Espera un minuto e inténtalo nuevamente.', HttpStatus.TOO_MANY_REQUESTS);
+    const codeLookup = companyCodeLookup(code);
+    const rows = await this.dataSource.query<Array<AuthIdentityRow & { guard_name: string }>>(
+      'SELECT * FROM authenticate_company_code($1)', [codeLookup],
+    );
+    if (!rows.length) throw new UnauthorizedException('Código de empresa incorrecto o no disponible.');
+    const contextToken = await new CompanyContext(this.dataSource, this.redis).issue({ codeLookup, tenantId: rows[0]!.tenant_id! }, device);
+    return { ...await this.companyPicker(contextToken, sourceIp, device), contextToken };
+  }
+
   /** The card authorizes a company picker, never an administrator session. */
   async companyCard(cardUid: string, sourceIp: string, device: string) {
     const uid = normalizarUidNfc(cardUid);
@@ -439,10 +458,10 @@ export class AuthService {
     if (this.redis.status === 'wait') await this.redis.connect();
     const key = this.companyTicketKey(input.ticket);
     const serialized = await this.redis.get(key);
-    if (!serialized) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+    if (!serialized) throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     const ticket = JSON.parse(serialized) as { uid?: string; contextToken?: string; tenantId: string; binding: string };
     if (ticket.binding !== this.companyTicketBinding(sourceIp, device)) {
-      throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+      throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     }
     // Recheck card, tenant, membership and active user at selection time.
     const rows = ticket.uid ? await this.companyCardGuards(ticket.uid)
@@ -453,7 +472,7 @@ export class AuthService {
       `if redis.call('GET', KEYS[1]) == ARGV[1] then
          redis.call('DEL', KEYS[1]); return 1 end; return 0`, 1, key, serialized,
     );
-    if (Number(consumed) !== 1) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+    if (Number(consumed) !== 1) throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     return this.createSession(guard, device);
   }
 
@@ -467,12 +486,26 @@ export class AuthService {
       guards: guards.map(g => ({ id: g.user_id, name: g.guard_name })) };
   }
 
-  async endGuardDay(user: AuthenticatedUser, device: string) {
+  async endGuardDay(user: AuthenticatedUser, device: string, companyToken?: string) {
     if (user.role !== 'GUARDIA' || !user.tenant_id) throw new ForbiddenException();
     if (this.redis.status === 'wait') await this.redis.connect();
     const contexts = new CompanyContext(this.dataSource, this.redis);
     await contexts.tenantGuards(user.tenant_id, user.sub, true);
-    const contextToken = await contexts.issue({ tenantId: user.tenant_id, issuerId: user.sub }, device);
+    let contextToken: string | null = null;
+    if (companyToken) {
+      try {
+        const { context } = await contexts.guards(companyToken, device);
+        if (context.tenantId === user.tenant_id) {
+          contextToken = await contexts.issue({ tenantId: context.tenantId, uid: context.uid,
+            codeLookup: context.codeLookup, issuerId: context.issuerId }, device);
+        }
+      } catch (error) {
+        // Un código renovado retira el selector anterior, pero permite terminar la jornada.
+        if (!(error instanceof UnauthorizedException) && !(error instanceof ForbiddenException)) throw error;
+      }
+    } else {
+      contextToken = await contexts.issue({ tenantId: user.tenant_id, issuerId: user.sub }, device);
+    }
     await this.revokeFamily(user.sid);
     return contextToken;
   }

@@ -80,6 +80,7 @@ export function PlatformManagement({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [generatedCodes, setGeneratedCodes] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
@@ -131,6 +132,8 @@ export function PlatformManagement({
       ...(data.get('loginCardUid') ? { loginCardUid: data.get('loginCardUid') } : {}),
     });
     if (!response.ok) return setMessage(await responseMessage(response));
+    const created = await response.json() as { id: string; companyAccessCode?: string };
+    if (created.companyAccessCode) setGeneratedCodes(current => ({ ...current, [created.id]: created.companyAccessCode! }));
     form.reset();
     setMessage('Empresa y administrador creados correctamente.');
     startTransition(() => router.refresh());
@@ -212,8 +215,8 @@ export function PlatformManagement({
                 {(nearUserLimit || nearSiteLimit) ? <span className="limit-warning">Cerca del límite del plan</span> : null}
               </div>
               <span className={`state-chip ${tenant.status}`}>{tenant.status === 'active' ? 'Activa' : 'Suspendida'}</span>
-              <details><summary>Tarjeta de empresa</summary>
-                <CompanyCardSettings apiUrl={apiUrl} role="superadmin" tenantId={tenant.id} />
+              <details open={Boolean(generatedCodes[tenant.id])}><summary>Código y tarjeta de empresa</summary>
+                <CompanyCardSettings apiUrl={apiUrl} role="superadmin" tenantId={tenant.id} initialCode={generatedCodes[tenant.id]} />
               </details>
               <button className="secondary-button" onClick={() => toggle(tenant)} disabled={pending}>
                 {tenant.status === 'active' ? 'Suspender' : 'Reactivar'}

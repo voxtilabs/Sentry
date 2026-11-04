@@ -35,9 +35,11 @@ describe('código de empresa en la pantalla de ingreso', () => {
    * lo necesita mas que ninguno: sin la empresa, seis digitos no identifican a
    * nadie.
    */
-  it('contraseña y código personal mandan la empresa; la tarjeta resuelve su propia empresa', () => {
+  it('el acceso de supervisores conserva la empresa recordada y el código nuevo resuelve su propia empresa', () => {
     const envios = pantalla.match(/tenantSlug: codigoEmpresa/g) ?? [];
-    expect(envios).toHaveLength(2);
+    expect(envios).toHaveLength(1);
+    expect(pantalla).toContain('/auth/company-code');
+    expect(pantalla).toContain('JSON.stringify({ code: companyAccessCode })');
     expect(pantalla).toContain('/auth/company-card');
     expect(pantalla).toContain('guardarCodigoEmpresa(companyPicker.tenantSlug)');
   });

@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, type EntityManager, QueryFailedError } from 'typeorm';
 
 import type { CreateTenantDto } from './dto/create-tenant.dto';
+import { companyCodeLookup, generateCompanyCode } from '../auth/company-code';
 
 interface TenantRow {
   id: string;
@@ -39,6 +40,19 @@ interface BillingRow {
 @Injectable()
 export class PlatformService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async companyCode(actorId: string, tenantId: string) {
+    const rows = await this.withPlatformActor(actorId, manager => manager.query(
+      'SELECT configured, updated_at AS "updatedAt" FROM platform_company_code_status($1,$2)', [actorId, tenantId]));
+    return rows[0];
+  }
+
+  async renewCompanyCode(actorId: string, tenantId: string) {
+    const code = generateCompanyCode();
+    await this.withPlatformActor(actorId, manager => manager.query(
+      'SELECT platform_set_company_code($1,$2,$3)', [actorId, tenantId, companyCodeLookup(code)]));
+    return { code, configured: true };
+  }
 
   async companyCard(actorId: string, tenantId: string) {
     const rows = await this.withPlatformActor(actorId, (manager) =>
@@ -82,6 +96,7 @@ export class PlatformService {
 
   async createTenant(actorId: string, input: CreateTenantDto) {
     const tenantId = randomUUID();
+    const companyAccessCode = generateCompanyCode();
     const adminId = randomUUID();
     const passwordHash = await hash(input.adminPassword, {
       type: argon2id,
@@ -113,6 +128,8 @@ export class PlatformService {
         if (input.loginCardUid) {
           await manager.query('SELECT platform_set_company_card($1, $2, $3)', [actorId, tenantId, input.loginCardUid]);
         }
+        await manager.query('SELECT platform_set_company_code($1,$2,$3)',
+          [actorId, tenantId, companyCodeLookup(companyAccessCode)]);
       });
     } catch (error) {
       if (error instanceof QueryFailedError && error.driverError?.code === '23505') {
@@ -121,7 +138,7 @@ export class PlatformService {
       throw error;
     }
 
-    return { id: tenantId, adminId };
+    return { id: tenantId, adminId, companyAccessCode };
   }
 
   async currentBilling(actorId: string) {

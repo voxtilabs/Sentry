@@ -5,7 +5,7 @@ import type { DataSource } from 'typeorm';
 import type { AuthIdentityRow } from './auth.types';
 
 type Guard = AuthIdentityRow & { guard_name: string };
-interface Context { tenantId: string; issuerId?: string; uid?: string; binding: string }
+interface Context { tenantId: string; issuerId?: string; uid?: string; codeLookup?: string; binding: string }
 const ttl = 30 * 24 * 60 * 60;
 const key = (token: string) => `auth:company-context:${createHash('sha256').update(token).digest('hex')}`;
 const binding = (device: string) => createHash('sha256').update(device).digest('hex');
@@ -22,10 +22,12 @@ export class CompanyContext {
   async guards(token: string | undefined, device: string): Promise<{ context: Context; guards: Guard[] }> {
     if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new UnauthorizedException('Selecciona una empresa');
     const raw = await this.redis.get(key(token));
-    if (!raw) throw new UnauthorizedException('Vuelve a acercar la tarjeta de empresa');
+    if (!raw) throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     const context = JSON.parse(raw) as Context;
     if (context.binding !== binding(device)) throw new UnauthorizedException('Vuelve a identificar la empresa');
-    const guards = context.uid
+    const guards = context.codeLookup
+      ? await this.db.query<Guard[]>('SELECT * FROM authenticate_company_code($1)', [context.codeLookup])
+      : context.uid
       ? await this.db.query<Guard[]>('SELECT * FROM authenticate_company_card($1)', [context.uid])
       : await this.tenantGuards(context.tenantId, context.issuerId!);
     const own = guards.filter(g => g.tenant_id === context.tenantId && g.role_key === 'GUARDIA');

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { IsBoolean, IsUUID } from 'class-validator';
 import type { Request } from 'express';
 
@@ -61,6 +61,16 @@ export class AdminController {
   @Get('company-card')
   @Permissions('tenant:users:manage')
   companyCard() { return this.admin.companyCard(); }
+
+  @Get('company-code')
+  @Header('Cache-Control', 'no-store')
+  @Permissions('tenant:users:manage')
+  companyCode() { return this.admin.companyCode(); }
+
+  @Post('company-code')
+  @Header('Cache-Control', 'no-store')
+  @Permissions('tenant:users:manage')
+  renewCompanyCode() { return this.admin.renewCompanyCode(); }
 
   @Put('company-card')
   @Permissions('tenant:users:manage')

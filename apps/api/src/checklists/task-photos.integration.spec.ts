@@ -75,6 +75,31 @@ conBase('fotos múltiples y versiones contra PostgreSQL con RLS', () => {
     expect(r.results[0]?.status).toBe('rechazado');
     expect(await runner.query(`SELECT * FROM checklist_responses WHERE item_id=$1`, [t.itemId])).toEqual([]);
   }));
+  it('dos tareas del mismo punto necesitan tres fotos cada una, seis en total, y conservan el reenvío offline', async () => transaccion(async (service, runner) => {
+    await runner.query('UPDATE checklist_templates SET is_active=false');
+    await service.createTemplate({ name: 'Tres fotos por tarea', siteId: site, items: [
+      { label: 'Fotografía del portón', responseType: 'foto', checkpointId: punto, requiresPhoto: true, photoMinCount: 3, photoMaxCount: 3 },
+      { label: '¿Ventanas cerradas?', responseType: 'si_no', checkpointId: punto, requiresPhoto: true, photoMinCount: 3, photoMaxCount: 3 },
+    ] });
+    const template = await service.templateForPatrol(patrol, guard);
+    if (!template.hasChecklist) throw new Error('Falta plantilla');
+    const [first, second] = template.template.items;
+    const photosA = [await foto(runner), await foto(runner), await foto(runner)];
+    const photosB = [await foto(runner), await foto(runner), await foto(runner)];
+    const applied = await service.saveResponses(patrol, guard, { responses: [{ itemId: first!.id, value: 'foto', photoIds: photosA }] });
+    expect(applied.results[0]?.status).toBe('aplicado');
+    const incomplete = await service.saveResponses(patrol, guard, { responses: [{ itemId: second!.id, value: 'si', photoIds: photosB.slice(0,2) }] });
+    expect(incomplete.results[0]?.status).toBe('rechazado');
+    const completed = await service.saveResponses(patrol, guard, { responses: [{ itemId: second!.id, value: 'si', photoIds: photosB }] });
+    expect(completed.results[0]?.status).toBe('aplicado');
+    const report = await runner.query(SQL_TAREAS_DEL_TURNO, [patrol]);
+    expect(report.map((r: { photo_ids: string[] }) => r.photo_ids.length)).toEqual([3,3]);
+    expect(new Set(report.flatMap((r: { photo_ids: string[] }) => r.photo_ids)).size).toBe(6);
+    const replay = await service.saveResponses(patrol, guard, { responses: [
+      { itemId: first!.id, value: 'foto', photoIds: photosA }, { itemId: second!.id, value: 'si', photoIds: photosB },
+    ] });
+    expect(replay.results.map(r => r.status)).toEqual(['duplicado','duplicado']);
+  }));
   it('recupera escaneos para la cola de su guardia y no permite obtenerlos con otra sesión', async () => transaccion(async (service, runner) => {
     await plantilla(service, runner);
     await foto(runner);

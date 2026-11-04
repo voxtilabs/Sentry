@@ -1442,3 +1442,10 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .safety-standards h2 { margin-top: 24px; font-size: 1.15rem; }
 .safety-standards p { line-height: 1.65; }
 @media (max-width: 600px) { .feedback-dialog { padding: 16px; } }
+
+.company-access-code-field input { min-height: 3.5rem; font-size: 1.35rem; letter-spacing: .12em; font-family: ui-monospace, monospace; }
+.company-access-code-field small { letter-spacing: normal; line-height: 1.5; }
+.staff-access-switch { margin-top: 16px; min-height: 44px; }
+.company-code-settings { padding-bottom: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--border, #d8dee5); }
+.company-code-generated { display: grid; gap: 12px; margin: 16px 0; }
+.company-code-value { display: block; font: 600 1.6rem/1.5 ui-monospace, monospace; letter-spacing: .1em; user-select: all; overflow-wrap: anywhere; }

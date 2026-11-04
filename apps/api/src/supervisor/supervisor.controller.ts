@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { IsUUID } from 'class-validator';
 import type { Request } from 'express';
 
@@ -53,6 +53,16 @@ export class SupervisorController {
   @Get('company-card')
   @Permissions('shifts:manage')
   companyCard(@Req() request: Autenticado) { return this.supervisor.companyCard(request.user.sub); }
+
+  @Get('company-code')
+  @Header('Cache-Control', 'no-store')
+  @Permissions('shifts:manage')
+  companyCode(@Req() request: Autenticado) { return this.supervisor.companyCode(request.user.sub); }
+
+  @Post('company-code')
+  @Header('Cache-Control', 'no-store')
+  @Permissions('shifts:manage')
+  renewCompanyCode(@Req() request: Autenticado) { return this.supervisor.renewCompanyCode(request.user.sub); }
 
   @Put('company-card')
   @Permissions('shifts:manage')

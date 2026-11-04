@@ -27,6 +27,7 @@ import { Permissions } from './decorators/permissions.decorator';
 import { TenantScope } from './decorators/tenant-scope.decorator';
 import { LoginDto } from './dto/login.dto';
 import { CodeLoginDto } from './dto/code-login.dto';
+import { CompanyCodeDto } from './dto/company-code.dto';
 import { CompanyCardDto, SelectCompanyGuardDto } from './dto/company-card.dto';
 import { NfcLoginDto } from './dto/nfc-login.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
@@ -133,6 +134,17 @@ export class AuthController {
     return picker;
   }
 
+  @Post('company-code')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  async companyCode(@Body() input: CompanyCodeDto, @Req() request: Request,
+    @Res({ passthrough: true }) response: Response) {
+    const { contextToken, ...picker } = await this.auth.companyCode(input.code, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+    setCompanyCookie(response, contextToken);
+    response.setHeader('Cache-Control', 'no-store');
+    return picker;
+  }
+
   @Get('company-picker')
   @Public()
   async companyPicker(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
@@ -145,9 +157,10 @@ export class AuthController {
   @Permissions('patrols:execute')
   async endGuardDay(@Req() request: Request & { user: AuthenticatedUser },
     @Res({ passthrough: true }) response: Response) {
-    const token = await this.auth.endGuardDay(request.user, request.get('user-agent') ?? '');
+    const token = await this.auth.endGuardDay(request.user, request.get('user-agent') ?? '', request.cookies?.sentrycore_company);
     await this.auth.revokeCompanyContext(request.cookies?.sentrycore_company);
-    setCompanyCookie(response, token);
+    if (token) setCompanyCookie(response, token);
+    else clearCompanyCookie(response);
     clearSessionCookies(response);
     return { next: '/?guardias=1' };
   }

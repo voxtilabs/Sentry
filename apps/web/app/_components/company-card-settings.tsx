@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
+import { CompanyCodeSettings } from './company-code-settings';
 
-export function CompanyCardSettings({ apiUrl, role, tenantId }: {
-  apiUrl: string; role: 'admin' | 'supervisor' | 'superadmin'; tenantId?: string;
+export function CompanyCardSettings({ apiUrl, role, tenantId, initialCode }: {
+  apiUrl: string; role: 'admin' | 'supervisor' | 'superadmin'; tenantId?: string; initialCode?: string;
 }) {
   const [uid, setUid] = useState('');
   const [message, setMessage] = useState('');
@@ -35,8 +36,10 @@ export function CompanyCardSettings({ apiUrl, role, tenantId }: {
     } finally { setBusy(false); }
   }
   return <section className="management-card management-wide">
-    <div className="card-heading"><h3>Tarjeta de acceso de la empresa</h3></div>
-    <p>Al acercar esta tarjeta, el teléfono muestra los guardias activos de la empresa para elegir quién inicia su ronda.</p>
+    <div className="card-heading"><h3>Acceso de la empresa</h3></div>
+    <CompanyCodeSettings endpoint={endpoint.replace(/company-card$/, 'company-code')} initialCode={initialCode} />
+    <h4>Tarjeta NFC opcional</h4>
+    <p>La tarjeta permite abrir la misma lista de guardias sin escribir el código.</p>
     <form className="management-form" onSubmit={(event) => void save(event)}>
       <label>UID de la tarjeta NFC<input value={uid} maxLength={64} onChange={(event) => setUid(event.target.value)}
         placeholder="UID hexadecimal de la tarjeta" autoComplete="off" /></label>

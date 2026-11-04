@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Put, Req } from '@nestjs/common';
 import { IsUUID } from 'class-validator';
 import type { Request } from 'express';
 
@@ -31,6 +31,7 @@ export class PlatformController {
   }
 
   @Post()
+  @Header('Cache-Control', 'no-store')
   @Permissions('platform:tenants:manage')
   create(
     @Req() request: Request & { user: AuthenticatedUser },
@@ -65,6 +66,20 @@ export class PlatformController {
   @Permissions('platform:tenants:manage')
   companyCard(@Req() request: Request & { user: AuthenticatedUser }, @Param() params: TenantIdParam) {
     return this.platform.companyCard(request.user.sub, params.tenantId);
+  }
+
+  @Get(':tenantId/company-code')
+  @Header('Cache-Control', 'no-store')
+  @Permissions('platform:tenants:manage')
+  companyCode(@Req() request: Request & { user: AuthenticatedUser }, @Param() params: TenantIdParam) {
+    return this.platform.companyCode(request.user.sub, params.tenantId);
+  }
+
+  @Post(':tenantId/company-code')
+  @Header('Cache-Control', 'no-store')
+  @Permissions('platform:tenants:manage')
+  renewCompanyCode(@Req() request: Request & { user: AuthenticatedUser }, @Param() params: TenantIdParam) {
+    return this.platform.renewCompanyCode(request.user.sub, params.tenantId);
   }
 
   @Put(':tenantId/company-card')
