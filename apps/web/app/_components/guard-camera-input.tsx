@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { consultarCamaraConReintento } from './guard-camera-permission';
 
 import type { ResultadoPermisoPayload } from '../_lib/bridge/protocol';
 
@@ -16,17 +17,17 @@ export function GuardCameraInput({ id, onFoto, pedirPermiso, disabled = false, e
   disabled?: boolean;
   etiqueta?: string;
 }) {
-  const [permiso, setPermiso] = useState<'esperando' | 'concedido' | 'denegado'>(
+  const [permiso, setPermiso] = useState<'esperando' | 'concedido' | 'denegado' | 'error'>(
     pedirPermiso ? 'esperando' : 'concedido',
   );
   useEffect(() => {
     if (!pedirPermiso) return;
     let vigente = true;
-    void pedirPermiso('camara', true)
+    void consultarCamaraConReintento(pedirPermiso)
       .then((resultado) => {
         if (vigente) setPermiso(resultado.estado === 'concedido' ? 'concedido' : 'denegado');
       })
-      .catch(() => { if (vigente) setPermiso('denegado'); });
+      .catch(() => { if (vigente) setPermiso('error'); });
     return () => { vigente = false; };
   }, [pedirPermiso]);
 
@@ -41,14 +42,14 @@ export function GuardCameraInput({ id, onFoto, pedirPermiso, disabled = false, e
           evento.target.value = '';
         }} />
     </> : <><p role="status" className="guardia-nota">
-      {permiso === 'esperando' ? 'Preparando la cámara…' :
-        'Activa Cámara en Ajustes → Aplicaciones → SentryCore → Permisos y vuelve a esta pantalla.'}
-    </p>{permiso === 'denegado' && pedirPermiso ? <button className="guardia-boton-secundario ancho"
+      {permiso === 'esperando' ? 'Preparando la cámara…' : permiso === 'error' ?
+        'La cámara no respondió. Vuelve a comprobarla.' : 'Activa Cámara en Ajustes → Aplicaciones → SentryCore → Permisos y vuelve a esta pantalla.'}
+    </p>{(permiso === 'denegado' || permiso === 'error') && pedirPermiso ? <button className="guardia-boton-secundario ancho"
       type="button" onClick={() => {
         setPermiso('esperando');
-        void pedirPermiso('camara', true).then((result) => {
+        void consultarCamaraConReintento(pedirPermiso).then((result) => {
           setPermiso(result.estado === 'concedido' ? 'concedido' : 'denegado');
-        }).catch(() => setPermiso('denegado'));
+        }).catch(() => setPermiso('error'));
       }}>Revisar permiso de cámara</button> : null}</>}
   </div>;
 }
