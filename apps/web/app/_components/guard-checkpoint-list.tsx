@@ -55,9 +55,12 @@ export function GuardCheckpointList({
   onCancelar,
   onDejarParaDespues,
   saltados = [],
+  fotosGuardadas,
 }: {
   puntos: readonly PuntoRuta[];
   registros: EstadoRonda['puntos'];
+  /** Capturas persistidas que esperan el envío al terminar la ronda. */
+  fotosGuardadas?: ReadonlySet<string>;
   siguiente: PuntoRuta | undefined;
   fase: FaseEscaneo;
   /** Qué caminos ofrece la pantalla. Lo decide `opcionesDeEscaneo`. */
@@ -247,6 +250,7 @@ export function GuardCheckpointList({
             esSiguiente={punto.id === siguiente?.id}
             saltado={saltados.includes(punto.id) && registros[punto.id] === undefined}
             exigeFoto={puntoExigeFoto(punto, politicaFoto)}
+            fotoGuardada={fotosGuardadas?.has(registros[punto.id]?.clientScanId ?? '') ?? false}
           />
         ))}
       </ol>
@@ -260,12 +264,14 @@ function Punto({
   esSiguiente,
   saltado,
   exigeFoto,
+  fotoGuardada,
 }: {
   punto: PuntoRuta;
   registro: RegistroPunto | undefined;
   esSiguiente: boolean;
   saltado: boolean;
   exigeFoto: boolean;
+  fotoGuardada: boolean;
 }) {
   const estado = registro?.estado ?? 'pendiente';
   // La deuda es la que quedó escrita al escanear, no la que se calcula ahora: un
@@ -299,7 +305,7 @@ function Punto({
           ) : null}
           {debeFoto ? (
             <span className="guardia-chip foto">
-              {registro ? 'Falta la foto' : 'Pide foto'}
+              {fotoGuardada ? 'Foto guardada · envío al finalizar' : registro ? 'Falta la foto' : 'Pide foto'}
             </span>
           ) : null}
         </span>

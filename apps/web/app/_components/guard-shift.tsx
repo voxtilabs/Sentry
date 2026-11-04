@@ -75,7 +75,6 @@ import { procesarFoto } from './guard-photo';
 import {
   borrarFoto,
   clasificarPendientes,
-  contarPendientes,
   fijarServerId,
   guardarFoto,
   listarPendientes,
@@ -344,6 +343,11 @@ function Ronda({
   const [errorPlantilla, setErrorPlantilla] = useState(false);
   const [reintentoPlantilla, setReintentoPlantilla] = useState(0);
   const [tareas, setTareas] = useState<EstadoTareas>(() => estadoTareasInicial(patrol.id));
+  const [fotosDePuntoLocales, setFotosDePuntoLocales] = useState<string[]>([]);
+  const fotosGuardadas = new Set(fotosDePuntoLocales);
+  for (const captura of [...tareas.cola, ...Object.values(tareas.borradores ?? {})]) {
+    if (captura.clientScanId && captura.fotos?.length) fotosGuardadas.add(captura.clientScanId);
+  }
   const [puntoConTareas, setPuntoConTareas] = useState<{
     checkpointId: string;
     nombre: string;
@@ -352,7 +356,9 @@ function Ronda({
   }>();
 
   const refrescarFotosPendientes = useCallback(async () => {
-    setFotosPorSubir(await contarPendientes());
+    const pendientes = await listarPendientes();
+    setFotosPorSubir(pendientes.length);
+    setFotosDePuntoLocales(pendientes.filter((f) => f.destino === 'escaneo').map((f) => f.clientEventId));
   }, []);
 
   const puntos = useMemo(
@@ -1180,6 +1186,7 @@ function Ronda({
             esperandoTareas={!plantillaLista || tareasEnPantalla}
             puntos={puntos}
             registros={estado.puntos}
+            fotosGuardadas={fotosGuardadas}
             saltados={saltados}
             siguiente={siguiente}
             {...(puedeSaltar ? { onDejarParaDespues: dejarParaDespues } : {})}
