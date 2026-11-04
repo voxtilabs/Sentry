@@ -16,9 +16,9 @@ import type { EstadoTareas } from './guard-tareas-modelo';
  * la cuota y tumbaría también la cola de texto. IndexedDB guarda Blobs binarios
  * sin serializar a base64.
  *
- * Degrada con gracia igual que `guard-storage`: si el WebView tiene IndexedDB
- * bloqueado por política del dispositivo, se cae a un `Map` en memoria. Perder
- * la foto al cerrar la app es malo, pero romper la pantalla en terreno es peor.
+ * En el teléfono solo se confirma una foto después de persistirla en IndexedDB.
+ * Si falla el almacenamiento, se informa y se permite reintentar; no se presenta
+ * una copia volátil como evidencia guardada. El Map se reserva para SSR/tests.
  *
  * Lo que NO hace: subir en segundo plano con la app **cerrada**. Eso necesita el
  * shell nativo (WorkManager + base cifrada, #71/#72) y vive en `apps/mobile`.
