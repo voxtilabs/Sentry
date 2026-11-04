@@ -1,6 +1,9 @@
+import { ReferenceModule } from './reference/reference.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { VisitsModule } from './visits/visits.module';
 import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { BrandingModule } from './branding/branding.module';
@@ -57,6 +60,9 @@ import { SyncModule } from './sync/sync.module';
     DashboardModule,
     AuthModule,
     GuardModule,
+    VisitsModule,
+    ReferenceModule,
+    FeedbackModule,
     MailModule,
     EscalationModule,
     EvidenceModule,

@@ -132,8 +132,7 @@ describe('Seguridad V1: fotos solo cámara, nunca galería (CLAUDE.md)', () => {
   const COMPONENTES_DIR = __dirname;
   const COMPONENTES_CON_FOTO = [
     'guard-scan-photo.tsx',
-    'guard-event-form.tsx',
-    'guard-tareas-punto.tsx',
+    'guard-camera-input.tsx',
   ];
 
   it.each(COMPONENTES_CON_FOTO)(
@@ -148,6 +147,14 @@ describe('Seguridad V1: fotos solo cámara, nunca galería (CLAUDE.md)', () => {
       expect(fuente).toMatch(/capture=["'](environment|user)["']/);
       // Debe contener accept="image/*"
       expect(fuente).toMatch(/accept=["']image\/\*["']/);
+    },
+  );
+
+  it.each(['guard-event-form.tsx', 'guard-tareas-punto.tsx'])(
+    '%s usa la captura con permiso de Android', (archivo) => {
+      const fuente = readFileSync(join(COMPONENTES_DIR, archivo), 'utf8');
+      expect(fuente).toMatch(/<GuardCameraInput/);
+      expect(fuente).toMatch(/pedirPermisoCamara/);
     },
   );
 

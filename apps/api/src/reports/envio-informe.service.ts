@@ -23,6 +23,7 @@ import {
 import {
   omitir,
   type DestinatarioEnvio,
+  type CierreParaInforme,
   type EnvioInformeJobData,
   type MotivoOmision,
   type ResultadoEnvio,
@@ -163,7 +164,7 @@ export class EnvioInformeService {
    * quemar el jobId —que es unico por ronda y no se puede reciclar— en un
    * despacho que no corresponde.
    */
-  async alCerrarRonda(patrolId: string): Promise<{ jobId: string } | null> {
+  async alCerrarRonda(patrolId: string, cierre: CierreParaInforme = {}): Promise<{ jobId: string } | null> {
     const filas = await this.tenantContext.manager.query<
       Array<{ tenant_id: string; status: string }>
     >(`SELECT tenant_id, status FROM patrols WHERE id = $1`, [patrolId]);
@@ -178,7 +179,7 @@ export class EnvioInformeService {
     const jobId = createHash('sha256').update(`envio-informe:${patrolId}`).digest('hex');
     const job = await this.queue.add(
       ENVIO_INFORME_JOB_NAME,
-      { tenantId: ronda.tenant_id, patrolId },
+      { tenantId: ronda.tenant_id, patrolId, ...cierre },
       {
         jobId,
         attempts: ENVIO_INFORME_JOB_ATTEMPTS,
@@ -198,7 +199,7 @@ export class EnvioInformeService {
    * transaccion con `app.tenant_id` seteado (la abre el processor): todas las
    * consultas de aca abajo pasan por RLS igual que las de un request.
    */
-  async despachar(tenantId: string, patrolId: string): Promise<ResultadoEnvio> {
+  async despachar(tenantId: string, patrolId: string, cierre: CierreParaInforme = {}): Promise<ResultadoEnvio> {
     const filas = await this.tenantContext.manager.query<RondaRow[]>(
       `SELECT site_id, status, compliance_pct FROM patrols WHERE id = $1`,
       [patrolId],
@@ -290,10 +291,24 @@ export class EnvioInformeService {
       // Contexto de sistema: no hay usuario pidiendo el informe. El alcance por
       // recinto no aplica porque nadie esta consultando nada.
       requester: null,
-      // Sin anexo fotografico: el adjunto viaja en base64 dentro de un job de
-      // Redis. El anexo completo lo baja quien quiera desde el panel.
-      incluirAnexo: false,
+      // Misma configuración que la descarga del panel: fotos y recorrido
+      // cuando están habilitados. El límite del adjunto se aplica al PDF
+      // completo, sin reemplazarlo silenciosamente por la versión liviana.
     });
+    // Leer el último NFC cierra el recorrido, pero su cámara y preguntas se
+    // resuelven después. No congelar ni enviar el PDF mientras faltan, salvo
+    // que se agote la espera configurada: en ese caso el informe muestra la deuda.
+    const numeroCierre = modelo.puntos.find((p) =>
+      cierre.closingCheckpointId ? p.checkpointId === cierre.closingCheckpointId : p.esCierre && !p.omitido)?.numero;
+    const fotoPendiente = cierre.closingPhotoRequired && cierre.closingCheckpointId &&
+      !modelo.evidencias.some((f) => f.checkpointId === cierre.closingCheckpointId);
+    const tareasPendientes = numeroCierre !== undefined && modelo.tareas.some((t) =>
+      t.numeroPunto === numeroCierre && (t.estado === 'pendiente' || t.faltaFoto));
+    const cerradoEn = modelo.ejecucion.cierre?.getTime();
+    if ((fotoPendiente || tareasPendientes) && cerradoEn !== undefined &&
+      Date.now() - cerradoEn < reglas.reportEvidenceGraceSeconds * 1000) {
+      return omitir(patrolId, 'evidencia_pendiente', suprimidos.length);
+    }
     const pdf = await this.dibujar(modelo);
 
     // El veredicto se toma con el umbral DEL RECINTO y con el cumplimiento
@@ -628,7 +643,10 @@ export class EnvioInformeService {
     canal.on('data', (parte: Buffer) => partes.push(parte));
     // render() resuelve recien cuando el stream de destino termino, asi que
     // para cuando esto retorna ya estan todos los pedazos.
-    await this.informe.render(modelo, canal);
+    // El panel pudo descargar una copia antes de que llegaran la última foto
+    // y su respuesta. El correo se genera con el modelo ya completo y renueva
+    // esa copia, en vez de adjuntar un PDF anterior todavía cacheado.
+    await this.informe.render(modelo, canal, { regenerarCache: true });
     return Buffer.concat(partes);
   }
 

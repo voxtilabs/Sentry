@@ -104,6 +104,13 @@ const MINOR_CON_TRAZA = 5;
 export type FasePuente = 'conectando' | 'sin-puente' | 'listo' | 'incompatible';
 
 export interface PuenteGuardia {
+  consultarVehiculoPublico: ReturnType<typeof crearClientePuente>['consultarVehiculoPublico'];
+  cancelarConsultaPublica: () => void;
+  soportaVisitas: boolean;
+  escanearOcr: ReturnType<typeof crearClientePuente>['escanearOcr'];
+  cancelarOcr: () => void;
+  encolarSync: ReturnType<typeof crearClientePuente>['encolarSync'];
+  sincronizarCola: ReturnType<typeof crearClientePuente>['sincronizarCola'];
   fase: FasePuente;
   /** `true` solo cuando el shell saludó y el equipo tiene antena. */
   puedeEscanear: boolean;
@@ -123,6 +130,18 @@ export interface PuenteGuardia {
    * problemas distintos y el guardia puede tener los dos a la vez.
    */
   avisoUbicacion?: string;
+  /**
+   * Hay que mostrar la divulgacion de ubicacion ANTES de que Android pida el
+   * permiso. La pantalla que monte el puente tiene que renderizar
+   * `DivulgacionUbicacion` cuando esto es `true`: sin eso el permiso no se
+   * pide nunca, que es preferible a pedirlo sin aviso previo (Play rechaza la
+   * app por eso, no por no pedirlo).
+   */
+  divulgacionPendiente: boolean;
+  /** La persona leyo y continua: abre el dialogo del sistema. */
+  continuarTrasDivulgacion: () => Promise<void>;
+  /** La persona lo deja para despues. No se vuelve a abrir solo. */
+  posponerDivulgacion: () => void;
   /**
    * Pide un permiso del sistema EN CONTEXTO. Cada pantalla pide el suyo en el
    * momento en que la persona entiende para que sirve: Android solo concede
@@ -160,6 +179,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
   const [puedeEscanear, setPuedeEscanear] = useState(false);
   const [puedeEscanearQr, setPuedeEscanearQr] = useState(false);
   const [soportaTraza, setSoportaTraza] = useState(false);
+  const [soportaVisitas, setSoportaVisitas] = useState(false);
   const [sinAntenaNfc, setSinAntenaNfc] = useState(false);
   const [soportaRutaOffline, setSoportaRutaOffline] = useState(false);
   // Marca del EQUIPO (api de Android + version de la app), sin datos de la
@@ -168,6 +188,12 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
   // ya paso.
   const [infoEquipo, setInfoEquipo] = useState<string>();
   const [avisoUbicacion, setAvisoUbicacion] = useState<string>();
+  /*
+   * Hay que mostrar la divulgacion de ubicacion ANTES de que aparezca el
+   * dialogo de Android. Se levanta cuando el permiso del sistema falta y el
+   * consentimiento esta vigente; la pantalla la baja al responder.
+   */
+  const [divulgacionPendiente, setDivulgacionPendiente] = useState(false);
   // Valor fijo en el primer render: leer `navigator` acá rompería la hidratación.
   const [conexion, setConexion] = useState<EstadoConexionPayload>({
     enLinea: true,
@@ -203,6 +229,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
 
       setFase('listo');
       setSoportaRutaOffline(estado.info.protocolo.minor >= 1);
+      setSoportaVisitas(estado.info.protocolo.minor >= 6);
       const { dispositivo } = estado.info;
 
       /*
@@ -253,32 +280,33 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
           });
 
           /*
-           * PEDIR el permiso del sistema EN EL INGRESO (bug 10-ago: la app no lo
-           * pedía y el guardia tenía que ir a Ajustes).
+           * EL DIALOGO DEL SISTEMA NO SE ABRE SOLO. NUNCA.
            *
-           * El `permission.request` de #275 solo se disparaba al ACEPTAR el
-           * aviso — y un guardia que volvía a entrar (consentimiento ya vigente)
-           * nunca veía esa pantalla, así que el diálogo del sistema no aparecía
-           * jamás. Acá, si el permiso NO está concedido pero el consentimiento
-           * SÍ está activo (la divulgación que Play exige ya se dio), se pide en
-           * el ingreso: un permiso nunca pedido abre el diálogo; uno negado en
-           * firme no molesta (el shell responde sin diálogo). El resultado se
-           * reporta, sea cual sea.
+           * Aqui habia un `pedirPermiso` directo al ingresar, con este
+           * razonamiento: "si el consentimiento esta vigente, la divulgacion
+           * destacada que Play exige ya se dio". Google rechazo la app por
+           * exactamente eso (Inadequate Prominent Disclosure, 02-10-2026):
+           *
+           *   "The in-app Prominent Disclosure does not disclose the usage of
+           *    accessed or collected Location data."
+           *
+           * El revisor entro con una cuenta que YA tenia el consentimiento
+           * aceptado —la de demostracion que se le entrego— y lo primero que
+           * vio al abrir fue el dialogo de Android pidiendo ubicacion, sin
+           * ninguna pantalla delante explicando para que. Que el texto se haya
+           * aceptado semanas antes, en otro telefono, no cuenta: la divulgacion
+           * tiene que estar DELANTE del dialogo, cada vez que el dialogo va a
+           * aparecer.
+           *
+           * Ahora solo se levanta una bandera. La pantalla muestra la
+           * divulgacion y, si la persona continua, ESA pantalla pide el
+           * permiso. El unico camino al dialogo del sistema pasa por un texto
+           * que la persona acaba de leer.
            */
           if (cancelado || !reporte.hecho || reporte.estado === 'concedido') return;
           if (reporte.estado === 'no_disponible') return; // el equipo no tiene GPS
           if (!(await consentimientoActivo(apiUrl)) || cancelado) return;
-
-          const pedido = await cliente.pedirPermiso('ubicacion', true).catch(() => undefined);
-          if (!pedido || cancelado) return;
-          if (!pedido.puedeVolverAPedir && pedido.estado !== 'concedido') {
-            setAvisoUbicacion(AJUSTES_UBICACION);
-          }
-          await reportarPermisoAlServidor(
-            apiUrl,
-            traducirEstadoPermiso(pedido.estado),
-            marcaEquipo,
-          ).catch(() => undefined);
+          setDivulgacionPendiente(true);
         })();
       }
       // Con la antena apagada se deja intentar igual: el shell responde
@@ -410,7 +438,41 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
     return true;
   }, [cliente, soportaRutaOffline]);
 
+  /**
+   * La persona leyo la divulgacion y continua: AHORA se abre el dialogo del
+   * sistema. Es el unico lugar desde el que se pide el permiso de ubicacion al
+   * ingresar, y por construccion siempre va precedido del texto.
+   */
+  const continuarTrasDivulgacion = useCallback(async () => {
+    setDivulgacionPendiente(false);
+    const pedido = await cliente.pedirPermiso('ubicacion', true).catch(() => undefined);
+    if (!pedido) return;
+    if (!pedido.puedeVolverAPedir && pedido.estado !== 'concedido') {
+      setAvisoUbicacion(AJUSTES_UBICACION);
+    }
+    if (apiUrl) {
+      await reportarPermisoAlServidor(
+        apiUrl,
+        traducirEstadoPermiso(pedido.estado),
+        infoEquipo ?? 'desconocido',
+      ).catch(() => undefined);
+    }
+  }, [apiUrl, cliente, infoEquipo]);
+
+  /** La persona no quiere ahora. Se respeta y no se vuelve a abrir solo. */
+  const posponerDivulgacion = useCallback(() => setDivulgacionPendiente(false), []);
+
   return {
+    consultarVehiculoPublico: cliente.consultarVehiculoPublico,
+    cancelarConsultaPublica: cliente.cancelarConsultaPublica,
+    soportaVisitas,
+    escanearOcr: cliente.escanearOcr,
+    cancelarOcr: cliente.cancelarOcr,
+    encolarSync: cliente.encolarSync,
+    sincronizarCola: cliente.sincronizarCola,
+    divulgacionPendiente,
+    continuarTrasDivulgacion,
+    posponerDivulgacion,
     fase,
     puedeEscanear,
     puedeEscanearQr,

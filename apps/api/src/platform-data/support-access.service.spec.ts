@@ -25,22 +25,47 @@ describe('SupportAccessService', () => {
   it('la ventana se topa en 8 horas aunque pidan mas', async () => {
     const query = jest.fn()
       .mockResolvedValueOnce([{ '?column?': 1 }])
-      .mockResolvedValueOnce([]) // sin acceso abierto
-      .mockResolvedValueOnce([{ id: 't1', name: 'Andina' }])
-      .mockResolvedValueOnce([{ id: 'acc-1', started_at: new Date(), expires_at: new Date() }]);
+      .mockResolvedValueOnce([
+        { id: 'acc-1', tenant_id: 't1', tenant_name: 'Andina', reason: 'x', started_at: new Date(), expires_at: new Date() },
+      ]);
     await new SupportAccessService(ds(query)).open(SUPER, {
       tenantId: 't1',
       reason: 'investigar por que no llegan las alertas',
       minutes: 99999,
     });
-    const insert = query.mock.calls.find(([sql]: [string]) => sql.includes('INSERT INTO support_access_log'));
-    expect(insert[1][3]).toBe(480); // 8 horas
+    const abrir = query.mock.calls.find(([sql]: [string]) =>
+      sql.includes('platform_open_support_access'),
+    );
+    expect(abrir[1][3]).toBe(480); // 8 horas
+  });
+
+  it('abre por la funcion de plataforma y NO con SQL pelado (#109)', async () => {
+    /*
+     * `tenants` y `support_access_log` llevan RLS FORCE y la API se conecta con
+     * un rol sujeto a ella: sin contexto de empresa —la situacion del
+     * SUPERADMIN— un SELECT pelado no ve ni una fila y abrir respondia "La
+     * empresa no existe". El mecanismo auditado quedo muerto meses.
+     */
+    const query = jest.fn()
+      .mockResolvedValueOnce([{ '?column?': 1 }])
+      .mockResolvedValueOnce([
+        { id: 'acc-1', tenant_id: 't1', tenant_name: 'Andina', reason: 'x', started_at: new Date(), expires_at: new Date() },
+      ]);
+    await new SupportAccessService(ds(query)).open(SUPER, {
+      tenantId: 't1',
+      reason: 'revisar la ronda que reporto el cliente',
+    });
+    const sqls = query.mock.calls.map(([sql]: [string]) => sql);
+    expect(sqls.some((sql) => sql.includes('platform_open_support_access'))).toBe(true);
+    expect(sqls.some((sql) => /INSERT INTO\s+support_access_log/.test(sql))).toBe(false);
+    expect(sqls.some((sql) => /FROM\s+tenants/.test(sql))).toBe(false);
   });
 
   it('no se abren dos ventanas a la misma empresa', async () => {
+    // La guarda vive en la funcion: llega como unique_violation de PostgreSQL.
     const query = jest.fn()
       .mockResolvedValueOnce([{ '?column?': 1 }])
-      .mockResolvedValueOnce([{ id: 'acc-previa' }]);
+      .mockRejectedValueOnce(Object.assign(new Error('duplicada'), { code: '23505' }));
     await expect(
       new SupportAccessService(ds(query)).open(SUPER, {
         tenantId: 't1',
@@ -49,14 +74,26 @@ describe('SupportAccessService', () => {
     ).rejects.toThrow('Ya tienes un acceso de soporte abierto');
   });
 
+  it('una empresa que no existe es 404 y no un 500', async () => {
+    const query = jest.fn()
+      .mockResolvedValueOnce([{ '?column?': 1 }])
+      .mockRejectedValueOnce(Object.assign(new Error('tenant not found'), { code: 'P0002' }));
+    await expect(
+      new SupportAccessService(ds(query)).open(SUPER, {
+        tenantId: 'no-existe',
+        reason: 'revisar un incidente reportado',
+      }),
+    ).rejects.toThrow('La empresa no existe');
+  });
+
   it('resolve exige vigencia: vencido o cerrado no resuelve', async () => {
-    const query = jest.fn().mockResolvedValue([]);
+    // La vigencia la comprueba la funcion, que devuelve NULL cuando no aplica.
+    const query = jest.fn().mockResolvedValue([{ tenant_id: null }]);
     await expect(
       new SupportAccessService(ds(query)).resolve('acc-1', SUPER),
     ).resolves.toBeNull();
     const [sql] = query.mock.calls[0];
-    expect(sql).toContain('ended_at IS NULL');
-    expect(sql).toContain('expires_at > now()');
+    expect(sql).toContain('platform_resolve_support_access');
   });
 
   it('resolve devuelve el tenant de la ventana vigente', async () => {
