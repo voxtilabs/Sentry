@@ -317,7 +317,14 @@ export class EnvioInformeService {
       Date.now() - cerradoEn < reglas.reportEvidenceGraceSeconds * 1000) {
       return omitir(patrolId, 'evidencia_pendiente', suprimidos.length);
     }
-    const pdf = await this.dibujar(modelo);
+    const maxBytes = reglas.reportMailMaxAttachmentMB * 1024 * 1024;
+    let pdf = await this.dibujar(modelo, maxBytes);
+    // Una segunda pasada ajusta el presupuesto al tamaño real del documento.
+    // Conserva todas las fotos, textos y mapas; nunca altera sus originales.
+    if (pdf.length > maxBytes && modelo.evidencias.length) {
+      const compacto = await this.dibujar(modelo, Math.floor(maxBytes * maxBytes / pdf.length * 0.8));
+      if (compacto.length < pdf.length) pdf = compacto;
+    }
 
     // El veredicto se toma con el umbral DEL RECINTO y con el cumplimiento
     // recien calculado, no con el que quedo persistido: entre el cierre y el
@@ -351,7 +358,6 @@ export class EnvioInformeService {
       return omitir(patrolId, 'envio_desactivado', suprimidos.length);
     }
 
-    const maxBytes = reglas.reportMailMaxAttachmentMB * 1024 * 1024;
     const adjuntar = pdf.length <= maxBytes;
     const adjuntos = adjuntar
       ? [
@@ -645,7 +651,7 @@ export class EnvioInformeService {
    * novedades), y toBuffer() vuelve a resolverlo por dentro: serian todas las
    * consultas del informe corriendo dos veces por cada ronda que cierra.
    */
-  private async dibujar(modelo: InformeRonda): Promise<Buffer> {
+  private async dibujar(modelo: InformeRonda, maxPdfBytes: number): Promise<Buffer> {
     const canal = new PassThrough();
     const partes: Buffer[] = [];
     canal.on('data', (parte: Buffer) => partes.push(parte));
@@ -654,7 +660,7 @@ export class EnvioInformeService {
     // El panel pudo descargar una copia antes de que llegaran la última foto
     // y su respuesta. El correo se genera con el modelo ya completo y renueva
     // esa copia, en vez de adjuntar un PDF anterior todavía cacheado.
-    await this.informe.render(modelo, canal, { regenerarCache: true });
+    await this.informe.render(modelo, canal, { regenerarCache: true, maxPdfBytes });
     return Buffer.concat(partes);
   }
 

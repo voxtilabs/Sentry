@@ -228,6 +228,26 @@ describe('EnvioInformeService', () => {
   });
 
   describe('despachar', () => {
+    it('intenta una copia más compacta antes de descartar el adjunto, usando el límite del recinto', async () => {
+      const modelo: InformeRonda = { ...MODELO, evidencias: [{ id: 'foto', scanId: 'scan',
+        checkpointId: 'punto', checkpointName: 'Acceso', numeroPunto: 1, numero: 1,
+        storagePath: 'foto.jpg', mimeType: 'image/jpeg', sizeBytes: 1000,
+        huella: 'abcd', capturadaEn: new Date(), tarea: null, tareaId: null }] };
+      const { service, informe, mail } = armar({ modelo, reglas: { reportMailMaxAttachmentMB: 1 } });
+      let intentos = 0;
+      jest.mocked(informe.render).mockImplementation(async (_modelo, destino, opciones) => {
+        intentos++;
+        expect(opciones?.regenerarCache).toBe(true);
+        expect(opciones?.maxPdfBytes).toBe(intentos === 1 ? 1024 * 1024 : Math.floor(1024 * 1024 * 0.4));
+        await new Promise<void>((resolve) => { destino.on('finish', resolve);
+          destino.end(Buffer.alloc(intentos === 1 ? 2 * 1024 * 1024 : 500 * 1024)); });
+        return { fotosIncluidas: 1, fotosOmitidas: 0, paginasAnexo: 0 };
+      });
+      const resultado = await service.despachar(TENANT, PATRULLA);
+      expect(resultado.adjunto).toBe(true);
+      expect(intentos).toBe(2);
+      expect(mail.enqueue).toHaveBeenCalled();
+    });
     it('espera el término y todo el lote aunque venza la gracia del último punto', async () => {
       const ronda = { tenant_id: TENANT, site_id: SITIO, status: 'completada', compliance_pct: '100.00', guard_flow_completed: false };
       const { service, mail, informe } = armar({ ronda: [ronda], reglas: { reportEvidenceGraceSeconds: 0 } });

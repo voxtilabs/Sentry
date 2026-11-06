@@ -1,6 +1,7 @@
 'use client';
 
 import { subirFotoDeTarea, enviarRespuestasDeTareas } from './guard-outbox';
+import { conSubidasAcotadas } from './guard-upload-pool';
 import { anotarReciboFotoTarea, borrarFoto, conSubidaExclusiva, leerFoto } from './guard-photo-store';
 import {
   anotarFotoDeTarea,
@@ -96,8 +97,10 @@ export async function adoptarFotosDeTareas(
   registros: Readonly<Record<string, { clientScanId: string; scanId?: string }>>,
 ): Promise<EstadoTareas> {
   let siguiente = estado;
-  for (const { clientPhotoId, scanId } of fotosDeTareaAdoptables(estado, registros)) {
-    const subida = await subirFotoDeTareaGuardada(apiUrl, clientPhotoId, scanId);
+  const recibos = await conSubidasAcotadas(fotosDeTareaAdoptables(estado, registros), async ({ clientPhotoId, scanId }) => ({
+    clientPhotoId, subida: await subirFotoDeTareaGuardada(apiUrl, clientPhotoId, scanId),
+  }));
+  for (const { clientPhotoId, subida } of recibos) {
     if (subida.ok && subida.photoId) {
       siguiente = anotarFotoDeTarea(siguiente, clientPhotoId, subida.photoId);
     }
@@ -152,11 +155,9 @@ export function sincronizarTareasGuardadas(apiUrl: string, patrolId: string,
         return rechazo ?? r;
       }) };
     });
-    for (const r of actual.cola) if (siguiente.enviadas.includes(r.itemId)) {
-      for (const f of r.fotos ?? (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId }] : [])) {
-        await borrarFoto(f.clientPhotoId);
-      }
-    }
+    await conSubidasAcotadas(actual.cola.filter((r) => siguiente.enviadas.includes(r.itemId))
+      .flatMap((r) => r.fotos ?? (r.clientPhotoId ? [{ clientPhotoId: r.clientPhotoId }] : [])),
+    (f) => borrarFoto(f.clientPhotoId));
     return siguiente;
   })().finally(() => sincronizaciones.delete(patrolId));
   sincronizaciones.set(patrolId, promesa);

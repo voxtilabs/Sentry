@@ -24,6 +24,7 @@ import {
   type TareaRow,
 } from './patrol-report.model';
 import { renderizarInformeRonda, type ResumenRender } from './patrol-report.renderer';
+import { presupuestoFotoPdf } from './pdf-photo';
 
 /**
  * Generacion del informe PDF de una ronda ejecutada (#85).
@@ -360,6 +361,7 @@ export class PatrolReportService {
   private async servirDesdeCache(
     rutaCache: string,
     destino: NodeJS.WritableStream,
+    maxBytes = Number.POSITIVE_INFINITY,
   ): Promise<boolean> {
     let stats;
     try {
@@ -367,7 +369,7 @@ export class PatrolReportService {
     } catch {
       return false; // No está en cache todavía: se dibuja y guarda en disco.
     }
-    if (stats.size === 0) return false;
+    if (stats.size === 0 || stats.size > maxBytes) return false;
 
     const lector = createReadStream(rutaCache);
     await new Promise<void>((resolve, reject) => {
@@ -468,16 +470,17 @@ export class PatrolReportService {
 
   /** Dibuja el informe ya resuelto sobre el destino que decida el llamador. */
   async render(modelo: InformeRonda, destino: NodeJS.WritableStream,
-    opciones: { regenerarCache?: boolean } = {}): Promise<ResumenRender> {
+    opciones: { regenerarCache?: boolean; maxPdfBytes?: number } = {}): Promise<ResumenRender> {
     const tenantId = modelo.tenantId;
     const cerrada = this.esRondaCerrada(modelo.estado);
     const rutaCache = tenantId ? this.rutaCache(tenantId, modelo.patrolId, modelo.incluyeAnexo) : null;
 
-    if (!opciones.regenerarCache && cerrada && rutaCache && (await this.servirDesdeCache(rutaCache, destino))) {
+    const reglas = await this.rules.effective();
+    const maxPdfBytes = opciones.maxPdfBytes ?? reglas.reportMailMaxAttachmentMB * 1024 * 1024;
+    if (!opciones.regenerarCache && cerrada && rutaCache && (await this.servirDesdeCache(rutaCache, destino, maxPdfBytes))) {
       return { fotosIncluidas: 0, fotosOmitidas: 0, paginasAnexo: 0 };
     }
 
-    const reglas = await this.rules.effective();
 
     // Se escribe a un TEMPORAL a medida que pdfkit va emitiendo (#320): el PDF
     // completo puede pesar decenas de MB con el anexo, y juntarlo entero en un
@@ -510,6 +513,7 @@ export class PatrolReportService {
         // el maximo del tenant, esta corrupta o alguien la escribio a mano en el
         // volumen, y cargarla es justo lo que no queremos.
         maxBytesFoto: reglas.photoMaxSizeMB * 1024 * 1024,
+        objetivoBytesFoto: presupuestoFotoPdf(maxPdfBytes, modelo.evidencias.length),
         // Forma del informe (#308). Ninguna de las cuatro es una constante del
         // renderer: son decisiones de cada cliente y viven en la cascada.
         bitacora: reglas.reportTimeline,

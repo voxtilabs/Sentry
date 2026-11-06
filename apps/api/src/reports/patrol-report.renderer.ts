@@ -118,6 +118,8 @@ export interface OpcionesRender {
   readonly raizEvidencia: string;
   /** Techo por archivo; se alimenta de photoMaxSizeMB de las reglas del tenant. */
   readonly maxBytesFoto: number;
+  /** Presupuesto de la copia comprimida dentro del PDF; no altera la evidencia. */
+  readonly objetivoBytesFoto?: number;
   /** Aviso de evidencia que no se pudo incluir. Sin nombres ni ubicaciones. */
   readonly onEvidenciaFallida?: (fotoId: string, motivo: MotivoEvidencia) => void;
   /** reportTimeline: la ronda contada como cronologia. Apagada, vuelven las tablas. */
@@ -861,7 +863,7 @@ async function pintarEvidencia(
 
   let ok = false;
   if (lectura.ok) {
-    ok = dibujarImagen(doc, await fotoParaPdf(lectura.contenido), caja);
+    ok = dibujarImagen(doc, await fotoParaPdf(lectura.contenido, opciones.objetivoBytesFoto), caja);
     if (!ok) {
       opciones.onEvidenciaFallida?.(foto.id, 'ilegible');
       dibujarHuecoEvidencia(doc, caja, MOTIVO_TEXTO.ilegible);
@@ -1123,7 +1125,7 @@ async function dibujarAnexo(
 
     const caja = { x: celda.x, y: celda.y, ancho: celda.ancho, alto: celda.alto - ALTO_LEYENDA };
     if (lectura.ok) {
-      const dibujada = dibujarImagen(doc, await fotoParaPdf(lectura.contenido), caja);
+      const dibujada = dibujarImagen(doc, await fotoParaPdf(lectura.contenido, opciones.objetivoBytesFoto), caja);
       if (dibujada) {
         incluidas += 1;
       } else {
