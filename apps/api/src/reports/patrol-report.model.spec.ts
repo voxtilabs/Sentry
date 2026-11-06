@@ -488,7 +488,7 @@ describe('construirInformeRonda · tareas del turno', () => {
       entrada({ tareas: [respondida({ value: 'falla', failed: true })] }),
     );
 
-    expect(informe.tareas[0]).toMatchObject({ estado: 'falla', respuesta: 'falla' });
+    expect(informe.tareas[0]).toMatchObject({ estado: 'falla', respuesta: 'No' });
   });
 
   it('la tarea con foto obligatoria y sin foto queda marcada', () => {

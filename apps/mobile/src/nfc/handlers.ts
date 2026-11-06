@@ -1,8 +1,7 @@
 import { CameraView } from 'expo-camera';
 import { Platform } from 'react-native';
 
-import { crearManejadoresBase } from '../bridge/default-handlers';
-import type { ManejadoresNativos } from '../bridge/native';
+import { crearManejadoresBase, type ManejadoresBase } from '../bridge/default-handlers';
 import { resolverCamara } from './camara';
 import { crearLectorNfc, type PuertoNfc } from './nfc-reader';
 import { borrarRutaOffline, guardarRutaOffline } from '../offline/route-store';
@@ -28,12 +27,13 @@ export function crearManejadoresNfc(
   lectorQr: LectorQr,
   /** Se inyecta solo en pruebas; en el telefono manda `camaraDelSistema`. */
   hayCamara: () => Promise<boolean> = camaraDelSistema,
-): ManejadoresNativos {
+): ManejadoresBase {
   const base = crearManejadoresBase();
   const lector = crearLectorNfc(puerto);
   return {
     ...base,
     capacidades: async () => ({
+      ...await base.capacidades(),
       ...await lector.capacidades(),
       tieneCamara: await hayCamara(),
       nivelApiAndroid: typeof Platform.Version === 'number' ? Platform.Version : 0,
