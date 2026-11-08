@@ -17,6 +17,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
     {
       label: 'Operación',
       items: [
+        { view: 'visitas', icon: '+', label: 'Registro de visitas' },
         { view: 'informes', icon: '▤', label: 'Informes' },
         { view: 'envios', icon: '✉', label: 'Envíos de correo' },
       ],
@@ -54,8 +55,10 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
         // el servidor (`checkpoints:manage` + supervisor_sites). Si esta entrada
         // faltara, `resolvePanelView` mandaria la vista a 'resumen' y la pantalla
         // quedaria inalcanzable aunque la API la acepte.
+        { view: 'ronda-patron', icon: '⌖', label: 'Ronda patrón' },
         { view: 'terreno', icon: '▣', label: 'Puntos y etiquetas' },
         { view: 'monitoreo', icon: '●', label: 'Monitoreo en vivo' },
+        { view: 'visitas', icon: '+', label: 'Registro de visitas' },
         { view: 'informes', icon: '▤', label: 'Informes' },
       ],
     },
@@ -87,6 +90,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
   const copy: Record<PanelRole, Record<string, { title: string; subtitle: string }>> = {
     ADMIN: {
       resumen: { title: 'Resumen de la empresa', subtitle: 'Lo que requiere atención en la operación actual.' },
+      visitas: { title: 'Registro de visitas', subtitle: 'Ingresos y salidas de los recintos autorizados.' },
       informes: { title: 'Informes de operación', subtitle: 'Cumplimiento, tendencias y evidencia de las rondas.' },
       envios: { title: 'Envíos de correo', subtitle: 'Confirma qué comunicaciones salieron y si llegaron.' },
       personas: { title: 'Personas y acceso', subtitle: 'Administra usuarios, roles y protección de ingreso.' },
@@ -100,8 +104,10 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
     SUPERVISOR: {
       resumen: { title: 'Mis recintos', subtitle: 'Estado actual de los recintos que tienes asignados.' },
       planificacion: { title: 'Planificación', subtitle: 'Programa turnos, recorridos y tareas de terreno.' },
+      'ronda-patron': { title: 'Ronda patrón', subtitle: 'Registra el recorrido de referencia y la posición GPS de cada NFC.' },
       terreno: { title: 'Puntos y etiquetas', subtitle: 'Da de alta puntos de control y vincula sus etiquetas NFC en tus recintos.' },
       monitoreo: { title: 'Monitoreo en vivo', subtitle: 'Sigue las rondas activas de tus recintos asignados.' },
+      visitas: { title: 'Registro de visitas', subtitle: 'Ingresos y salidas de los recintos autorizados.' },
       informes: { title: 'Informes', subtitle: 'Analiza cumplimiento y revisa rondas por recinto.' },
       consentimiento: { title: 'Mi ubicación', subtitle: 'Revisa el aviso aplicable al trabajo en terreno.' },
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },

@@ -181,6 +181,48 @@ datos personales. La huella y los campos internos de diagnóstico que sí se con
 secciones anteriores permanecen del lado servidor; no forman parte del DTO público. Esta proyección
 no reemplaza ni relaja la lista blanca y el enmascarado de entrada.
 
+## El lado de la app (#273)
+
+El productor vive en `apps/mobile/src/observability/`. No hay SDK de Sentry en el teléfono: la app
+le habla a NUESTRO endpoint y el reenvío a un tercero lo decide el servidor.
+
+Qué captura:
+
+| Qué | Dónde |
+|---|---|
+| Excepción de JS no atrapada | `instalarReportadorGlobal` — respeta el handler previo, no lo pisa |
+| Pantalla rota | `ErrorBoundary` alrededor del shell: el guardia puede reintentar en vez de quedarse en blanco |
+| Caída NATIVA (proceso muerto) | Se deduce en el arranque siguiente con la marca `clean_exit` |
+| Fallo de la tarea de traza en segundo plano | `geo/traza-fondo.ts`, una vez por corrida del proceso |
+
+Tres cosas que hay que saber antes de tocarlo:
+
+- **La petición lleva `Origin`.** Va con las cookies del WebView, así que no entra por la puerta de
+  "cliente nativo sin cookies" de `csrf-origin.middleware`: sin esa cabecera son 403 todas.
+- **La cola vive en la base cifrada de los escaneos**, no en SecureStore: allí el tope por valor es
+  de 2 KB y una pila de excepción no entra. Aguanta hasta 20 reportes, descarta por el extremo
+  viejo y tira lo que lleve más de 7 días guardado.
+- **Con el módulo apagado deja de intentar hasta el próximo arranque.** El endpoint responde 404
+  ("Esta sección no está disponible para tu empresa") y sin ese pestillo el teléfono golpearía un
+  404 por cada caída y por cada vuelta a primer plano, gastando batería del guardia en contar que
+  la empresa no quiere el módulo.
+
+Qué se hace con cada respuesta (`veredictoDeRespuesta`): 2xx entrega; **401, 408, 429 y 5xx**
+esperan en cola —la sesión llega después del login y el tope por hora se libera solo—; **400, 403 y
+404** se descartan porque no van a valer en el próximo intento.
+
+### Lo que estaba roto
+
+El reportador existía desde #321 y nunca llegó un solo reporte. Posteaba a `${origen}/crash-reports`
+—sin `/api` y sin `observability`—, que no es ninguna ruta del servidor. Como sólo reintentaba los
+5xx, cada caída moría en un 404 silencioso. La prueba de la app afirmaba esa misma ruta equivocada,
+porque se escribió mirando el código de la app y no el del servidor; por eso ahora
+`contrato-crash-reports.test.ts` lee el fuente del controlador y del DTO de la API y falla en el CI
+si alguien los mueve.
+
+Tampoco mandaba `Origin`, así que incluso con la ruta correcta habría sido 403; y la caída nativa se
+pasaba por el formateador de errores, que serializaba el reporte entero dentro de `errorMessage`.
+
 ## Horas
 
 `occurred_at` es la hora **del teléfono** y se guarda porque sirve para investigar, pero el reloj

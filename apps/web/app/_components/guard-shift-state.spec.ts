@@ -1,3 +1,4 @@
+import { restaurarCierreServidor } from './guard-shift-state';
 /**
  * La foto obligatoria del punto, vista desde el teléfono.
  *
@@ -14,6 +15,8 @@ import { isPhotoRequired } from '@sentrycore/shared';
 import {
   aplicarVeredictos,
   estadoInicial,
+  sePuedeSaltar,
+  siguientePunto,
   hayPendientesDeSubir,
   marcarFotoPuntoSubida,
   puntoExigeFoto,
@@ -189,5 +192,81 @@ describe('aplicarVeredictos y la foto del escaneo encolado', () => {
 
   it('mientras el escaneo no sincroniza, sigue siendo trabajo por subir', () => {
     expect(hayPendientesDeSubir(encolado)).toBe(true);
+  });
+});
+
+describe('dejar un punto para después (reporte de terreno del 21-09-2026)', () => {
+  /*
+   * Bruno: «si hay un error en el punto 6 no podemos pasar directo al
+   * siguiente, hay que devolverse — ese punto es línea recta hacia el fondo y
+   * luego devolverse y hacer como una U».
+   *
+   * El 6 está al fondo de un pasillo sin salida. Si el escaneo falla ahí, la
+   * pantalla seguía pidiendo el 6 y el guardia, que ya caminó de vuelta, tenía
+   * que rehacer el pasillo entero para obedecerla.
+   */
+  const ruta = (cuantos: number) =>
+    Array.from({ length: cuantos }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Punto ${i + 1}`,
+      position: i + 1,
+    }));
+
+  const marcados = (ids: readonly string[]) =>
+    Object.fromEntries(
+      ids.map((id) => [
+        id,
+        { checkpointId: id, clientScanId: id, anomalias: [], confirmado: true },
+      ]),
+    ) as never;
+
+  it('saltado el 6, el siguiente es el 7 y no el 6 otra vez', () => {
+    // El guardia viene del 5 y el 6 le fallo: lo que tiene delante es el 7.
+    const siguiente = siguientePunto(ruta(8), marcados(['p1', 'p2', 'p3', 'p4', 'p5']), ['p6']);
+    expect(siguiente?.id).toBe('p7');
+  });
+
+  it('el punto saltado NO desaparece: vuelve cuando ya no queda otro', () => {
+    // Si se perdiera, la ronda cerraría "completa" con un punto que nadie pisó.
+    const siguiente = siguientePunto(
+      ruta(8),
+      marcados(['p1', 'p2', 'p3', 'p4', 'p5', 'p7', 'p8']),
+      ['p6'],
+    );
+    expect(siguiente?.id).toBe('p6');
+  });
+
+  it('el orden de la ruta manda mientras no se salte nada', () => {
+    expect(siguientePunto(ruta(8), {}, [])?.id).toBe('p1');
+  });
+
+  it('saltar se ofrece solo si hay otro punto al que ir', () => {
+    const puntos = ruta(8);
+    expect(sePuedeSaltar(puntos, {}, [], puntos[5])).toBe(true);
+  });
+
+  it('en el último pendiente no se ofrece: no hay a dónde seguir', () => {
+    const puntos = ruta(2);
+    expect(sePuedeSaltar(puntos, marcados(['p1']), [], puntos[1])).toBe(false);
+  });
+
+  it('tampoco se ofrece cuando lo único que queda ya está saltado', () => {
+    // Saltar el último pendiente lo devolvería a sí mismo: un botón que no hace
+    // nada es peor que ninguno cuando el guardia está en la calle.
+    const puntos = ruta(3);
+    expect(sePuedeSaltar(puntos, marcados(['p1']), ['p3'], puntos[1])).toBe(false);
+  });
+});
+
+
+describe('recuperación del último punto tras recargar Android',()=>{
+  it('conserva un cierre confirmado por el servidor hasta terminar el formulario',()=>{
+    const estado=estadoInicial('p');
+    const resultado=restaurarCierreServidor(estado,[],{status:'completada',closedAt:'2026-10-29T20:23:00Z',compliancePct:100});
+    expect(resultado.cierre).toMatchObject({confirmado:true,cerradaAt:'2026-10-29T20:23:00Z',pct:100});
+  });
+  it('no cierra una ronda que sigue abierta en el servidor',()=>{
+    const estado=estadoInicial('p');
+    expect(restaurarCierreServidor(estado,[],{status:'en_curso'}).cierre).toBeUndefined();
   });
 });
