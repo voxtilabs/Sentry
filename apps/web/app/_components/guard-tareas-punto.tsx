@@ -77,8 +77,8 @@ export function GuardTareasPunto({ nombrePunto, checkpointId, clientScanId, scan
         ...(foto.objetivoBytes ? { objetivoBytes: foto.objetivoBytes } : {}) });
       await guardarFoto(clientPhotoId, imagen, tomadaAt, scanId ?? idDelEscaneo() ?? null, 'tarea');
       const siguiente = await anotar(tarea, { fotos: [...previas, { clientPhotoId }] });
-      const value = tarea.responseType === 'foto' ? 'foto' : siguiente.borradores?.[tarea.id]?.value ?? '';
-      if (tarea.responseType === 'foto' || ((tarea.responseType === 'ok_falla' || tarea.responseType === 'si_no') && value)) {
+      const value = siguiente.borradores?.[tarea.id]?.value ?? '';
+      if ((tarea.responseType === 'ok_falla' || tarea.responseType === 'si_no') && value) {
         await completar(tarea, value);
       }
       setAviso('Foto guardada en el teléfono. Se enviará al terminar la ronda.');
@@ -99,7 +99,7 @@ export function GuardTareasPunto({ nombrePunto, checkpointId, clientScanId, scan
       onResponder={(value) => void responder(item, value)}
       {...(pedirPermisoCamara ? { pedirPermisoCamara } : {})} />
     {aviso ? <p className="guardia-anuncio" role="status">{aviso}</p> : null}
-    <p className="guardia-nota">Al completar las fotos y la respuesta pasarás automáticamente al siguiente punto.</p>
+    <p className="guardia-nota">Puedes agregar fotos hasta el máximo. Confirma la tarea cuando estés listo para continuar.</p>
   </section>;
 }
 
@@ -125,6 +125,10 @@ export function TareaPuntoFormulario({ item, borrador, ocupada, onFoto, onTexto,
         {...(pedirPermisoCamara ? { pedirPermiso: pedirPermisoCamara } : {})} /> : null}
       {!lista ? <p className="guardia-nota">Primero toma {min - borrador.fotos.length} {min - borrador.fotos.length === 1 ? 'foto más' : 'fotos más'}.</p> : null}
     </div> : null}
+    {item.responseType === 'foto' ? <button className="guardia-boton-enviar ancho" type="button"
+      disabled={ocupada || !lista} onClick={() => onResponder('foto')}>
+      {ocupada ? 'Guardando…' : 'Enviar tarea'}
+    </button> : null}
     {lista && item.responseType !== 'foto' ? <>
       {binaria ? <div className="guardia-ok-falla" role="group" aria-labelledby={campo}>
         <button className="guardia-boton-opcion" disabled={ocupada} type="button"

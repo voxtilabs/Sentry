@@ -441,8 +441,10 @@ export function recuperarCapturasTareas(estado: EstadoTareas, items: readonly It
   for (const item of items) {
     const borrador = siguiente.borradores?.[item.id];
     if (!borrador || siguiente.enviadas.includes(item.id)) continue;
-    const value = item.responseType === 'foto' ? 'foto' : borrador.value;
-    const automatica = item.responseType === 'foto' ||
+    const value = borrador.value;
+    // Una captura recuperada no equivale a pulsar «Enviar tarea».
+    // Solo un borrador con confirmación explícita puede completarse al reabrir.
+    const automatica = (item.responseType === 'foto' && value === 'foto') ||
       (item.responseType === 'si_no' && ['si', 'no'].includes(value)) ||
       (item.responseType === 'ok_falla' && ['ok', 'falla'].includes(value));
     if (automatica && (!tareaExigeFoto(item, value) || borrador.fotos.length >= cantidadesDeFotos(item).min)) {

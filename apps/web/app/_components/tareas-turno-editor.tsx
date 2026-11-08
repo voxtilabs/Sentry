@@ -452,7 +452,7 @@ export function TareasTurnoEditor({ apiUrl }: { apiUrl: string }) {
                         onChange={(e) => cambiarTarea(tarea.clave, { photoMaxCount: Number(e.target.value) })} />
                     </label>
                     <small>{tarea.responseType === 'foto'
-                      ? 'Se completa automáticamente al tomar el mínimo de fotos.'
+                      ? 'El guardia toma entre el mínimo y el máximo de fotos y pulsa Enviar tarea.'
                       : tarea.responseType === 'texto' || tarea.responseType === 'numero'
                         ? 'El guardia toma las fotos, escribe su respuesta y pulsa Enviar.'
                         : 'El guardia toma las fotos y completa la tarea al tocar SÍ o NO.'}</small>
