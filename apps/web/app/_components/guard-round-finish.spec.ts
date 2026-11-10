@@ -1,10 +1,10 @@
-import { sincronizar } from './guard-outbox';
+import { pedirApi, sincronizar } from './guard-outbox';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { cargarEstadoTareas, modificarEstadoTareas } from './guard-tareas-modelo';
 jest.mock('./guard-outbox', () => ({ pedirApi: jest.fn(), sincronizar: jest.fn() }));
 jest.mock('./guard-tareas-flujo', () => ({ sincronizarTareasGuardadas: jest.fn() }));
 jest.mock('./guard-tareas-modelo', () => ({ cargarEstadoTareas: jest.fn(), modificarEstadoTareas: jest.fn() }));
-beforeEach(() => { jest.clearAllMocks(); jest.mocked(cargarEstadoTareas).mockReturnValue({ patrolId: 'ronda', cola: [], enviadas: [] }); });
+beforeEach(() => { jest.clearAllMocks(); jest.mocked(pedirApi).mockResolvedValue(new Response('{}', { status: 503 })); jest.mocked(cargarEstadoTareas).mockReturnValue({ patrolId: 'ronda', cola: [], enviadas: [] }); });
 import { confirmarTerminoDeRonda } from './guard-round-finish';
 
 describe('término de ronda después de trabajar sin conexión',()=>{

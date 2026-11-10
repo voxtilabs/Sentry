@@ -6,6 +6,7 @@ import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { cargarEstadoTareas, modificarEstadoTareas, recuperarCapturasTareas, rehidratarTareasDurables,
   type ItemTarea, type EstadoTareas } from './guard-tareas-modelo';
 import { listarPendientes } from './guard-photo-store';
+import { mapaEscaneosRecuperados } from './guard-scan-recovery';
 
 /** También se ejecuta cuando el servidor ya no ofrece la ronda recién cerrada. */
 export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key' | 'getItem'>): EstadoTareas[] {
@@ -40,7 +41,7 @@ export async function recuperarTareasGuardadas(apiUrl: string, estados: readonly
         recuperarCapturasTareas(actual, body.template!.items, body.syncScans ?? [], pendientes));
     }
     await sincronizarTareasGuardadas(apiUrl, estado.patrolId,
-      Object.fromEntries((body.syncScans ?? []).map((s) => [s.clientScanId, s])));
+      mapaEscaneosRecuperados(body.syncScans ?? []));
   }
 }
 
