@@ -56,35 +56,43 @@ export class SupportAccessService {
     // Techo duro: una ventana de soporte no es una sesion permanente.
     const minutos = Math.min(Math.max(input.minutes ?? 60, 5), 8 * 60);
 
-    const existente = await this.dataSource.query(
-      `SELECT id FROM support_access_log
-       WHERE tenant_id = $1 AND superadmin_user_id = $2
-         AND ended_at IS NULL AND expires_at > now()`,
-      [input.tenantId, superadminId],
-    );
-    if (existente.length) {
-      throw new ConflictException('Ya tienes un acceso de soporte abierto a esta empresa');
+    /*
+     * Por funcion y no con SELECT/INSERT pelados: `tenants` y
+     * `support_access_log` llevan RLS FORCE y la API se conecta con un rol
+     * sujeto a ella. Sin contexto de empresa —que es la situacion del
+     * SUPERADMIN, por definicion— no veia ni una fila: abrir respondia "La
+     * empresa no existe" y el mecanismo entero estaba muerto.
+     */
+    let filas: Array<{
+      id: string;
+      tenant_id: string;
+      tenant_name: string;
+      reason: string;
+      started_at: string;
+      expires_at: string;
+    }>;
+    try {
+      filas = await this.dataSource.query(
+        `SELECT * FROM platform_open_support_access($1::uuid, $2::uuid, $3, $4)`,
+        [superadminId, input.tenantId, motivo, minutos],
+      );
+    } catch (error) {
+      const codigo = (error as { code?: string })?.code;
+      if (codigo === 'P0002' || codigo === '02000') throw new NotFoundException('La empresa no existe');
+      if (codigo === '23505') {
+        throw new ConflictException('Ya tienes un acceso de soporte abierto a esta empresa');
+      }
+      throw error;
     }
 
-    // display_name, no "name": esa columna no existe en tenants.
-    const tenant = await this.dataSource.query(
-      `SELECT id, display_name FROM tenants WHERE id = $1`,
-      [input.tenantId],
-    );
-    if (!tenant.length) throw new NotFoundException('La empresa no existe');
-
-    const [creado] = await this.dataSource.query(
-      `INSERT INTO support_access_log (tenant_id, superadmin_user_id, reason, expires_at)
-       VALUES ($1, $2, $3, now() + make_interval(mins => $4))
-       RETURNING id, started_at, expires_at`,
-      [input.tenantId, superadminId, motivo, minutos],
-    );
+    const creado = filas[0];
+    if (!creado) throw new NotFoundException('La empresa no existe');
 
     return {
       supportAccessId: creado.id,
-      tenantId: input.tenantId,
-      tenantName: tenant[0].name,
-      reason: motivo,
+      tenantId: creado.tenant_id,
+      tenantName: creado.tenant_name,
+      reason: creado.reason,
       startedAt: creado.started_at,
       expiresAt: creado.expires_at,
     };
@@ -94,18 +102,15 @@ export class SupportAccessService {
   async close(superadminId: string, supportAccessId: string) {
     await this.assertSuperadmin(superadminId);
     /*
-     * `filasDe` porque un UPDATE pelado devuelve [filas, rowCount]: `filas.length`
-     * media 2 siempre, asi que cerrar un acceso inexistente —o el de OTRO
-     * superadmin— respondia 200 con `tenantId: undefined` en vez del 404. En una
-     * ventana de soporte el cierre falso es peor que el error: deja creer que ya
-     * nadie esta mirando los datos del cliente.
+     * `filasDe` porque la funcion devuelve el RETURNING de un UPDATE: cerrar un
+     * acceso inexistente —o el de OTRO superadmin— tiene que ser 404 y no un
+     * 200 con `tenantId: undefined`. En una ventana de soporte el cierre falso
+     * es peor que el error: deja creer que ya nadie mira los datos del cliente.
      */
     const filas = filasDe<{ id: string; tenant_id: string }>(
       await this.dataSource.query(
-        `UPDATE support_access_log SET ended_at = now()
-         WHERE id = $1 AND superadmin_user_id = $2 AND ended_at IS NULL
-         RETURNING id, tenant_id`,
-        [supportAccessId, superadminId],
+        `SELECT * FROM platform_close_support_access($1::uuid, $2::uuid)`,
+        [superadminId, supportAccessId],
       ),
     );
     if (!filas.length) throw new NotFoundException('No hay un acceso abierto con ese id');
@@ -116,12 +121,7 @@ export class SupportAccessService {
   async active(superadminId: string) {
     await this.assertSuperadmin(superadminId);
     const filas = await this.dataSource.query(
-      `SELECT a.id, a.tenant_id, t.name AS tenant_name, a.reason,
-              a.started_at, a.expires_at
-       FROM support_access_log a
-       JOIN tenants t ON t.id = a.tenant_id
-       WHERE a.superadmin_user_id = $1 AND a.ended_at IS NULL AND a.expires_at > now()
-       ORDER BY a.started_at DESC`,
+      `SELECT * FROM platform_active_support_access($1::uuid)`,
       [superadminId],
     );
     return filas.map((f: Record<string, unknown>) => ({
@@ -140,12 +140,10 @@ export class SupportAccessService {
    */
   async resolve(supportAccessId: string, userId: string) {
     const filas = await this.dataSource.query(
-      `SELECT tenant_id FROM support_access_log
-       WHERE id = $1 AND superadmin_user_id = $2
-         AND ended_at IS NULL AND started_at <= now() AND expires_at > now()`,
+      `SELECT platform_resolve_support_access($1::uuid, $2::uuid) AS tenant_id`,
       [supportAccessId, userId],
     );
-    return filas.length ? (filas[0].tenant_id as string) : null;
+    return filas.length ? ((filas[0].tenant_id as string | null) ?? null) : null;
   }
 
 }

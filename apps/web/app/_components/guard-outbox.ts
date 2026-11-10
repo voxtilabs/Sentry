@@ -525,7 +525,7 @@ async function subirFoto(
 export async function enviarRespuestasDeTareas(
   apiUrl: string,
   patrolId: string,
-  responses: readonly { itemId: string; value: string; notes?: string; photoId?: string }[],
+  responses: readonly { itemId: string; value: string; notes?: string; photoId?: string; photoIds?: string[] }[],
 ): Promise<ResultadoTareaSync[] | undefined> {
   if (sinRed()) return undefined;
 

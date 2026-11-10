@@ -198,11 +198,33 @@ export class EvidenceService {
     if (!scan) throw new NotFoundException('El escaneo no existe o no pertenece a tus rondas');
 
     const { sha256 } = imagen;
-    const duplicadas = await this.tenantContext.manager.query<Array<{ id: string }>>(
-      `SELECT id FROM scan_photos WHERE sha256 = $1`,
+    const takenAtLimpio = takenAtDevice?.trim() || null;
+    // El servidor puede haber confirmado la foto mientras se perdió la respuesta
+    // HTTP. Solo la misma captura del mismo escaneo es un reintento: nunca se
+    // crea otra evidencia ni se permite trasladar la imagen a otro punto.
+    const buscarPrevia = async () => (await this.tenantContext.manager.query<Array<{
+      id: string; scan_id: string; storage_path: string; mime_type: string;
+      size_bytes: string | number; width: number; height: number;
+      taken_at_device: Date | null; created_at: Date;
+    }>>(
+      `SELECT id, scan_id, storage_path, mime_type, size_bytes, width, height,
+              taken_at_device, created_at FROM scan_photos WHERE sha256 = $1`,
       [sha256],
-    );
-    if (duplicadas.length) throw new ConflictException(FOTO_REUSADA);
+    ))[0];
+    const resolverPrevia = (previa: NonNullable<Awaited<ReturnType<typeof buscarPrevia>>>) => {
+      if (previa.scan_id !== scanId || !takenAtLimpio || !previa.taken_at_device ||
+          new Date(previa.taken_at_device).getTime() !== new Date(takenAtLimpio).getTime()) {
+        throw new ConflictException(FOTO_REUSADA);
+      }
+      return {
+        id: previa.id, scanId, patrolId: scan.patrol_id, checkpointId: scan.checkpoint_id,
+        mimeType: previa.mime_type, sizeBytes: Number(previa.size_bytes),
+        width: previa.width, height: previa.height, sha256,
+        takenAtDevice: takenAtLimpio, createdAt: previa.created_at,
+      };
+    };
+    const previa = await buscarPrevia();
+    if (previa) return resolverPrevia(previa);
 
     // Ruta RELATIVA a EVIDENCE_PATH: mover el volumen no invalida las filas.
     const rutaRelativa = join(scan.tenant_id, scan.patrol_id, `${sha256}.${imagen.extension}`);
@@ -211,7 +233,6 @@ export class EvidenceService {
     await writeFile(rutaAbsoluta, archivo.buffer);
 
     const pesoBytes = Math.max(archivo.size, archivo.buffer.length);
-    const takenAtLimpio = takenAtDevice?.trim() || null;
     const insertadas = await this.tenantContext.manager.query<
       Array<{ id: string; created_at: Date }>
     >(
@@ -236,9 +257,13 @@ export class EvidenceService {
     );
     const foto = insertadas[0];
     if (!foto) {
-      // Carrera: otra subida del mismo contenido gano entre el chequeo y el
-      // INSERT. Mismo veredicto que el pre-chequeo, sin archivo huerfano.
-      await rm(rutaAbsoluta, { force: true });
+      // ON CONFLICT espera a la transacción ganadora. Nunca borrar su archivo:
+      // dos subidas de la misma ronda comparten la ruta basada en el hash.
+      const ganadora = await buscarPrevia();
+      if (ganadora && ganadora.storage_path !== rutaRelativa) {
+        await rm(rutaAbsoluta, { force: true });
+      }
+      if (ganadora) return resolverPrevia(ganadora);
       throw new ConflictException(FOTO_REUSADA);
     }
 

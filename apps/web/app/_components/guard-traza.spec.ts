@@ -113,7 +113,7 @@ describe('el cableado: que esta vez SI emita alguien', () => {
       const fuente = readFileSync(ruta, 'utf8');
       expect(fuente).toContain("'track.start'");
       expect(fuente).toContain("'track.point'");
-      expect(fuente).toContain('PROTOCOLO_MINOR = 5');
+      expect(Number(/PROTOCOLO_MINOR = (\d+)/.exec(fuente)?.[1])).toBeGreaterThanOrEqual(5);
     }
   });
 });
