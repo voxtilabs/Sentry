@@ -4,6 +4,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
   // Desarrollo y build no pueden compartir artefactos: `next build` reemplaza
   // manifests y vendor chunks mientras `next dev` todavía los tiene abiertos.
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
@@ -21,6 +22,7 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "base-uri 'self'; object-src 'none'; frame-ancestors 'none'" },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           {
             key: 'Permissions-Policy',

@@ -19,6 +19,7 @@ import { AUTH_REDIS } from './redis.provider';
 import { REQUIRED_PERMISSIONS } from './decorators/permissions.decorator';
 import { REQUIRES_TENANT } from './decorators/tenant-scope.decorator';
 import { requestLogContext } from '../observability/request-context';
+import { elSoporteLoPuedeLeer } from './soporte-lectura';
 
 export interface AuthenticatedUser {
   sub: string;
@@ -42,6 +43,27 @@ export class AuthGuard implements CanActivate {
     private readonly dataSource: DataSource,
     @Inject(AUTH_REDIS) private readonly redis: Redis,
   ) {}
+
+  /*
+   * La ventana de soporte se resuelve con una consulta directa y no inyectando
+   * `SupportAccessService`: ese servicio vive en un modulo que importa este, y
+   * meterlo aca cierra un ciclo de dependencias que cuelga el arranque entero
+   * de Nest —la prueba de arranque se queda esperando para siempre—. La funcion
+   * es la MISMA que usa el servicio, asi que la regla sigue viviendo en un solo
+   * lugar: la base.
+   */
+  private async ventanaDeSoporte(accessId: string, userId: string): Promise<string | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(accessId)) return null;
+    try {
+      const filas = await this.dataSource.query<Array<{ tenant_id: string | null }>>(
+        `SELECT platform_resolve_support_access($1::uuid, $2::uuid) AS tenant_id`,
+        [accessId, userId],
+      );
+      return filas[0]?.tenant_id ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
@@ -71,12 +93,51 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Sesión inválida o expirada');
     }
 
-    if (
-      !ROLES.includes(payload.role) ||
-      !requiredPermissions.every((permission) => hasPermission(payload.role, permission))
-    ) {
+    const porSuRol =
+      ROLES.includes(payload.role) &&
+      requiredPermissions.every((permission) => hasPermission(payload.role, permission));
+
+    /*
+     * La ventana de soporte auditada (#109) es la UNICA forma de que esto sea
+     * cierto sin que lo sea por el rol. Ver `soporte-lectura.ts`: solo
+     * SUPERADMIN, solo GET, solo cuatro permisos de lectura y solo con una
+     * ventana vigente que el ADMIN de esa empresa puede leer en su registro.
+     *
+     * Se resuelve DESPUES de comprobar el rol para no ir a la base en el camino
+     * normal, que es el de todas las peticiones del producto.
+     */
+    let tenantDeSoporte: string | null = null;
+    if (!porSuRol) {
+      const cabecera = request.headers?.['x-support-access-id'];
+      if (typeof cabecera === 'string' && cabecera.length > 0) {
+        tenantDeSoporte = await this.ventanaDeSoporte(cabecera, payload.sub);
+      }
+    }
+
+    const porSoporte =
+      !porSuRol &&
+      elSoporteLoPuedeLeer({
+        role: payload.role,
+        metodo: request.method,
+        tenantDeLaVentana: tenantDeSoporte,
+        permisosExigidos: requiredPermissions,
+      });
+
+    if (!porSuRol && !porSoporte) {
       this.auditDenied(context, 'permission_forbidden', payload);
       throw new ForbiddenException('No tienes permiso para esta operación');
+    }
+
+    if (porSoporte) {
+      // Que la ventana exista queda en `support_access_log`; esto deja ademas
+      // QUE se miro, que es lo que convierte el registro en algo revisable.
+      this.logger.log(
+        JSON.stringify({
+          event: 'soporte_leyendo_empresa',
+          tenant_id: tenantDeSoporte,
+          path: request.url?.split('?')[0],
+        }),
+      );
     }
 
     if (await this.redis.exists(`auth:revoked-family:${payload.sid}`)) {
@@ -96,7 +157,14 @@ export class AuthGuard implements CanActivate {
     }
 
     const requiresTenant = this.reflector.getAllAndOverride<boolean>(REQUIRES_TENANT, targets);
-    if (requiresTenant && !payload.tenant_id) {
+    /*
+     * La empresa de la ventana de soporte CUENTA como contexto de empresa: es
+     * exactamente la que el interceptor va a poner en la transaccion. Sin esto,
+     * el permiso se concedia y el endpoint moria un renglon mas abajo pidiendo
+     * un tenant que el SUPERADMIN no tiene nunca — que es justo el caso que la
+     * ventana viene a resolver.
+     */
+    if (requiresTenant && !payload.tenant_id && !tenantDeSoporte) {
       this.auditDenied(context, 'tenant_required', payload);
       throw new ForbiddenException('La operación requiere contexto de empresa');
     }
