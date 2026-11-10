@@ -37,6 +37,8 @@ import {
 
 let temporizador: ReturnType<typeof setInterval> | undefined;
 let midiendo = false;
+let generacion = 0;
+let receptorGps: Location.LocationSubscription | undefined;
 
 /**
  * Cuanto se espera un fix FRESCO antes de conformarse con el ultimo conocido.
@@ -55,13 +57,15 @@ const MS_ESPERA_FIX = 12_000;
  * nunca ocurrio. Dos minutos acotan el error a la distancia que se recorre en
  * ese rato, y si no hay nada fresco el hueco se ve y se explica solo.
  */
-const MS_MAX_FIX_CONOCIDO = 2 * 60_000;
+const MS_MAX_FIX_CONOCIDO = 15_000;
 
 async function medir(emitir: (punto: PuntoDeTrazaPayload) => void): Promise<void> {
   // Un tick que encuentra al anterior todavia midiendo se salta: dos fixes en
   // vuelo no dan mejor traza, solo mas bateria.
   if (midiendo) return;
   midiendo = true;
+  const sesion = generacion;
+  let limite: ReturnType<typeof setTimeout> | undefined;
   try {
     // Carrera contra el reloj: el fix fresco es lo ideal, pero un await que no
     // vuelve no es un fix, es un cerrojo. Si pierde, vale el ultimo conocido
@@ -86,15 +90,15 @@ async function medir(emitir: (punto: PuntoDeTrazaPayload) => void): Promise<void
          * moderado —se prende un instante y se apaga— y a cambio el recorrido
          * pasa de decenas de metros de error a unos pocos.
          */
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.BestForNavigation,
       }),
       new Promise<null>((resolver) => {
-        setTimeout(() => resolver(null), MS_ESPERA_FIX);
+        limite = setTimeout(() => resolver(null), MS_ESPERA_FIX);
       }),
     ]);
     const posicion =
       fresco ?? (await Location.getLastKnownPositionAsync({ maxAge: MS_MAX_FIX_CONOCIDO }));
-    if (!posicion) return;
+    if (!posicion || sesion !== generacion || Date.now() - posicion.timestamp > MS_MAX_FIX_CONOCIDO) return;
     emitir({
       recordedAt: new Date(posicion.timestamp).toISOString(),
       latitude: posicion.coords.latitude,
@@ -107,6 +111,7 @@ async function medir(emitir: (punto: PuntoDeTrazaPayload) => void): Promise<void
     // Sin fix en este tick (subterraneo, GPS frio): el hueco en la traza ES el
     // dato — track-summary lo mide — y el proximo tick lo intenta de nuevo.
   } finally {
+    if (limite !== undefined) clearTimeout(limite);
     midiendo = false;
   }
 }
@@ -118,9 +123,25 @@ export async function iniciarTraza(
   // Idempotente: un start nuevo pisa al anterior en vez de duplicar relojes.
   // El portal re-manda track.start en cada carga de la pantalla de ronda.
   detenerTraza();
+  const sesion = generacion;
 
   const permiso = await Location.getForegroundPermissionsAsync();
-  if (permiso.status !== 'granted') return;
+  if (permiso.status !== 'granted' || sesion !== generacion) return;
+
+  // Keep the receiver warm for the duration of the patrol. Starting a fresh
+  // GPS request at every tick repeatedly used a cold fix on slower phones.
+  try {
+    const receptor = await Location.watchPositionAsync({
+      accuracy: Location.Accuracy.BestForNavigation,
+      timeInterval: 1_000,
+      distanceInterval: 0,
+    }, () => undefined);
+    if (sesion !== generacion) { receptor.remove(); return; }
+    receptorGps = receptor;
+  } catch {
+    // Periodic fixes still work when the continuous receiver is unavailable.
+  }
+  if (sesion !== generacion) return;
 
   const intervaloMs = Math.max(peticion.intervalSeconds, 15) * 1000;
   // La primera posicion sale AHORA, no en un intervalo: el supervisor que abre
@@ -145,6 +166,9 @@ export async function iniciarTraza(
 }
 
 export function detenerTraza(): void {
+  generacion += 1;
+  receptorGps?.remove();
+  receptorGps = undefined;
   if (temporizador !== undefined) {
     clearInterval(temporizador);
     temporizador = undefined;

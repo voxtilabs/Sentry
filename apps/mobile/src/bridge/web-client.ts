@@ -16,6 +16,8 @@ import {
   MAX_BYTES_MENSAJE,
   armarSobre,
   leerMensajeShell,
+  type ResultadoConsultaPublicaPayload,
+  type ResultadoOcrPayload,
   type CodigoErrorEscaneo,
   type EstadoConexionPayload,
   type IncompatiblePayload,
@@ -91,6 +93,11 @@ interface Pendiente {
 }
 
 export interface ClientePuente {
+  readonly referencia: (command: import('./protocol').ReferenceCommand) => Promise<import('./protocol').ReferenceState>;
+  readonly consultarVehiculoPublico: (plate: string) => Promise<ResultadoConsultaPublicaPayload>;
+  readonly cancelarConsultaPublica: () => void;
+  readonly escanearOcr: (kind: 'identity' | 'plate') => Promise<ResultadoOcrPayload>;
+  readonly cancelarOcr: () => void;
   /** Hace el saludo y resuelve el veredicto de compatibilidad. */
   readonly conectar: () => Promise<EstadoPuente>;
   readonly escanearNfc: (opciones?: {
@@ -290,6 +297,27 @@ export function crearClientePuente(): ClientePuente {
       throw new ErrorEscaneoPortal('error-desconocido', 'Respuesta inesperada del shell.', true);
     },
 
+    referencia: async (command) => {
+      const r = await pedir('reference.command', command, 8000);
+      if (r.type !== 'reference.result') throw new Error('La captura GPS no está disponible.');
+      return r.payload;
+    },
+    consultarVehiculoPublico: async (plate) => {
+      const response = await pedir('vehicle.public.start', { plate }, 305_000);
+      if (response.type === 'vehicle.public.result') return response.payload;
+      throw new Error('La consulta pública no se completó. El estado de robo sigue sin consultar.');
+    },
+    cancelarConsultaPublica: () => {
+      puenteInyectado()?.enviar(JSON.stringify(armarSobre('vehicle.public.cancel', {}, { prefijo: 'web' })));
+    },
+    escanearOcr: async (kind) => {
+      const response = await pedir('ocr.scan.start', { kind }, 125_000);
+      if (response.type === 'ocr.scan.result') return response.payload;
+      throw new Error('No se completó la lectura. Puedes volver a intentarlo o ingresar los datos manualmente.');
+    },
+    cancelarOcr: () => {
+      puenteInyectado()?.enviar(JSON.stringify(armarSobre('ocr.scan.cancel', {}, { prefijo: 'web' })));
+    },
     escanearQr: async (opciones) => {
       const timeoutMs = opciones?.timeoutMs ?? MS_ESCANEO_DEFECTO;
       const payload =

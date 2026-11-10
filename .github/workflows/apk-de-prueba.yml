@@ -22,18 +22,19 @@ on:
         description: 'A que portal apunta la app'
         required: true
         default: 'https://test-sentrycore.voxtilabs.cl'
-  # El gatillo por PR existe porque `workflow_dispatch` solo funciona cuando el
-  # workflow ya vive en la rama POR DEFECTO — y la rama por defecto es `main`,
-  # que despliega produccion: no se toca para conseguir un APK. Un PR que
-  # modifique ESTE archivo corre con la version de la rama, sin cola de EAS y
-  # sin tocar main. Se descubrio el dia que EAS agoto los builds gratis del mes
-  # con un arreglo del muestreador sin poder probar.
-  pull_request:
-    paths:
-      - '.github/workflows/apk-de-prueba.yml'
+      qa_package:
+        description: 'Instalar junto a la app de Play Store (paquete .qa)'
+        type: boolean
+        default: false
+  # A demanda: este workflow ya existe en main. Compilar en cada actualización
+  # del PR repetía veinte minutos de Gradle incluso por cambios del servidor.
 
 permissions:
   contents: read
+
+concurrency:
+  group: apk-prueba-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -53,7 +54,15 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
 
+      # `packages` acotado a proposito: el valor por defecto del action es
+      # `tools platform-tools`, y `tools` es el SDK viejo que Google retiro.
+      # Desde que el runner trae cmdline-tools 16, sdkmanager responde
+      # "Failed to find package 'tools'" y la compilacion muere antes de
+      # empezar. Gradle baja solo la plataforma y las build-tools que pide el
+      # proyecto, asi que aqui basta con platform-tools.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # apps/mobile va FUERA de los workspaces de npm a proposito (Metro no se
       # lleva bien con el hoisting), asi que se instala por su cuenta.
@@ -94,6 +103,8 @@ jobs:
       - name: Generar el proyecto Android
         env:
           NODE_ENV: production
+          SENTRYCORE_QA_BUILD: ${{ inputs.qa_package && '1' || '0' }}
+          EXPO_PUBLIC_DEPURABLE: '1'
           EXPO_PUBLIC_WEB_URL: ${{ inputs.portal || 'https://test-sentrycore.voxtilabs.cl' }}
         run: npx expo prebuild --platform android --clean --no-install
 
@@ -114,6 +125,8 @@ jobs:
       - name: Construir el APK
         working-directory: apps/mobile/android
         env:
+          SENTRYCORE_QA_BUILD: ${{ inputs.qa_package && '1' || '0' }}
+          EXPO_PUBLIC_DEPURABLE: '1'
           EXPO_PUBLIC_WEB_URL: ${{ inputs.portal || 'https://test-sentrycore.voxtilabs.cl' }}
         run: ./gradlew :app:assembleRelease --no-daemon --console=plain
 

@@ -5,12 +5,17 @@ import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 
 import type { ConfigService } from '@nestjs/config';
+import type { Queue } from 'bullmq';
 import type { BrandingService } from '../branding/branding.service';
 import type { TenantContextService } from '../database/tenant-context/tenant-context.service';
+import type { MailQueueService } from '../mail/mail-queue.service';
+import type { MailJobData } from '../mail/mail-queue.types';
 import type { FeatureFlagsService } from '../rules/feature-flags.service';
 import type { RulesService } from '../rules/rules.service';
 import { PatrolReportService } from './patrol-report.service';
 import type { MapaRecorridoService } from './mapa-recorrido.service';
+import { construirMapaRecorrido } from './mapa-recorrido.model';
+import { EnvioInformeService } from './envio-informe.service';
 
 /**
  * Tests del servicio completo: consultas, marca, permisos y el render real
@@ -182,6 +187,7 @@ function armarServicio(
   // Sin mapa por defecto: las pruebas existentes miden el informe de siempre.
   const mapaRecorrido = {
     construir: jest.fn().mockResolvedValue(extras.mapa ?? null),
+    fondoDe: jest.fn().mockResolvedValue(null),
   } as unknown as MapaRecorridoService;
 
   const service = new PatrolReportService(
@@ -435,6 +441,48 @@ describe('PatrolReportService.render · streaming y evidencia', () => {
     expect(resumen).toMatchObject({ fotosIncluidas: 1, fotosOmitidas: 0, paginasAnexo: 1 });
   });
 
+  it.each([true, false])('el correo dibuja el PDF real del panel y respeta photoAppendix=%s', async (photoAppendix) => {
+    await writeFile(join(raiz, 'tenant', 'patrol', 'ok.jpg'), jpegEmbebible());
+    await mkdir(join(raiz, 'tenant-1', 'patrol-id'), { recursive: true });
+    await writeFile(join(raiz, 'tenant-1', 'patrol-id', photoAppendix
+      ? 'informe-ronda-anexo.pdf' : 'informe-ronda.pdf'), Buffer.from('%PDF-copia-anterior-incompleta'));
+    const mapa = construirMapaRecorrido({
+      puntos: [], coordenadas: [], escaneos: [], recinto: { latitude: '-33.45', longitude: '-70.66' },
+      traza: [0, 1].map((i) => ({ latitude: String(-33.45 + i * 0.0001), longitude: '-70.66',
+        recorded_at_device: new Date(1_780_000_000_000 + i * 5_000), accuracy_m: '5' })),
+      trazaActivada: true, maxErrorTrazaM: 100, maxPuntosTraza: 1500,
+    });
+    expect(mapa.hayDatos).toBe(true);
+    const { service: informe, rules, features } = armarServicio({
+      fotos: [fotoRow('f1', 'ok.jpg')], scans: [...SCANS, { ...SCANS[0], checkpoint_id: 'cp-2' }],
+    }, { raiz, mapa, photoAppendix });
+    const render = jest.spyOn(informe, 'render');
+    const manager = { query: jest.fn(async (sql: string) => {
+      if (sql.includes('FROM patrols')) return [{ site_id: 'site-1', status: 'completada', compliance_pct: '100' }];
+      if (sql.includes('FROM memberships')) return [{ id: 'admin-1', email: 'informes@ejemplo.cl' }];
+      if (sql.includes('FROM report_deliveries')) return [];
+      if (sql.includes('INSERT INTO report_deliveries')) return [{ id: 'entrega-1' }];
+      throw new Error('Consulta inesperada en despacho de prueba');
+    }) };
+    const mail = { enqueue: jest.fn().mockResolvedValue({ estado: 'encolado', jobId: 'correo-1' }) };
+    const envio = new EnvioInformeService({} as Queue, { manager } as unknown as TenantContextService,
+      informe, mail as unknown as MailQueueService, rules, []);
+
+    await envio.despachar('tenant-1', 'patrol-id');
+
+    expect(features.isEnabled).toHaveBeenCalledWith('photoAppendix');
+    expect(render.mock.calls[0]?.[0]).toMatchObject({ incluyeAnexo: photoAppendix,
+      mapa: photoAppendix ? mapa : null });
+    expect(await render.mock.results[0]!.value).toMatchObject({ fotosIncluidas: photoAppendix ? 1 : 0 });
+    expect(mail.enqueue).toHaveBeenCalledTimes(1);
+    const adjunto = (mail.enqueue.mock.calls[0] as unknown as [MailJobData])[0].attachments![0]!;
+    const pdf = Buffer.from(adjunto.contentBase64, 'base64');
+    expect(adjunto.contentType).toBe('application/pdf');
+    expect(esPdf(pdf)).toBe(true);
+    expect(pdf.subarray(-8).toString('latin1')).toContain('%%EOF');
+    expect(pdf.includes(Buffer.from('/Subtype /Image'))).toBe(photoAppendix);
+  });
+
   it('con la bitácora encendida la foto va en línea y el anexo no se repite', async () => {
     await writeFile(join(raiz, 'tenant', 'patrol', 'ok.jpg'), jpegEmbebible());
     const { service } = armarServicio({ fotos: [fotoRow('f1', 'ok.jpg')] }, { raiz });
@@ -594,10 +642,10 @@ describe('PatrolReportService.render · streaming y evidencia', () => {
 });
 
 describe('PatrolReportService.toBuffer', () => {
-  it('devuelve los bytes y por defecto SIN imágenes, para el adjunto del correo', async () => {
+  it('permite pedir explícitamente una versión liviana sin imágenes', async () => {
     const { service } = armarServicio({ fotos: [FOTO] });
 
-    const informe = await service.toBuffer('patrol-id');
+    const informe = await service.toBuffer('patrol-id', { incluirAnexo: false });
 
     expect(esPdf(informe.pdf)).toBe(true);
     expect(informe.filename).toBe('informe-ronda-patrol-id.pdf');
@@ -608,12 +656,12 @@ describe('PatrolReportService.toBuffer', () => {
     expect(informe.render.fotosIncluidas).toBe(0);
   });
 
-  it('el adjunto del correo no abre un solo archivo del volumen de evidencia', async () => {
+  it('la versión liviana explícita no abre archivos del volumen de evidencia', async () => {
     // La prueba de que sigue siendo liviano: la raiz apunta a un directorio que
     // no existe, asi que si intentara leer una imagen contaria una omitida.
     const { service } = armarServicio({ fotos: [FOTO] }, { raiz: '/vol/no-existe' });
 
-    const informe = await service.toBuffer('patrol-id');
+    const informe = await service.toBuffer('patrol-id', { incluirAnexo: false });
 
     expect(informe.render).toMatchObject({
       fotosIncluidas: 0,
