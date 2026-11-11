@@ -2,6 +2,8 @@
 
 import { FormEvent, useDeferredValue, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { CompanyCardSettings } from './company-card-settings';
+import { IconPlus, IconX } from '@tabler/icons-react';
 
 export interface PlatformTenant {
   id: string;
@@ -79,6 +81,8 @@ export function PlatformManagement({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [generatedCodes, setGeneratedCodes] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
@@ -127,8 +131,11 @@ export function PlatformManagement({
       adminGivenName: data.get('adminGivenName'),
       adminFamilyName: data.get('adminFamilyName'),
       adminPassword: data.get('adminPassword'),
+      ...(data.get('loginCardUid') ? { loginCardUid: data.get('loginCardUid') } : {}),
     });
     if (!response.ok) return setMessage(await responseMessage(response));
+    const created = await response.json() as { id: string; companyAccessCode?: string };
+    if (created.companyAccessCode) setGeneratedCodes(current => ({ ...current, [created.id]: created.companyAccessCode! }));
     form.reset();
     setMessage('Empresa y administrador creados correctamente.');
     startTransition(() => router.refresh());
@@ -148,20 +155,28 @@ export function PlatformManagement({
   return (
     <>
       <section className="stat-grid" id="resumen">
-        <PlatformMetric label="Tenants activos" value={totals.active} detail={`${tenants.length - totals.active} suspendidos`} />
+        <PlatformMetric label="Empresas activas" value={totals.active} detail={`${tenants.length - totals.active} suspendidas`} />
         <PlatformMetric label="Usuarios" value={totals.users} detail={`${totals.sites} recintos`} />
         <PlatformMetric label="Rondas del mes" value={totals.patrols} detail="Toda la plataforma" />
       </section>
-      <div className="management-grid">
-      <section className="management-card" id="alta">
+      <div className="panel-platform-actions">
+        <button type="button" className={creating ? 'secondary-button' : 'primary-button'}
+          aria-expanded={creating} aria-controls="alta" onClick={() => setCreating(!creating)}>
+          {creating ? <IconX size={18} aria-hidden="true" /> : <IconPlus size={18} aria-hidden="true" />}
+          {creating ? 'Cerrar formulario' : 'Nueva empresa'}
+        </button>
+      </div>
+      <div className="management-grid panel-platform-grid">
+      <section className="management-card panel-create-company" id="alta" hidden={!creating}>
         <div className="card-heading">
-          <div><span className="eyebrow">Onboarding</span><h2>Nueva empresa</h2></div>
+          <div><span className="eyebrow">Alta de empresa</span><h2>Nueva empresa</h2></div>
         </div>
         <form className="management-form" onSubmit={submit}>
           <label>Nombre visible<input name="displayName" required minLength={2} /></label>
           <label>Razón social<input name="legalName" required minLength={3} /></label>
           <label>Identificador URL<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="seguridad-andina" /></label>
           <label>Plan<select name="planKey"><option value="base">Base</option><option value="pro">Pro</option></select></label>
+          <label>Tarjeta de empresa (UID NFC opcional)<input name="loginCardUid" maxLength={64} autoComplete="off" placeholder="Configurable también después del alta" /></label>
           <div className="form-divider">Administrador inicial</div>
           <label>Nombre<input name="adminGivenName" required /></label>
           <label>Apellido<input name="adminFamilyName" required /></label>
@@ -209,6 +224,9 @@ export function PlatformManagement({
                 {(nearUserLimit || nearSiteLimit) ? <span className="limit-warning">Cerca del límite del plan</span> : null}
               </div>
               <span className={`state-chip ${tenant.status}`}>{tenant.status === 'active' ? 'Activa' : 'Suspendida'}</span>
+              <details open={Boolean(generatedCodes[tenant.id])}><summary>Código y tarjeta de empresa</summary>
+                <CompanyCardSettings apiUrl={apiUrl} role="superadmin" tenantId={tenant.id} initialCode={generatedCodes[tenant.id]} />
+              </details>
               <button className="secondary-button" onClick={() => toggle(tenant)} disabled={pending}>
                 {tenant.status === 'active' ? 'Suspender' : 'Reactivar'}
               </button>

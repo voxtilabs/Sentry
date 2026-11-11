@@ -11,7 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export const SYNC_OPERATION_KINDS = ['scan', 'event'] as const;
+export const SYNC_OPERATION_KINDS = ['scan', 'event', 'visit', 'visit-exit'] as const;
 export type SyncOperationKind = (typeof SYNC_OPERATION_KINDS)[number];
 
 /**

@@ -15,6 +15,7 @@ import { MAIL_QUEUE_NAME } from './mail-queue.constants';
 import { MailQueueService } from './mail-queue.service';
 import { MailProcessor } from './mail.processor';
 import { MailpitProvider } from './mailpit.provider';
+import { ResendProvider } from './resend.provider';
 import { SmtpProvider } from './smtp.provider';
 
 type MailEnvironment = Pick<
@@ -28,6 +29,7 @@ type MailEnvironment = Pick<
   | 'SMTP_USER'
   | 'SMTP_PASSWORD'
   | 'SMTP_SECURE'
+  | 'RESEND_API_KEY'
 >;
 
 type DominiosEnvironment = Pick<Env, 'MAIL_BLOCKED_DOMAINS' | 'MAIL_ALLOW_RESERVED_DOMAINS'>;
@@ -39,6 +41,13 @@ export function createMailProvider(env: MailEnvironment): MailProvider {
       host: env.MAILPIT_HOST,
       port: env.MAILPIT_PORT,
     });
+  }
+
+  if (env.MAIL_DRIVER === 'resend') {
+    if (!env.RESEND_API_KEY) {
+      throw new Error('MAIL_DRIVER=resend requiere RESEND_API_KEY');
+    }
+    return new ResendProvider({ from: env.MAIL_FROM, apiKey: env.RESEND_API_KEY });
   }
 
   if (!env.SMTP_HOST) {
@@ -110,6 +119,14 @@ export function redisOptionsFromUrl(raw: string): RedisOptions {
           SMTP_USER: config.get('SMTP_USER', { infer: true }),
           SMTP_PASSWORD: config.get('SMTP_PASSWORD', { infer: true }),
           SMTP_SECURE: config.get('SMTP_SECURE', { infer: true }),
+          /*
+           * Faltaba esta linea y tumbo produccion. El tipo la admite opcional,
+           * asi que omitirla compila sin una queja: la llave llegaba
+           * `undefined`, la validacion de mas arriba lanzaba y Nest moria al
+           * inicializar el modulo. El contenedor SI la tenia en su entorno; lo
+           * que faltaba era leerla.
+           */
+          RESEND_API_KEY: config.get('RESEND_API_KEY', { infer: true }),
         }),
     },
     {

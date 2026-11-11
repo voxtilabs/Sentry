@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { fotoParaPdf } from './pdf-photo';
 
 import { desvioDeTurno, redactarAtrasoDeTarea, redactarDuracion } from './desvio-de-turno';
 import {
@@ -117,6 +118,8 @@ export interface OpcionesRender {
   readonly raizEvidencia: string;
   /** Techo por archivo; se alimenta de photoMaxSizeMB de las reglas del tenant. */
   readonly maxBytesFoto: number;
+  /** Presupuesto de la copia comprimida dentro del PDF; no altera la evidencia. */
+  readonly objetivoBytesFoto?: number;
   /** Aviso de evidencia que no se pudo incluir. Sin nombres ni ubicaciones. */
   readonly onEvidenciaFallida?: (fotoId: string, motivo: MotivoEvidencia) => void;
   /** reportTimeline: la ronda contada como cronologia. Apagada, vuelven las tablas. */
@@ -164,6 +167,7 @@ export async function renderizarInformeRonda(
   opciones: OpcionesRender,
 ): Promise<ResumenRender> {
   const doc = new PDFDocument({
+    compress: true,
     size: 'A4',
     margin: MARGEN,
     info: {
@@ -859,7 +863,7 @@ async function pintarEvidencia(
 
   let ok = false;
   if (lectura.ok) {
-    ok = dibujarImagen(doc, lectura.contenido, caja);
+    ok = dibujarImagen(doc, await fotoParaPdf(lectura.contenido, opciones.objetivoBytesFoto), caja);
     if (!ok) {
       opciones.onEvidenciaFallida?.(foto.id, 'ilegible');
       dibujarHuecoEvidencia(doc, caja, MOTIVO_TEXTO.ilegible);
@@ -1014,7 +1018,7 @@ function dibujarTareas(doc: PDFKit.PDFDocument, modelo: InformeRonda): void {
       { texto: tarea.respuesta ? recortar(tarea.respuesta.replaceAll('\n', ' '), 20) : '—' },
       tarea.faltaFoto
         ? { texto: 'FALTA', color: PALETA.alerta, negrita: true }
-        : { texto: tarea.fotoId ? 'Sí' : '—' },
+        : { texto: tarea.fotoIds.length ? String(tarea.fotoIds.length) : '—' },
       tarea.atrasada
         ? { texto: `+${tarea.atrasoMinutos} min`, color: PALETA.alerta, negrita: true }
         : { texto: '—' },
@@ -1121,7 +1125,7 @@ async function dibujarAnexo(
 
     const caja = { x: celda.x, y: celda.y, ancho: celda.ancho, alto: celda.alto - ALTO_LEYENDA };
     if (lectura.ok) {
-      const dibujada = dibujarImagen(doc, lectura.contenido, caja);
+      const dibujada = dibujarImagen(doc, await fotoParaPdf(lectura.contenido, opciones.objetivoBytesFoto), caja);
       if (dibujada) {
         incluidas += 1;
       } else {

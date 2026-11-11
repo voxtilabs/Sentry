@@ -81,6 +81,16 @@ const entrada = (parcial: Partial<EntradaMapa> = {}): EntradaMapa => ({
 });
 
 describe('proyectar', () => {
+  it('el mapa conserva cada posición medida, también en curvas y junto a un hueco', () => {
+    const filas = [traza(RECINTO.lat, RECINTO.lng, 0, 5),
+      traza(RECINTO.lat + 0.0002, RECINTO.lng, 1, 5),
+      traza(RECINTO.lat + 0.0002, RECINTO.lng + 0.0002, 6, 5)];
+    const mapa = construirMapaRecorrido(entrada({ traza: filas }));
+    expect(mapa.traza).toHaveLength(3);
+    const real = proyectar(Number(filas[1]!.latitude), Number(filas[1]!.longitude), mapa.origen!);
+    expect(mapa.traza[1]!.este).toBeCloseTo(real.este, 5);
+    expect(mapa.traza[1]!.norte).toBeCloseTo(real.norte, 5);
+  });
   it('convierte grados a metros locales con el norte hacia arriba', () => {
     const arriba = proyectar(RECINTO.lat + 0.001, RECINTO.lng, RECINTO);
 
@@ -297,7 +307,7 @@ describe('construirMapaRecorrido · traza', () => {
     expect(mapa.trazaTotalRegistrada).toBe(3);
   });
 
-  it('la distancia total considera TODAS las posiciones guardadas', () => {
+  it('la distancia medida excluye posiciones imprecisas sin borrar su existencia', () => {
     // Tiene que coincidir con la que muestra el panel (GeoService.patrolTrack).
     // Un informe que diga 800 m y un panel que diga 1.200 m para la misma ronda
     // es una discusion con el cliente, no un detalle.
@@ -314,7 +324,7 @@ describe('construirMapaRecorrido · traza', () => {
     );
 
     expect(mapa.traza).toHaveLength(1);
-    expect(mapa.distanciaTrazaM).toBeCloseTo(GRADO_MILESIMO_M, 0);
+    expect(mapa.distanciaTrazaM).toBe(0);
   });
 
   it('una posición sin dato de error se dibuja igual', () => {
@@ -532,5 +542,23 @@ describe('construirMapaRecorrido · sin nada que dibujar', () => {
 
     expect(mapa.trazaDesactivada).toBe(false);
     expect(mapa.hayDatos).toBe(true);
+  });
+});
+
+
+describe('regresión: posiciones aisladas no acreditan el camino entre ellas', () => {
+  it('no suma los once minutos sin posición ni una lectura imprecisa al recorrido', () => {
+    const start = Date.parse('2026-11-10T20:00:00Z');
+    const rows: TrazaRow[] = [
+      [0, -33.45, 5], [7, -33.45005, 5],
+      [20, -33.451, 150], [680, -33.451, 5], [980, -33.452, 5],
+    ].map(([seconds, lat, accuracy]) => ({
+      recorded_at_device: new Date(start + seconds! * 1000),
+      latitude: String(lat), longitude: '-70.66', accuracy_m: String(accuracy),
+    }));
+    const mapa = construirMapaRecorrido(entrada({traza: rows, maxErrorTrazaM: 20, maxGapSeconds: 120}));
+    expect(mapa.trazaTotalRegistrada).toBe(5);
+    expect(mapa.distanciaTrazaM).toBeGreaterThan(4);
+    expect(mapa.distanciaTrazaM).toBeLessThan(10);
   });
 });
