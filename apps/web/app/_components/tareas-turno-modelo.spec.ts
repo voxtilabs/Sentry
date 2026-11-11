@@ -211,14 +211,14 @@ describe('tareas del turno — revision del borrador (#265)', () => {
     expect(revision.errores).toEqual(['Tarea 1: la hora va en formato HH:MM de 24 horas.']);
   });
 
-  it('la foto obligatoria avisa que el guardia todavia no puede adjuntarla', () => {
+  it('las fotos configuradas ya no muestran un aviso de función pendiente', () => {
     const revision = revisarBorrador('Tareas del turno', [tarea({ requiresPhoto: true })], {
       recinto: RECINTO,
       turno: null,
     });
 
     expect(revision.errores).toEqual([]);
-    expect(revision.avisos.join(' ')).toContain('todavía no adjunta fotos');
+    expect(revision.avisos).toEqual([]);
   });
 });
 
@@ -239,7 +239,7 @@ describe('tareas del turno — lo que dice la pantalla (#265)', () => {
         tarea({ dueLocalTime: '11:00', checkpointId: 'punto-cocina', requiresPhoto: true }),
         RECINTO.checkpoints,
       ),
-    ).toBe('11:00 · Cocina · foto obligatoria');
+    ).toBe('11:00 · Cocina · 1–3 fotos');
   });
 
   it('una tarea general del turno lo dice en vez de dejar el hueco', () => {

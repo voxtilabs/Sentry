@@ -1,3 +1,4 @@
+import { reservarLector } from './reserva-lector';
 import { Vibration } from 'react-native';
 import NfcManager, { NfcAdapter, NfcError, NfcTech } from 'react-native-nfc-manager';
 
@@ -42,12 +43,22 @@ const FAMILIAS_QUE_ESCUCHA =
   NfcAdapter.FLAG_READER_NFC_V;
 
 export const puertoNfcAndroid: PuertoNfc = {
-  iniciar: () => NfcManager.start(),
+  iniciar: async () => {
+    await NfcManager.start();
+    if (await NfcManager.isSupported() && await NfcManager.isEnabled()) {
+      await reservarLector(() => NfcManager.registerTagEvent({
+        isReaderModeEnabled: true, readerModeFlags: FAMILIAS_QUE_ESCUCHA,
+      }));
+    }
+  },
   soportado: () => NfcManager.isSupported(),
   activado: () => NfcManager.isEnabled(),
   esperarEtiqueta: async () => {
     // NTAG puede venir formateada como NDEF o en blanco. Pedir las tres
     // tecnologías evita rechazar una etiqueta válida solo por su formato.
+    await reservarLector(() => NfcManager.registerTagEvent({
+      isReaderModeEnabled: true, readerModeFlags: FAMILIAS_QUE_ESCUCHA,
+    }));
     await NfcManager.requestTechnology(
       [NfcTech.Ndef, NfcTech.NfcA, NfcTech.MifareUltralight],
       { isReaderModeEnabled: true, readerModeFlags: FAMILIAS_QUE_ESCUCHA },

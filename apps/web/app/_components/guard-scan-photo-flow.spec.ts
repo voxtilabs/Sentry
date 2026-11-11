@@ -313,15 +313,11 @@ describe('fotosDePuntoAdoptables', () => {
 describe('efectoDelDesenlace: el aviso que no llegaba a la pantalla', () => {
   const CLASES: DesenlaceFotoDePunto['clase'][] = ['esperando_id', 'subida', 'sin_subir'];
 
-  it('la foto guardada y no subida deja el panel ABIERTO', () => {
-    // El defecto: la pantalla cerraba el panel y recién después escribía el
-    // aviso, que solo se pinta DENTRO del panel. Con el panel cerrado el guardia
-    // no se enteraba de nada y no podía repetir la foto: un punto ya marcado no
-    // vuelve a ser el siguiente en toda la ronda.
+  it('la foto durable avanza sin otro botón y anuncia que la subida sigue pendiente', () => {
     const efecto = efectoDelDesenlace({ clase: 'sin_subir', subida: false }, 'Portón norte');
 
-    expect(efecto.mantenerPanel).toBe(true);
-    expect(efecto.aviso).toBeDefined();
+    expect(efecto.mantenerPanel).toBe(false);
+    expect(efecto.anuncio).toContain('Todavía no se pudo subir');
     expect(efecto.guardadaSinSubir).toBe(true);
   });
 

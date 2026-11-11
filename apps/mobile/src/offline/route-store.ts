@@ -61,6 +61,15 @@ export async function abrirBaseOperativa(): Promise<SQLiteDatabase> {
       );
       CREATE INDEX IF NOT EXISTS sync_queue_pending_order
         ON sync_queue (state, next_attempt_at, queued_at, sequence);
+      -- Las caidas de la app (#273) van aca y no en SecureStore: alli el tope
+      -- por valor es de 2 KB y una pila de excepcion no entra. Comparten base
+      -- con los escaneos porque comparten el problema: el guardia trabaja
+      -- donde no hay señal y el dato tiene que esperar al reinicio.
+      CREATE TABLE IF NOT EXISTS crash_queue (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        payload_json TEXT NOT NULL,
+        queued_at TEXT NOT NULL
+      );
     `);
     return db;
   })());

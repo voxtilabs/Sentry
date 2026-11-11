@@ -3,7 +3,10 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Brand } from './brand';
 import { SesionViva } from './sesion-viva';
 import { LogoutButton } from './logout-button';
+import { GuardEndDay } from './guard-end-day';
+import { HelpButton } from './help-button';
 import { PANEL_NAVIGATION, type PanelRole } from './panel-navigation';
+import { PanelShell } from './panel-shell';
 
 /**
  * La marca que el shell dibuja y las variables CSS que deja caer en cascada.
@@ -34,6 +37,11 @@ export function DashboardShell({
   marca?: MarcaDelShell;
   activeView?: string;
 }) {
+  if (role === 'ADMIN' || role === 'SUPERVISOR' || role === 'SUPERADMIN') {
+    return <PanelShell role={role} title={title} subtitle={subtitle} marca={marca} activeView={activeView}>
+      {children}
+    </PanelShell>;
+  }
   return (
     <main className="dashboard-shell" data-role={role} style={marca?.cssVariables as CSSProperties}>
       {/* Renueva el token antes de que venza. Va en el shell y no en cada panel
@@ -80,7 +88,8 @@ export function DashboardShell({
           </div>
           <div className="topbar-actions">
             <span className="live-badge">● En línea</span>
-            <LogoutButton />
+            <HelpButton />
+            {role === 'GUARDIA' ? <GuardEndDay /> : <LogoutButton />}
           </div>
         </header>
         {children}
