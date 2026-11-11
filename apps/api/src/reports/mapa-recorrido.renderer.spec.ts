@@ -345,14 +345,15 @@ describe('tramos sin registrar', () => {
     expect(huecos[0]!.desde).toBe(1);
   });
 
-  it('el informe lo dice y aclara que la distancia va en linea recta', () => {
+  it('el informe aclara que los huecos no dibujan ni suman recorrido', () => {
     const notas = armarNotas(trazaCada([15, 726, 15]));
 
     const aviso = notas.find((n) => n.includes('se interrumpió'));
     expect(aviso).toBeDefined();
     expect(aviso).toContain('una vez');
     expect(aviso).toContain('12 min');
-    expect(aviso).toContain('línea recta');
+    expect(aviso).toContain('no se dibujan líneas ni flechas');
+    expect(aviso).toContain('no se suman metros');
   });
 
   it('sin interrupciones no ensucia el informe con el aviso', () => {

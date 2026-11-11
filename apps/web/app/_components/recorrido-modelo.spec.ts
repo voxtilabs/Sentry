@@ -4,6 +4,7 @@ import {
   resumenDeCheckpoints,
   trazaDePatronCheckpoints,
   trazaDeRecorrido,
+  trazasDeRecorrido,
   type CheckpointTrack,
   type PuntoTrack,
 } from './recorrido-modelo';
@@ -123,5 +124,19 @@ describe('resumenDeCheckpoints', () => {
       cumplidos: 2,
       pendientes: 1,
     });
+  });
+});
+
+
+describe('segmentos GPS del servidor', () => {
+  it('no une posiciones aisladas ni segmentos separados por falta de señal', () => {
+    const a = p(-33.45, -70.66), b = p(-33.4501, -70.66), c = p(-33.451, -70.66);
+    const lines = trazasDeRecorrido({ points: [a, b, c], segments: [[a, b], [c]] });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.puntos).toEqual([{lat:a.latitude,lng:a.longitude},{lat:b.latitude,lng:b.longitude}]);
+    expect(trazasDeRecorrido({ points:[a,b,c], segments:[] })).toEqual([]);
+  });
+  it('conserva compatibilidad con respuestas de la API anterior', () => {
+    expect(trazasDeRecorrido({ points:[p(-33.45,-70.66),p(-33.4501,-70.66)] })).toHaveLength(1);
   });
 });
