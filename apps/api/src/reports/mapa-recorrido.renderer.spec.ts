@@ -362,3 +362,11 @@ describe('tramos sin registrar', () => {
     );
   });
 });
+
+
+it('no afirma que la distancia medida incluye las posiciones imprecisas', () => {
+  const map = mapaCompleto();
+  const notes = armarNotas({...map,trazaDescartadaPorError:7});
+  expect(notes.join(' ')).not.toContain('La distancia total sí las considera');
+  expect(notes.join(' ')).toContain('no suman distancia');
+});

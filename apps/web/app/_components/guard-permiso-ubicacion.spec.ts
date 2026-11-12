@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   EVENTO_CONSENTIMIENTO_ACEPTADO,
   reportarPermisoUbicacion,
+  permisoPermiteUbicacion,
   traducirEstadoPermiso,
   type DepsReportePermiso,
 } from './guard-permiso-ubicacion';
@@ -170,4 +171,45 @@ describe('pedir el permiso EN EL INGRESO (bug 10-ago: la app no lo pedia)', () =
       expect(readFileSync(join(__dirname, pantalla), 'utf8')).toContain('puente.avisoUbicacion');
     }
   });
+});
+
+
+describe('alcance real del permiso de ubicación', () => {
+  it('distingue solo primer plano sin solicitar permisos adicionales', async () => {
+    const d = deps({consultarSegundoPlano: jest.fn().mockResolvedValue({permiso:'ubicacion-segundo-plano',estado:'denegado',puedeVolverAPedir:true})});
+    const result = await reportarPermisoUbicacion(d);
+    expect(result).toEqual({hecho:true,estado:'solo_primer_plano'});
+    expect(d.reportes.at(-1)!.deviceInfo).toContain('fondo=denegado');
+  });
+  it('confirma permitir siempre cuando ambos permisos están concedidos', async () => {
+    const d = deps({consultarSegundoPlano: jest.fn().mockResolvedValue({permiso:'ubicacion-segundo-plano',estado:'concedido',puedeVolverAPedir:false})});
+    await reportarPermisoUbicacion(d);
+    expect(d.reportes[0]!.estado).toBe('concedido');
+    expect(d.reportes.at(-1)!.deviceInfo).toContain('fondo=concedido');
+  });
+  it('un shell sin respuesta no se informa como permiso denegado', async () => {
+    const d = deps({consultarSegundoPlano: jest.fn().mockRejectedValue(new Error('old-shell'))});
+    await reportarPermisoUbicacion(d);
+    expect(d.reportes[0]!.estado).toBe('concedido');
+    expect(d.reportes.at(-1)!.deviceInfo).toContain('fondo=desconocido');
+  });
+});
+
+
+it('primer plano conserva la capacidad de iniciar ronda', () => {
+  expect(permisoPermiteUbicacion('solo_primer_plano')).toBe(true);
+  expect(permisoPermiteUbicacion('concedido')).toBe(true);
+  expect(permisoPermiteUbicacion('denegado')).toBe(false);
+});
+it('publica el permiso de primer plano aunque la consulta de fondo no responda', async () => {
+  jest.useFakeTimers();
+  try {
+    const d = deps({consultarSegundoPlano:()=>new Promise(()=>{})});
+    const pending = reportarPermisoUbicacion(d);
+    await Promise.resolve();await Promise.resolve();
+    expect(d.reportes[0]?.estado).toBe('concedido');
+    await jest.advanceTimersByTimeAsync(1501);
+    await expect(pending).resolves.toEqual({hecho:true,estado:'concedido'});
+    expect(d.reportes.at(-1)!.deviceInfo).toContain('fondo=desconocido');
+  } finally {jest.useRealTimers();}
 });
