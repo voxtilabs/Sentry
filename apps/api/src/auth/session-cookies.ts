@@ -35,3 +35,11 @@ export function clearSessionCookies(response: Response): void {
   response.clearCookie('sentrycore_access', { path: '/' });
   response.clearCookie('sentrycore_refresh', { path: '/' });
 }
+
+export function setCompanyCookie(response: Response, token: string): void {
+  response.cookie('sentrycore_company', token, { ...sessionCookieOptions(), maxAge: REFRESH_MAX_AGE_MS });
+}
+
+export function clearCompanyCookie(response: Response): void {
+  response.clearCookie('sentrycore_company', { path: '/' });
+}

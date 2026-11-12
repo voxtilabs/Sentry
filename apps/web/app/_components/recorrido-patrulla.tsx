@@ -7,7 +7,7 @@ import { resolverOrigenTiles } from './mapa-tiles';
 import {
   marcasDeCheckpoints,
   trazaDePatronCheckpoints,
-  trazaDeRecorrido,
+  trazasDeRecorrido,
   type RespuestaTrack,
 } from './recorrido-modelo';
 import type { PuntoMapa, TrazaMapa } from './mapa-modelo';
@@ -60,10 +60,10 @@ export function RecorridoPatrulla({
         if (!respuesta.ok) throw new Error(String(respuesta.status));
         const cuerpo = (await respuesta.json()) as RespuestaTrack;
         if (!vivo) return;
-        const lineaRecorrido = trazaDeRecorrido(cuerpo.points ?? []);
+        const segmentosRecorrido = trazasDeRecorrido(cuerpo);
         const lineaPatron = cuerpo.checkpoints ? trazaDePatronCheckpoints(cuerpo.checkpoints) : null;
         const marcasPuntos = cuerpo.checkpoints ? marcasDeCheckpoints(cuerpo.checkpoints) : [];
-        const listaTrazas = [lineaPatron, lineaRecorrido].filter((t): t is TrazaMapa => t !== null);
+        const listaTrazas = [lineaPatron, ...segmentosRecorrido].filter((t): t is TrazaMapa => t !== null);
 
         if (listaTrazas.length === 0 && marcasPuntos.length === 0) {
           setEstado('vacio');

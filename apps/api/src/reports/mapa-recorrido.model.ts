@@ -1,4 +1,5 @@
-import type { ScanAnomaly } from '@sentrycore/shared';
+import { DEFAULT_PATROL_RULES, type ScanAnomaly } from '@sentrycore/shared';
+import { splitTrack, measuredDistance } from '../geo/track-segments';
 
 import { haversineM } from '../geo/haversine';
 import type { FilaPunto } from './patrol-report.model';
@@ -156,6 +157,7 @@ export interface MarcaEscaneoMapa extends PosicionMapa {
 
 export interface PuntoTrazaMapa extends PosicionMapa {
   readonly instante: Date;
+  readonly segment?: number;
 }
 
 /** Caja del encuadre en metros locales. Los lados nunca son cero. */
@@ -213,10 +215,8 @@ export interface MapaRecorrido {
   /**
    * Distancia total del recorrido, en metros.
    *
-   * Se calcula sobre TODAS las posiciones guardadas —incluidas las imprecisas
-   * que no se dibujan— porque es el mismo numero que muestra el panel en vivo
-   * (GeoService.patrolTrack). Un informe que diga 800 m y un panel que diga
-   * 1.200 m para la misma ronda es una discusion con el cliente, no un detalle.
+   * Suma únicamente segmentos consecutivos de calidad suficiente. Los huecos
+   * no acreditan camino y no aportan distancia; se conserva toda la evidencia.
    */
   readonly distanciaTrazaM: number;
 }
@@ -243,6 +243,8 @@ export interface EntradaMapa {
    * es `reglas.gpsTrackingEnabled` (mapa-recorrido.service.ts).
    */
   readonly trazaActivada: boolean;
+  readonly maxGapSeconds?: number;
+  readonly maxSpeedKmh?: number;
   readonly spanMinimoM?: number;
 }
 
@@ -285,28 +287,17 @@ export function construirMapaRecorrido(entrada: EntradaMapa): MapaRecorrido {
   // entrego con un error mayor al que el tenant acepta. Una posicion con 2 km
   // de error no es un dato malo, es ruido: dibujarla estira el encuadre y
   // aplasta el recorrido real hasta volverlo ilegible.
-  const trazaValida: Array<{ coord: Coordenada; instante: Date }> = [];
-  let trazaDescartadaPorError = 0;
-  for (const fila of traza) {
-    const coord = aCoordenada(fila.latitude, fila.longitude);
-    if (!coord) continue;
-    const error = aNumero(fila.accuracy_m);
-    if (error !== null && error > maxErrorTrazaM) {
-      trazaDescartadaPorError += 1;
-      continue;
-    }
-    trazaValida.push({ coord, instante: fila.recorded_at_device });
-  }
-
-  // Antes de submuestrear se limpian los SALTOS. El filtro por error de GPS no
-  // los agarra: una posicion puede venir con precision declarada de 20 m y aun
-  // asi estar 500 m del recorrido real, porque la señal reboto. En la ronda del
-  // 21-08 habia diez tramos con velocidad imposible, uno de 553 metros en un
-  // solo paso — a 133 km/h. Dibujados, convertian el plano en una maraña de
-  // rayas rectas que cruzaban manzanas enteras.
-  const trazaSinSaltos = quitarSaltos(trazaValida);
-  const trazaDibujable = suavizar(submuestrear(trazaSinSaltos, maxPuntosTraza));
-  const trazaDescartadaPorSalto = trazaValida.length - trazaSinSaltos.length;
+  const rawSamples = traza.map(fila => ({ recordedAt: fila.recorded_at_device,
+    latitude: Number(fila.latitude), longitude: Number(fila.longitude), accuracyM: aNumero(fila.accuracy_m) }));
+  const maxGapSeconds = entrada.maxGapSeconds ?? DEFAULT_PATROL_RULES.gpsTrackGapMinSeconds;
+  const segments = splitTrack(rawSamples, { maxAccuracyM: maxErrorTrazaM, maxGapSeconds,
+    maxSpeedKmh: entrada.maxSpeedKmh ?? DEFAULT_PATROL_RULES.impossibleSpeedKmh });
+  const trazaSinSaltos = segments.flatMap((group, segment) => group.map(point => ({
+    coord: { lat: point.latitude, lng: point.longitude }, instante: point.recordedAt, segment,
+  })));
+  const trazaDescartadaPorError = rawSamples.filter(p => p.accuracyM !== null && p.accuracyM > maxErrorTrazaM).length;
+  const trazaDescartadaPorSalto = Math.max(0, traza.length - trazaDescartadaPorError - trazaSinSaltos.length);
+  const trazaDibujable = submuestrear(trazaSinSaltos, maxPuntosTraza);
 
   // Escaneos con anomalia de posicion. Los que no dejaron coordenada se cuentan
   // aparte: "no se sabe donde estaba" es informacion, y borrarla del informe
@@ -347,7 +338,7 @@ export function construirMapaRecorrido(entrada: EntradaMapa): MapaRecorrido {
   const geograficas =
     baseGeografica.length > 0 ? baseGeografica : desviados.map((d) => d.coord);
 
-  const distanciaTrazaM = redondear(distanciaDe(trazaTotalValida(traza)));
+  const distanciaTrazaM = redondear(measuredDistance(segments));
 
   if (geograficas.length === 0) {
     // Ni un punto, ni una posicion, ni un escaneo ubicado. Se devuelve el
@@ -380,9 +371,10 @@ export function construirMapaRecorrido(entrada: EntradaMapa): MapaRecorrido {
     omitido: fila.omitido,
     esCritico: fila.esCritico,
   }));
-  const marcasTraza: PuntoTrazaMapa[] = trazaDibujable.map(({ coord, instante }) => ({
+  const marcasTraza: PuntoTrazaMapa[] = trazaDibujable.map(({ coord, instante, segment }) => ({
     ...proyectar(coord.lat, coord.lng, origen),
     instante,
+    segment,
   }));
   const marcasEscaneo: MarcaEscaneoMapa[] = desviados.map((d) => ({
     ...proyectar(d.coord.lat, d.coord.lng, origen),
@@ -438,68 +430,10 @@ export function construirMapaRecorrido(entrada: EntradaMapa): MapaRecorrido {
     escaneosGpsSinPosicion,
     trazaDescartadaPorError,
     trazaSubmuestreada:
-      trazaDibujable.length < trazaValida.length || trazaFueraDelPlano > 0 || trazaDescartadaPorSalto > 0,
+      trazaDibujable.length < trazaSinSaltos.length || trazaFueraDelPlano > 0 || trazaDescartadaPorSalto > 0,
     trazaTotalRegistrada: traza.length,
     distanciaTrazaM,
   };
-}
-
-/** Velocidad por encima de la cual el tramo no lo hizo una persona caminando. */
-const MAX_KMH_A_PIE = 12;
-
-/**
- * Descarta las posiciones que implican un salto imposible desde la anterior.
- *
- * Se compara contra la ULTIMA POSICION ACEPTADA y no contra la inmediata
- * anterior: si se comparara contra la anterior sin mas, un salto seguido de
- * otro salto de vuelta se validaria solo — la ida es imposible, pero la vuelta
- * tambien lo es y las dos "concuerdan" entre si.
- */
-function quitarSaltos(
-  posiciones: readonly { coord: Coordenada; instante: Date }[],
-): { coord: Coordenada; instante: Date }[] {
-  if (posiciones.length <= 2) return [...posiciones];
-  const salida = [posiciones[0]!];
-  for (const actual of posiciones.slice(1)) {
-    const ultima = salida[salida.length - 1]!;
-    const segundos = Math.max(
-      (actual.instante.getTime() - ultima.instante.getTime()) / 1000,
-      1,
-    );
-    const metros = haversineM(
-      ultima.coord.lat, ultima.coord.lng, actual.coord.lat, actual.coord.lng,
-    );
-    const kmh = (metros / segundos) * 3.6;
-    if (kmh <= MAX_KMH_A_PIE) salida.push(actual);
-  }
-  // Si el criterio se comio casi todo, la ronda probablemente fue en vehiculo:
-  // mejor dibujar el recorrido crudo que uno inventado con cuatro puntos.
-  return salida.length >= 3 ? salida : [...posiciones];
-}
-
-/**
- * Media movil de tres: le saca el temblor a la linea sin inventar recorrido.
- *
- * Cada posicion pasa a ser el promedio de sus vecinas REALES, asi que el
- * trazado sigue pasando por donde paso el guardia; solo deja de vibrar por el
- * ruido del GPS, que a 30 metros de error hace zigzaguear una linea recta.
- */
-function suavizar(
-  posiciones: readonly { coord: Coordenada; instante: Date }[],
-): { coord: Coordenada; instante: Date }[] {
-  if (posiciones.length < 3) return [...posiciones];
-  return posiciones.map((actual, i) => {
-    if (i === 0 || i === posiciones.length - 1) return actual;
-    const previa = posiciones[i - 1]!.coord;
-    const siguiente = posiciones[i + 1]!.coord;
-    return {
-      instante: actual.instante,
-      coord: {
-        lat: (previa.lat + actual.coord.lat * 2 + siguiente.lat) / 4,
-        lng: (previa.lng + actual.coord.lng * 2 + siguiente.lng) / 4,
-      },
-    };
-  });
 }
 
 /**
@@ -764,25 +698,6 @@ function aCoordenada(latitud: string | null, longitud: string | null): Coordenad
   // en vez de deformar el encuadre de todo el mapa.
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
-}
-
-function trazaTotalValida(traza: readonly TrazaRow[]): Coordenada[] {
-  const salida: Coordenada[] = [];
-  for (const fila of traza) {
-    const coord = aCoordenada(fila.latitude, fila.longitude);
-    if (coord) salida.push(coord);
-  }
-  return salida;
-}
-
-function distanciaDe(coordenadas: readonly Coordenada[]): number {
-  let total = 0;
-  for (let i = 1; i < coordenadas.length; i += 1) {
-    const previo = coordenadas[i - 1]!;
-    const actual = coordenadas[i]!;
-    total += haversineM(previo.lat, previo.lng, actual.lat, actual.lng);
-  }
-  return total;
 }
 
 /**

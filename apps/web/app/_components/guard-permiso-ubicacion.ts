@@ -32,6 +32,8 @@ import type { EstadoPermiso, ResultadoPermisoPayload } from '../_lib/bridge/prot
 export interface DepsReportePermiso {
   /** permission.query del puente: lee sin abrir dialogos. */
   consultar: (permiso: 'ubicacion') => Promise<ResultadoPermisoPayload>;
+  /** Read only; never opens an Android permission dialog. */
+  consultarSegundoPlano?: () => Promise<ResultadoPermisoPayload>;
   /** POST /geo/permission con la sesion del guardia. Debe lanzar si no es 2xx. */
   reportar: (estado: EstadoApi, deviceInfo: string) => Promise<void>;
   /** Marca del equipo SIN datos de la persona, p. ej. "android api 34 · app 1.2.0". */
@@ -83,11 +85,36 @@ export async function reportarPermisoUbicacion(
     return { hecho: false, motivo: 'sin-puente' };
   }
 
-  const estado = traducirEstadoPermiso(resultado.estado);
+  let estado: EstadoApi = traducirEstadoPermiso(resultado.estado);
   try {
     await deps.reportar(estado, deps.deviceInfo);
   } catch {
     return { hecho: false, motivo: 'reporte-rechazado' };
+  }
+  // Publish the foreground permission first: diagnostics must never delay
+  // authorization or introduce a new Android dialog.
+  if (estado === 'concedido' && deps.consultarSegundoPlano) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let fondo: string = 'desconocido';
+    try {
+      const second = await Promise.race([
+        deps.consultarSegundoPlano(),
+        new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), 1500); }),
+      ]);
+      fondo = second?.estado ?? 'desconocido';
+    } catch {
+      // Old/unresponsive shells retain their confirmed foreground permission.
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    const diagnosticState: EstadoApi = fondo === 'denegado' || fondo === 'denegado-definitivo'
+      ? 'solo_primer_plano' : estado;
+    try {
+      await deps.reportar(diagnosticState, `${deps.deviceInfo.slice(0, 160)} · fondo=${fondo}`);
+      estado = diagnosticState;
+    } catch {
+      // The initial valid report already reached the server.
+    }
   }
   return { hecho: true, estado };
 }
@@ -102,3 +129,8 @@ export async function reportarPermisoUbicacion(
  * capas que no tienen por que enterarse del permiso de ubicacion.
  */
 export const EVENTO_CONSENTIMIENTO_ACEPTADO = 'sentrycore:consentimiento-aceptado';
+
+/** Both scopes permit patrol execution; background scope is diagnostic. */
+export function permisoPermiteUbicacion(estado: EstadoApi): boolean {
+  return estado === 'concedido' || estado === 'solo_primer_plano';
+}

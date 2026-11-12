@@ -56,6 +56,8 @@ type Cobertura =
  * migracion, no cuando la API devuelva 500 en produccion.
  */
 const COBERTURA: Record<string, Cobertura> = {
+  '1792706402000-VisitorAccess.ts:given_names': { via: 'dto', archivo: 'visits/visits.dto.ts', campo: 'givenNames' },
+  '1792706402000-VisitorAccess.ts:family_names': { via: 'dto', archivo: 'visits/visits.dto.ts', campo: 'familyNames' },
   '1722438000000-EnableTenantRls.ts:reason': {
     via: 'servicio',
     donde: 'platform-data/support-access.service.ts:52',
@@ -66,6 +68,12 @@ const COBERTURA: Record<string, Cobertura> = {
     archivo: 'guard/dto/report-event.dto.ts',
     campo: 'text',
     nota: 'recorta y, si queda vacio, lo trata como ausente para no rechazar un panico',
+  },
+  '1727647200000-PausarRonda.ts:reason': {
+    via: 'dto',
+    archivo: 'guard/dto/finish-early.dto.ts',
+    campo: 'reason',
+    nota: 'el mismo DTO cubre pausar y terminar sin completar: motivo opcional, recortado',
   },
   '1724166000000-CreateTenantDeletions.ts:reason': {
     via: 'dto',

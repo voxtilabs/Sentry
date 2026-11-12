@@ -75,8 +75,8 @@ const MODELO: InformeRonda = {
   // sin checklist es el caso normal y se envia igual.
   tareas: [],
   incidentes: [],
-  // El adjunto del correo va sin imagenes, pero la evidencia igual se consulta
-  // (#308): el interruptor esconde los bytes, no el hecho de que exista.
+  // Ronda sin evidencia en este fixture de decisiones; el PDF completo se
+  // comprueba con el renderer real en patrol-report.service.spec.ts.
   evidencias: [],
   anexo: [],
   incluyeAnexo: false,
@@ -228,6 +228,70 @@ describe('EnvioInformeService', () => {
   });
 
   describe('despachar', () => {
+    it('intenta una copia más compacta antes de descartar el adjunto, usando el límite del recinto', async () => {
+      const modelo: InformeRonda = { ...MODELO, evidencias: [{ id: 'foto', scanId: 'scan',
+        checkpointId: 'punto', checkpointName: 'Acceso', numeroPunto: 1, numero: 1,
+        storagePath: 'foto.jpg', mimeType: 'image/jpeg', sizeBytes: 1000,
+        huella: 'abcd', capturadaEn: new Date(), tarea: null, tareaId: null }] };
+      const { service, informe, mail } = armar({ modelo, reglas: { reportMailMaxAttachmentMB: 1 } });
+      let intentos = 0;
+      jest.mocked(informe.render).mockImplementation(async (_modelo, destino, opciones) => {
+        intentos++;
+        expect(opciones?.regenerarCache).toBe(true);
+        expect(opciones?.maxPdfBytes).toBe(intentos === 1 ? 1024 * 1024 : Math.floor(1024 * 1024 * 0.4));
+        await new Promise<void>((resolve) => { destino.on('finish', resolve);
+          destino.end(Buffer.alloc(intentos === 1 ? 2 * 1024 * 1024 : 500 * 1024)); });
+        return { fotosIncluidas: 1, fotosOmitidas: 0, paginasAnexo: 0 };
+      });
+      const resultado = await service.despachar(TENANT, PATRULLA);
+      expect(resultado.adjunto).toBe(true);
+      expect(intentos).toBe(2);
+      expect(mail.enqueue).toHaveBeenCalled();
+    });
+    it('espera el término y todo el lote aunque venza la gracia del último punto', async () => {
+      const ronda = { tenant_id: TENANT, site_id: SITIO, status: 'completada', compliance_pct: '100.00', guard_flow_completed: false };
+      const { service, mail, informe } = armar({ ronda: [ronda], reglas: { reportEvidenceGraceSeconds: 0 } });
+      expect((await service.despachar(TENANT, PATRULLA)).omitido).toBe('evidencia_pendiente');
+      expect(mail.enqueue).not.toHaveBeenCalled();
+      expect(informe.buildModel).not.toHaveBeenCalled();
+      ronda.guard_flow_completed = true;
+      expect((await service.despachar(TENANT, PATRULLA)).omitido).toBeNull();
+    });
+    it('no congela el PDF al último NFC: espera su foto y envía una sola vez al recibirla', async () => {
+      const modelo = { ...MODELO, ejecucion: { ...MODELO.ejecucion, cierre: new Date() } };
+      const { service, mail, informe, atendidas } = armar({ modelo });
+      const cierre = { closingCheckpointId: 'ultimo', closingPhotoRequired: true };
+      expect((await service.despachar(TENANT, PATRULLA, cierre)).omitido).toBe('evidencia_pendiente');
+      expect(informe.render).not.toHaveBeenCalled();
+      expect(mail.enqueue).not.toHaveBeenCalled();
+      expect(atendidas).toEqual([]);
+      jest.mocked(informe.buildModel).mockResolvedValue({ ...modelo,
+        evidencias: [{ checkpointId: 'ultimo' } as InformeRonda['evidencias'][number]] });
+      expect((await service.despachar(TENANT, PATRULLA, cierre)).informes).toBe(1);
+      await service.despachar(TENANT, PATRULLA, cierre);
+      expect(mail.enqueue).toHaveBeenCalledTimes(1);
+    });
+    it('aunque la foto ya llegó, espera la respuesta de la tarea del último punto', async () => {
+      const modelo = { ...MODELO, ejecucion: { ...MODELO.ejecucion, cierre: new Date() },
+        puntos: [{ numero: 2, checkpointId: 'ultimo', esCierre: true, omitido: false } as InformeRonda['puntos'][number]],
+        tareas: [{ numeroPunto: 2, estado: 'pendiente', faltaFoto: false } as InformeRonda['tareas'][number]] };
+      const { service, mail } = armar({ modelo });
+      expect((await service.despachar(TENANT, PATRULLA)).omitido).toBe('evidencia_pendiente');
+      expect(mail.enqueue).not.toHaveBeenCalled();
+    });
+    it.each([0, 180])('con la espera agotada (%s s) envía el informe con la evidencia disponible', async (espera) => {
+      const { service, mail } = armar({ reglas: { reportEvidenceGraceSeconds: espera },
+        modelo: { ...MODELO, ejecucion: { ...MODELO.ejecucion, cierre: new Date(Date.now() - 181_000) } } });
+      expect((await service.despachar(TENANT, PATRULLA, {
+        closingCheckpointId: 'ultimo', closingPhotoRequired: true,
+      })).informes).toBe(1);
+      expect(mail.enqueue).toHaveBeenCalledTimes(1);
+    });
+    it('usa la configuración completa del panel en vez de forzar un PDF sin fotos ni recorrido', async () => {
+      const { service, informe } = armar();
+      await service.despachar(TENANT, PATRULLA);
+      expect(informe.buildModel).toHaveBeenCalledWith(PATRULLA, { requester: null });
+    });
     it('manda el informe a los administradores y a los correos configurados', async () => {
       const { service, mail } = armar({
         reglas: { reportRecipients: ['operaciones@cliente.cl'] },

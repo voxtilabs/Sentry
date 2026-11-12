@@ -1,11 +1,17 @@
+import { stopReference } from './src/geo/reference-native';
+import { crearConsultaPublica, VistaConsultaPublica } from './src/visits/public-vehicle';
+import { crearCamaraOcr, VistaCamaraOcr } from './src/visits/ocr-camera';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   View,
 } from 'react-native';
@@ -17,6 +23,7 @@ import { crearPuenteNativo, type MotivoIncompatible } from './src/bridge';
 import { crearManejadoresNfc } from './src/nfc/handlers';
 import { puertoNfcAndroid } from './src/nfc/native-port';
 import { crearCamaraQr, VistaCamaraQr } from './src/qr/camara';
+import { detenerTrazaEnSegundoPlano } from './src/geo/traza-fondo';
 import { leerRutaOffline, type RutaOfflineGuardada } from './src/offline/route-store';
 import { sincronizarCola } from './src/offline/sync-queue';
 import { registrarSincronizacionBackground } from './src/offline/sync-task';
@@ -25,6 +32,7 @@ import {
   configurarApiUrl,
   instalarReportadorGlobal,
   registrarArranqueYVerificarCierre,
+  reportarCaida,
 } from './src/observability/crash-reporter';
 import { iniciarEscuchaNfcLogin, detenerEscuchaNfcLogin } from './src/nfc/login-nfc-listener';
 import mobilePackage from './package.json';
@@ -156,6 +164,26 @@ export default function App() {
       configurarApiUrl(portal.origin);
       instalarReportadorGlobal(() => portal.origin);
       void registrarArranqueYVerificarCierre(portal.origin).catch(() => undefined);
+      /*
+       * Corta una traza huerfana (#231).
+       *
+       * El muestreo de fondo lo registra ANDROID, no el proceso: sobrevive a
+       * que la app muera. Si el telefono se queda sin bateria a mitad de ronda,
+       * o Android mata el proceso, las actualizaciones de ubicacion siguen
+       * corriendo indefinidamente y el servicio en primer plano sigue diciendo
+       * "Ronda en curso" cuando no hay ninguna. Visto en el telefono de prueba:
+       * la tarea despertaba sola cada pocos segundos sin ronda activa.
+       *
+       * `destino` vive en memoria del proceso, asi que en un arranque limpio
+       * siempre es null y la tarea no sube nada — pero sigue encendiendo el GPS
+       * y gastando bateria, y le muestra al guardia un aviso que miente.
+       *
+       * Aca el arranque es el unico momento en que se sabe con certeza que NO
+       * hay ronda en curso todavia: la que haya la reactiva el portal con su
+       * `track.start`. Se rastrea solo durante la ronda, y esto lo hace cierto
+       * tambien despues de una caida.
+       */
+      void detenerTrazaEnSegundoPlano().catch(() => undefined);
     } catch {
       // Se pierde el reporte de caidas, no la app.
     }
@@ -169,7 +197,10 @@ export default function App() {
 }
 
 function AppShell({ portal }: { portal: URL }) {
+  const { fontScale } = useWindowDimensions();
   const webView = useRef<WebView>(null);
+  const [generacionWebView, setGeneracionWebView] = useState(0);
+  const recuperacionesMotor = useRef(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [rutaOffline, setRutaOffline] = useState<RutaOfflineGuardada>();
@@ -192,11 +223,16 @@ function AppShell({ portal }: { portal: URL }) {
   // puente resuelve el escaneo con una promesa y un componente que se desmonta
   // no puede resolverla. `VistaCamaraQr` solo la mira.
   const camaraQr = useMemo(crearCamaraQr, []);
+  const camaraOcr = useMemo(crearCamaraOcr, []);
+  const consultaPublica = useMemo(crearConsultaPublica, []);
   const manejadores = useMemo(
-    () => crearManejadoresNfc(puertoNfcAndroid, camaraQr.lector),
-    [camaraQr],
+    () => ({ ...crearManejadoresNfc(puertoNfcAndroid, camaraQr.lector), escanearOcr: camaraOcr.scan, cancelarOcr: camaraOcr.cancel, consultarVehiculoPublico: consultaPublica.start, cancelarConsultaPublica: consultaPublica.cancel }),
+    [camaraQr, camaraOcr, consultaPublica],
   );
+  const referenceAllowed=useRef(false);
+  referenceAllowed.current=new URL(urlActual).pathname.startsWith('/app/supervisor');
   const puente = useMemo(() => crearPuenteNativo({
+    puedeCapturarReferencia: () => referenceAllowed.current,
     portalOrigen: portal.origin,
     appVersion: mobilePackage.version,
     inyectar: (javaScript) => webView.current?.injectJavaScript(javaScript),
@@ -245,13 +281,43 @@ function AppShell({ portal }: { portal: URL }) {
   }, []);
 
   useEffect(() => {
-    const subscription = Network.addNetworkStateListener((estado) => {
+    const avisar = (estado: Network.NetworkState) => {
       puente.notificarConexion(normalizarConexion(estado));
       if (estado.isConnected === true && estado.isInternetReachable !== false) {
         void sincronizarCola().catch(() => undefined);
       }
+    };
+
+    const subscription = Network.addNetworkStateListener(avisar);
+
+    /*
+     * Reportado en terreno: la app se queda en "sin señal" con el telefono
+     * teniendo señal y no se recupera hasta cerrarla.
+     *
+     * El aviso del sistema es un EVENTO, no un estado que se pueda volver a
+     * mirar: si el que decia que la red volvio no llega —Android coalesce los
+     * callbacks con la pantalla apagada y no siempre reemite cuando la red se
+     * vuelve a validar— la pantalla se queda con el ultimo que si llego. Y
+     * cerrar la app "lo arreglaba" justo porque al arrancar se pregunta el
+     * estado de cero.
+     *
+     * Volver a primer plano es el momento barato de preguntar: es lo que hace
+     * el guardia cuando sospecha que algo anda mal, y es una consulta al
+     * sistema, sin red.
+     */
+    const preguntarDeNuevo = () => {
+      void Network.getNetworkStateAsync().then(avisar).catch(() => undefined);
+    };
+
+    preguntarDeNuevo();
+    const alCambiarDeEstado = AppState.addEventListener('change', (estadoApp) => {
+      if (estadoApp === 'active') preguntarDeNuevo();
     });
-    return () => subscription.remove();
+
+    return () => {
+      subscription.remove();
+      alCambiarDeEstado.remove();
+    };
   }, [puente]);
 
   // Escaneo continuo NFC en la pantalla de Login
@@ -283,6 +349,9 @@ function AppShell({ portal }: { portal: URL }) {
         setUrlActual(navigation.url);
         return true;
       }
+      if (target.protocol === 'https:' && ['www.autoseguro.gob.cl','www.prt.cl','www.chileatiende.gob.cl'].includes(target.hostname)) {
+        void Linking.openURL(target.href).catch(()=>undefined);
+      }
       return false;
     } catch {
       return false;
@@ -297,7 +366,8 @@ function AppShell({ portal }: { portal: URL }) {
     setRutaOffline(undefined);
     cargadoInicialmente.current = false;
     setLoading(true);
-    webView.current?.reload();
+    // Un renderizador muerto no responde a reload(): hay que reemplazar la vista.
+    setGeneracionWebView((actual) => actual + 1);
   };
 
   const mostrarFallo = () => {
@@ -310,16 +380,34 @@ function AppShell({ portal }: { portal: URL }) {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <WebView
+        key={generacionWebView}
         ref={webView}
         source={{ uri: portal.href }}
         applicationNameForUserAgent={`SentryCoreAndroid/${mobilePackage.version}`}
         injectedJavaScriptBeforeContentLoaded={APP_LIKE_DOCUMENT + puente.guionPrevio}
         injectedJavaScript={puente.guionPrevio}
         onMessage={puente.alRecibirMensaje}
+        onRenderProcessGone={({ nativeEvent }) => {
+          void reportarCaida(new Error(nativeEvent.didCrash
+            ? 'WebViewRendererCrash' : 'WebViewRendererKilled'),
+          { fatal: false, apiUrl: portal.origin }).catch(() => undefined);
+          // Recrear conserva cookies e IndexedDB; no se borra la evidencia local.
+          // Un segundo fallo necesita reintento explícito para evitar un bucle.
+          if (recuperacionesMotor.current++ === 0) {
+            cargadoInicialmente.current = false;
+            setFailed(false);
+            setLoading(true);
+            setGeneracionWebView((actual) => actual + 1);
+          } else {
+            setMotivoFallo('Android cerró la pantalla de la app. Pulsa Reintentar para recuperarla.');
+            mostrarFallo();
+          }
+        }}
         originWhitelist={[`${portal.protocol}//${portal.host}`]}
         onShouldStartLoadWithRequest={allowNavigation}
         onNavigationStateChange={(navState) => {
           setUrlActual(navState.url);
+          try { if (!new URL(navState.url).pathname.startsWith('/app/supervisor')) stopReference(); } catch { stopReference(); }
         }}
         onLoadStart={() => {
           if (!cargadoInicialmente.current) {
@@ -372,7 +460,7 @@ function AppShell({ portal }: { portal: URL }) {
         allowsBackForwardNavigationGestures={false}
         pullToRefreshEnabled={false}
         overScrollMode="never"
-        textZoom={100}
+        textZoom={Math.round(fontScale * 100)}
         style={styles.webView}
       />
 
@@ -439,6 +527,8 @@ function AppShell({ portal }: { portal: URL }) {
       {/* Va sobre el WebView: mientras se lee el QR, la vista previa tapa la
           pantalla del guardia y se cierra sola al terminar o al cancelar. */}
       <VistaCamaraQr camara={camaraQr} />
+      <VistaCamaraOcr camera={camaraOcr} />
+      <VistaConsultaPublica consulta={consultaPublica} />
 
       {bloqueo ? (
         <View accessibilityRole="alert" style={styles.overlay}>

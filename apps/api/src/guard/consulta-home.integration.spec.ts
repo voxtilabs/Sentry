@@ -34,7 +34,7 @@ describeDatabase('la consulta de guard/home compila en PostgreSQL real', () => {
     await dataSource.query('DEALLOCATE ALL');
     // Si esto lanza, el error trae el mensaje real de PostgreSQL: la columna
     // que no existe, el tipo que no casa, el GROUP BY que falta.
-    await dataSource.query(`PREPARE consulta_home (uuid) AS ${CONSULTA_HOME}`);
+    await dataSource.query(`PREPARE consulta_home (uuid, uuid) AS ${CONSULTA_HOME}`);
     await dataSource.query('DEALLOCATE consulta_home');
   });
 });
