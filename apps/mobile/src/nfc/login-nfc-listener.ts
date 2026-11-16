@@ -1,3 +1,4 @@
+import { reservarLector } from './reserva-lector';
 import { Vibration } from 'react-native';
 import NfcManager, { NfcAdapter, NfcTech } from 'react-native-nfc-manager';
 
@@ -29,6 +30,9 @@ export async function iniciarEscuchaNfcLogin(alDetectarUid: (uid: string) => voi
       return;
     }
 
+    await reservarLector(() => NfcManager.registerTagEvent({
+      isReaderModeEnabled: true, readerModeFlags: FAMILIAS_QUE_ESCUCHA,
+    }));
     while (escuchando && !cancelado) {
       try {
         await NfcManager.requestTechnology(

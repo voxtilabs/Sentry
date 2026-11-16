@@ -32,6 +32,7 @@ import {
   configurarApiUrl,
   instalarReportadorGlobal,
   registrarArranqueYVerificarCierre,
+  reportarCaida,
 } from './src/observability/crash-reporter';
 import { iniciarEscuchaNfcLogin, detenerEscuchaNfcLogin } from './src/nfc/login-nfc-listener';
 import mobilePackage from './package.json';
@@ -198,6 +199,8 @@ export default function App() {
 function AppShell({ portal }: { portal: URL }) {
   const { fontScale } = useWindowDimensions();
   const webView = useRef<WebView>(null);
+  const [generacionWebView, setGeneracionWebView] = useState(0);
+  const recuperacionesMotor = useRef(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [rutaOffline, setRutaOffline] = useState<RutaOfflineGuardada>();
@@ -363,7 +366,8 @@ function AppShell({ portal }: { portal: URL }) {
     setRutaOffline(undefined);
     cargadoInicialmente.current = false;
     setLoading(true);
-    webView.current?.reload();
+    // Un renderizador muerto no responde a reload(): hay que reemplazar la vista.
+    setGeneracionWebView((actual) => actual + 1);
   };
 
   const mostrarFallo = () => {
@@ -376,12 +380,29 @@ function AppShell({ portal }: { portal: URL }) {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <WebView
+        key={generacionWebView}
         ref={webView}
         source={{ uri: portal.href }}
         applicationNameForUserAgent={`SentryCoreAndroid/${mobilePackage.version}`}
         injectedJavaScriptBeforeContentLoaded={APP_LIKE_DOCUMENT + puente.guionPrevio}
         injectedJavaScript={puente.guionPrevio}
         onMessage={puente.alRecibirMensaje}
+        onRenderProcessGone={({ nativeEvent }) => {
+          void reportarCaida(new Error(nativeEvent.didCrash
+            ? 'WebViewRendererCrash' : 'WebViewRendererKilled'),
+          { fatal: false, apiUrl: portal.origin }).catch(() => undefined);
+          // Recrear conserva cookies e IndexedDB; no se borra la evidencia local.
+          // Un segundo fallo necesita reintento explícito para evitar un bucle.
+          if (recuperacionesMotor.current++ === 0) {
+            cargadoInicialmente.current = false;
+            setFailed(false);
+            setLoading(true);
+            setGeneracionWebView((actual) => actual + 1);
+          } else {
+            setMotivoFallo('Android cerró la pantalla de la app. Pulsa Reintentar para recuperarla.');
+            mostrarFallo();
+          }
+        }}
         originWhitelist={[`${portal.protocol}//${portal.host}`]}
         onShouldStartLoadWithRequest={allowNavigation}
         onNavigationStateChange={(navState) => {
