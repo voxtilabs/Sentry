@@ -19,6 +19,7 @@ import type { FondoCartografico } from './mapa-tiles';
 
 export interface EncabezadoRondaRow {
   id: string;
+  is_voluntary?: boolean;
   tenant_id?: string;
   status: string;
   scheduled_start_at: Date;
@@ -211,6 +212,7 @@ export interface ResumenTareas {
 
 export interface InformeRonda {
   readonly patrolId: string;
+  readonly isVoluntary?: boolean;
   readonly tenantId?: string;
   readonly filename: string;
   readonly marca: MarcaDocumento;
@@ -358,6 +360,7 @@ export function construirInformeRonda(entrada: EntradaModelo): InformeRonda {
 
   return {
     patrolId: ronda.id,
+    isVoluntary: ronda.is_voluntary === true,
     tenantId: ronda.tenant_id,
     filename: `informe-ronda-${ronda.id}.pdf`,
     marca,
@@ -875,7 +878,7 @@ export function redactarObservaciones(informe: InformeRonda): string[] {
   }
 
   const desvios = puntos
-    .map((p) => desvioDeTurno(p.escaneadoEn, informe.ventana))
+    .map((p) => informe.isVoluntary ? null : desvioDeTurno(p.escaneadoEn, informe.ventana))
     .filter((d): d is DesvioDeTurno => d !== null);
   if (desvios.length > 0) {
     const peor = desvios.reduce((a, b) => (b.minutos > a.minutos ? b : a));

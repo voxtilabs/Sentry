@@ -610,6 +610,8 @@ export interface HitoLinea {
 
 export interface DatosLineaTiempo {
   readonly ventana: { readonly desde: Date; readonly hasta: Date };
+  /** false en voluntarias: la ventana almacenada es un límite técnico, no un turno. */
+  readonly programada?: boolean;
   readonly ejecucion: { readonly inicio: Date | null; readonly cierre: Date | null };
   readonly hitos: readonly HitoLinea[];
   readonly colorMarca: string;
@@ -760,7 +762,9 @@ export function dibujarLineaDeTiempo(doc: PDFKit.PDFDocument, datos: DatosLineaT
   // 1. Banda de la ventana programada.
   const xVentanaA = x(new Date(datos.ventana.desde).getTime());
   const xVentanaB = x(new Date(datos.ventana.hasta).getTime());
-  doc.rect(xVentanaA, yBase - 5, Math.max(1, xVentanaB - xVentanaA), 10).fill(PALETA.fondoBarra);
+  if (datos.programada !== false) {
+    doc.rect(xVentanaA, yBase - 5, Math.max(1, xVentanaB - xVentanaA), 10).fill(PALETA.fondoBarra);
+  }
 
   // 2. Banda de ejecucion, en el color de marca del tenant.
   const inicio = datos.ejecucion.inicio;
@@ -844,7 +848,7 @@ export function dibujarLineaDeTiempo(doc: PDFKit.PDFDocument, datos: DatosLineaT
   // Notas, una por linea y siempre bajo todo lo demas.
   const notas: string[] = [];
   if (datos.ejecucion.inicio === null) notas.push('Ronda no iniciada: no hay recorrido que mostrar');
-  else if (ventanaRecortada) {
+  else if (ventanaRecortada && datos.programada !== false) {
     notas.push(
       `La escala muestra el tramo ejecutado (${horaInicial}—${horaFinal});` +
         ` la ventana programada era ${formatearHora(new Date(datos.ventana.desde), datos.timezone)}` +

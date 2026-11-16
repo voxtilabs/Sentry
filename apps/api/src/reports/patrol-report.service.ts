@@ -218,6 +218,7 @@ export class PatrolReportService {
       `
         SELECT
           p.id,
+          p.is_voluntary,
           p.tenant_id,
           p.status,
           p.scheduled_start_at,
@@ -336,7 +337,7 @@ export class PatrolReportService {
       this.raizEvidencia,
       tenantId,
       patrolId,
-      incluirAnexo ? 'informe-ronda-anexo.pdf' : 'informe-ronda.pdf',
+      incluirAnexo ? 'informe-ronda-v2-anexo.pdf' : 'informe-ronda-v2.pdf',
     );
   }
 

@@ -334,7 +334,7 @@ function dibujarPortada(
   // ruta tampoco, por lo mismo.
   dibujarFicha(doc, [
     ['Guardia', modelo.recinto.guardia],
-    [
+    modelo.isVoluntary ? ['Tipo de ronda', 'Voluntaria · sin horario programado'] : [
       'Ventana horaria',
       `${formatearFechaHora(modelo.ventana.desde, tz)} — ${formatearFechaHora(modelo.ventana.hasta, tz)}`,
     ],
@@ -491,6 +491,7 @@ function dibujarLineaTiempoDeRonda(doc: PDFKit.PDFDocument, modelo: InformeRonda
 
   dibujarLineaDeTiempo(doc, {
     ventana: modelo.ventana,
+    programada: !modelo.isVoluntary,
     ejecucion: modelo.ejecucion,
     hitos,
     colorMarca: modelo.marca.primaryColor,
@@ -547,7 +548,7 @@ function celdaMarcas(
   modelo: InformeRonda,
 ): Celda {
   const partes = punto.anomalias.map(etiquetaAnomalia);
-  const desvio = desvioDeTurno(punto.escaneadoEn, modelo.ventana);
+  const desvio = modelo.isVoluntary ? null : desvioDeTurno(punto.escaneadoEn, modelo.ventana);
   if (desvio) partes.push(`${desvio.minutos} min fuera de turno`);
   if (partes.length === 0) return { texto: '—' };
   return { texto: recortar(partes.join(', '), 30), color: PALETA.alerta };
@@ -737,7 +738,7 @@ function lineasDeEntrada(
   if (entrada.tipo === 'inicio') {
     lineas.push({ texto: `${modelo.recinto.ruta} · ${modelo.recinto.guardia}`, negrita: true });
     lineas.push({
-      texto:
+      texto: modelo.isVoluntary ? 'Ronda voluntaria · sin horario programado' :
         `Ventana programada ${formatearHora(modelo.ventana.desde, modelo.timezone)}` +
         ` — ${formatearHora(modelo.ventana.hasta, modelo.timezone)}`,
       tamano: 8,
@@ -769,7 +770,7 @@ function lineasDeEntrada(
         color: PALETA.alerta,
       });
     }
-    const desvio = desvioDeTurno(punto.escaneadoEn, modelo.ventana);
+    const desvio = modelo.isVoluntary ? null : desvioDeTurno(punto.escaneadoEn, modelo.ventana);
     if (desvio) lineas.push({ texto: desvio.texto, color: PALETA.alerta, tamano: 8 });
   }
 

@@ -445,7 +445,7 @@ describe('PatrolReportService.render · streaming y evidencia', () => {
     await writeFile(join(raiz, 'tenant', 'patrol', 'ok.jpg'), jpegEmbebible());
     await mkdir(join(raiz, 'tenant-1', 'patrol-id'), { recursive: true });
     await writeFile(join(raiz, 'tenant-1', 'patrol-id', photoAppendix
-      ? 'informe-ronda-anexo.pdf' : 'informe-ronda.pdf'), Buffer.from('%PDF-copia-anterior-incompleta'));
+      ? 'informe-ronda-v2-anexo.pdf' : 'informe-ronda-v2.pdf'), Buffer.from('%PDF-copia-anterior-incompleta'));
     const mapa = construirMapaRecorrido({
       puntos: [], coordenadas: [], escaneos: [], recinto: { latitude: '-33.45', longitude: '-70.66' },
       traza: [0, 1].map((i) => ({ latitude: String(-33.45 + i * 0.0001), longitude: '-70.66',
@@ -682,12 +682,23 @@ describe('PatrolReportService — cache de informe de ronda cerrada (#266)', () 
     await rm(dirEvidencia, { recursive: true, force: true });
   });
 
+  it('no reutiliza el PDF antiguo que todavía mostraba una ventana técnica',async()=>{
+    const {service}=armarServicio({encabezado:[{...RONDA,is_voluntary:true}]},{raiz:dirEvidencia});
+    const old=join(dirEvidencia,'tenant-1','patrol-id','informe-ronda-anexo.pdf');
+    await mkdir(join(dirEvidencia,'tenant-1','patrol-id'),{recursive:true});
+    const legacy=Buffer.from('%PDF-ventana-programada-antigua');await writeFile(old,legacy);
+    const report=await service.toBuffer('patrol-id',{incluirAnexo:true});
+    expect(report.pdf).not.toEqual(legacy);
+    expect(report.pdf.subarray(-8).toString('latin1')).toContain('%%EOF');
+    expect(await readFile(old)).toEqual(legacy);
+  });
+
   it('guarda el PDF generado de una ronda cerrada en el volumen de evidencia', async () => {
     const { service } = armarServicio({}, { raiz: dirEvidencia });
 
     await recolectar((destino) => service.streamTo('patrol-id', destino, { incluirAnexo: true }));
 
-    const rutaCache = join(dirEvidencia, 'tenant-1', 'patrol-id', 'informe-ronda-anexo.pdf');
+    const rutaCache = join(dirEvidencia, 'tenant-1', 'patrol-id', 'informe-ronda-v2-anexo.pdf');
     const contenido = await readFile(rutaCache);
     expect(esPdf(contenido)).toBe(true);
   });
@@ -715,7 +726,7 @@ describe('PatrolReportService — cache de informe de ronda cerrada (#266)', () 
   it('regenera y reemplaza la copia antigua que supera el presupuesto del correo',async()=>{
     const {service}=armarServicio({}, {raiz:dirEvidencia,reglasInforme:{reportMailMaxAttachmentMB:1}});
     const first=await recolectar(destino=>service.streamTo('patrol-id',destino,{incluirAnexo:true}));
-    const cache=join(dirEvidencia,'tenant-1','patrol-id','informe-ronda-anexo.pdf');
+    const cache=join(dirEvidencia,'tenant-1','patrol-id','informe-ronda-v2-anexo.pdf');
     await writeFile(cache,Buffer.concat([first,Buffer.from('\n%'),Buffer.alloc(2*1024*1024,0x78)]));
     const report=await service.toBuffer('patrol-id',{incluirAnexo:true});
     expect(report.pdf.length).toBeLessThan(1024*1024);
@@ -728,7 +739,7 @@ describe('PatrolReportService — cache de informe de ronda cerrada (#266)', () 
 
     await recolectar((destino) => service.streamTo('patrol-id', destino, { incluirAnexo: true }));
 
-    const rutaCache = join(dirEvidencia, 'tenant-1', 'patrol-id', 'informe-ronda-anexo.pdf');
+    const rutaCache = join(dirEvidencia, 'tenant-1', 'patrol-id', 'informe-ronda-v2-anexo.pdf');
     await expect(stat(rutaCache)).rejects.toThrow();
   });
 });
