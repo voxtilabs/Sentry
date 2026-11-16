@@ -75,7 +75,6 @@ import { procesarFoto } from './guard-photo';
 import {
   borrarFoto,
   clasificarPendientes,
-  contarPendientes,
   fijarServerId,
   guardarFoto,
   listarPendientes,
@@ -344,6 +343,11 @@ function Ronda({
   const [errorPlantilla, setErrorPlantilla] = useState(false);
   const [reintentoPlantilla, setReintentoPlantilla] = useState(0);
   const [tareas, setTareas] = useState<EstadoTareas>(() => estadoTareasInicial(patrol.id));
+  const [fotosDePuntoLocales, setFotosDePuntoLocales] = useState<string[]>([]);
+  const fotosGuardadas = new Set(fotosDePuntoLocales);
+  for (const captura of [...tareas.cola, ...Object.values(tareas.borradores ?? {})]) {
+    if (captura.clientScanId && captura.fotos?.length) fotosGuardadas.add(captura.clientScanId);
+  }
   const [puntoConTareas, setPuntoConTareas] = useState<{
     checkpointId: string;
     nombre: string;
@@ -352,7 +356,9 @@ function Ronda({
   }>();
 
   const refrescarFotosPendientes = useCallback(async () => {
-    setFotosPorSubir(await contarPendientes());
+    const pendientes = await listarPendientes();
+    setFotosPorSubir(pendientes.length);
+    setFotosDePuntoLocales(pendientes.filter((f) => f.destino === 'escaneo').map((f) => f.clientEventId));
   }, []);
 
   const puntos = useMemo(
@@ -901,7 +907,8 @@ function Ronda({
           ...(presupuestoFoto ? { objetivoBytes: presupuestoFoto.targetBytes } : {}),
         }),
       guardar: (clientScanId, foto, cuando, scanId) =>
-        guardarFoto(clientScanId, foto, cuando, scanId, 'escaneo'),
+        guardarFoto(clientScanId, foto, cuando, scanId, 'escaneo', patrol.id),
+      diferirHastaCierre: true,
       fijarId: fijarServerId,
       subir: (clientScanId, scanId) => subirFotoPersistida(apiUrl, clientScanId, scanId),
       idDelEscaneo: (clientScanId) => idsDeEscaneo.resolver(clientScanId),
@@ -1037,8 +1044,8 @@ function Ronda({
       {fotosPorSubir > 0 ? (
         <p className="guardia-anuncio" role="status" aria-live="polite">
           {fotosPorSubir === 1
-            ? 'Queda 1 foto por subir. Se envía sola al recuperar señal.'
-            : `Quedan ${fotosPorSubir} fotos por subir. Se envían solas al recuperar señal.`}
+            ? 'Queda 1 foto por subir. Las de la ronda se envían al terminar.'
+            : `Quedan ${fotosPorSubir} fotos por subir. Las de la ronda se envían al terminar.`}
         </p>
       ) : null}
 
@@ -1179,6 +1186,7 @@ function Ronda({
             esperandoTareas={!plantillaLista || tareasEnPantalla}
             puntos={puntos}
             registros={estado.puntos}
+            fotosGuardadas={fotosGuardadas}
             saltados={saltados}
             siguiente={siguiente}
             {...(puedeSaltar ? { onDejarParaDespues: dejarParaDespues } : {})}

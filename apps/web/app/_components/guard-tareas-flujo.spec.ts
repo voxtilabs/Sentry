@@ -22,11 +22,30 @@ beforeEach(() => {
 afterEach(() => { Object.defineProperty(globalThis, 'window', { configurable: true, value: ventanaOriginal }); });
 async function guardarDosFotos() {
   for (const id of ['foto-1', 'foto-2']) await guardarFoto(id, new Blob([id]), id, null, 'tarea');
-  await guardarEstadoTareas({ ...estadoTareasInicial('ronda'), borradores: {
+  await guardarEstadoTareas({ ...estadoTareasInicial('ronda'), envioSolicitado: true, borradores: {
     tarea: { value: '', clientScanId: 'cliente-scan', fotos: [{ clientPhotoId: 'foto-1' }, { clientPhotoId: 'foto-2' }] },
   } });
 }
-describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia', () => {
+describe('fotos y cola de tareas al finalizar sin pérdida de evidencia', () => {
+  it('no sube durante la ronda ni después de reabrir; el término libera el lote durable', async () => {
+    await guardarDosFotos();
+    await modificarEstadoTareas('ronda', (e) => ({ ...e, envioSolicitado: false }));
+    const actual = cargarEstadoTareas('ronda');
+    await guardarEstadoTareas(responderTarea(actual, { item: tarea, value: 'si', respondidaAt: 'ahora',
+      clientScanId: 'cliente-scan', fotos: actual.borradores!.tarea!.fotos }));
+    await sincronizarTareasGuardadas('/api', 'ronda', registros);
+    _reiniciarTareasDurables();
+    await sincronizarTareasGuardadas('/api', 'ronda', registros);
+    expect(subir).not.toHaveBeenCalled();
+    expect(enviar).not.toHaveBeenCalled();
+    expect(await listarPendientes()).toHaveLength(2);
+    await modificarEstadoTareas('ronda', (e) => ({ ...e, envioSolicitado: true }));
+    _reiniciarTareasDurables();
+    await sincronizarTareasGuardadas('/api', 'ronda', registros);
+    expect(subir).toHaveBeenCalledTimes(2);
+    expect(enviar).toHaveBeenCalledWith('/api', 'ronda', [{ itemId: 'tarea', value: 'si', photoIds: ['foto-1', 'foto-2'] }]);
+    expect(await listarPendientes()).toEqual([]);
+  });
   it('serializa cambios simultáneos sobre el estado más reciente aunque falle localStorage', async () => {
     await guardarDosFotos();
     window.localStorage.setItem = () => { throw new Error('Cuota agotada'); };
@@ -104,7 +123,7 @@ describe('envío inmediato de fotos y cola de tareas sin pérdida de evidencia',
     let llego!: () => void;
     const inicio = new Promise<void>((r) => { llego = r; });
     enviar.mockImplementation(() => { llego(); return new Promise((r) => { resolver = r; }); });
-    await guardarEstadoTareas(responderTarea(estadoTareasInicial('ronda'), { item: { ...tarea, requiresPhoto: false }, value: 'si', respondidaAt: 'ahora' }));
+    await guardarEstadoTareas(responderTarea({ ...estadoTareasInicial('ronda'), envioSolicitado: true }, { item: { ...tarea, requiresPhoto: false }, value: 'si', respondidaAt: 'ahora' }));
     const enviando = sincronizarTareasGuardadas('/api', 'ronda', registros);
     await inicio;
     await guardarEstadoTareas({ ...cargarEstadoTareas('ronda'), borradores: {

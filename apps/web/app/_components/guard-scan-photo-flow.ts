@@ -70,6 +70,7 @@ export function nuevoRegistroIdsDeEscaneo(): RegistroIdsDeEscaneo {
 }
 
 export interface DependenciasFotoDePunto {
+  diferirHastaCierre?: boolean;
   /** Marca de agua y compresión. Es el `await` largo, el que abre la ventana. */
   procesar(archivo: File): Promise<Blob>;
   /** Deja la foto a salvo en el almacén persistente ANTES de intentar subirla. */
@@ -90,7 +91,7 @@ export interface DesenlaceFotoDePunto {
    * `subida`       — el servidor la tiene.
    * `sin_subir`    — guardada y no subida; se reintenta sola.
    */
-  clase: 'esperando_id' | 'subida' | 'sin_subir';
+  clase: 'esperando_id' | 'subida' | 'sin_subir' | 'guardada_hasta_cierre';
   /**
    * Lo que devolvió la subida, para marcar el punto. `undefined` = no hay nada
    * que marcar acá: la foto ya no estaba, así que la marcó quien la subió.
@@ -123,7 +124,7 @@ export async function guardarYSubirFotoDePunto(
   // los `await` de arriba: si el veredicto entró justo ahí, su `fijarServerId()`
   // tampoco encontró el registro y no dejó nada fijado.
   const scanId = idAlGuardar ?? deps.idDelEscaneo(pendiente.clientScanId);
-  if (scanId === undefined) return { clase: 'esperando_id' };
+  if (scanId === undefined) return { clase: deps.diferirHastaCierre ? 'guardada_hasta_cierre' : 'esperando_id' };
 
   // El id llegó tarde: la foto se guardó con `null` y hay que dejárselo escrito
   // ANTES de subir, para que el reintento al reabrir la app la encuentre lista
@@ -132,6 +133,7 @@ export async function guardarYSubirFotoDePunto(
   // baja.
   if (idAlGuardar === undefined) await deps.fijarId(pendiente.clientScanId, scanId);
 
+  if (deps.diferirHastaCierre) return { clase: 'guardada_hasta_cierre' };
   const subida = await deps.subir(pendiente.clientScanId, scanId);
   if (subida === false) return { clase: 'sin_subir', subida: false };
   return subida === undefined ? { clase: 'subida' } : { clase: 'subida', subida };
@@ -169,6 +171,8 @@ export function efectoDelDesenlace(
   desenlace: DesenlaceFotoDePunto,
   nombrePunto: string,
 ): EfectoDelDesenlace {
+  if (desenlace.clase === 'guardada_hasta_cierre') return { mantenerPanel: false, guardadaSinSubir: true,
+    anuncio: `La foto de ${nombrePunto} quedó guardada. Se enviará al terminar la ronda.` };
   if (desenlace.clase === 'sin_subir') {
     // La captura ya quedó a salvo. Se avisa y se continúa automáticamente;
     // el reintento de la subida no requiere otro botón del guardia.

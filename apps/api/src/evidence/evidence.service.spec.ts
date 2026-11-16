@@ -339,12 +339,55 @@ describe('EvidenceService.storePhoto', () => {
     manager.query
       .mockResolvedValueOnce([ESCANEO])
       .mockResolvedValueOnce([]) // el pre-chequeo no lo vio
-      .mockResolvedValueOnce([]); // pero el INSERT choco con la constraint
+      .mockResolvedValueOnce([]) // pero el INSERT choco con la constraint
+      .mockResolvedValueOnce([{ id: 'otra', scan_id: 'otro', storage_path: 'otra/ronda/foto.png' }]);
 
     await expect(
       servicio(manager).storePhoto('scan-id', 'guard-id', fotoPng()),
     ).rejects.toThrow('foto reusada');
     expect(rm).toHaveBeenCalledWith(expect.stringContaining('tenant-1'), { force: true });
+  });
+
+  const capturaPrevia = {
+    id: 'foto-previa', scan_id: 'scan-id', mime_type: 'image/png', size_bytes: '24',
+    width: 640, height: 480, taken_at_device: new Date('2026-08-03T03:59:20Z'),
+    created_at: new Date('2026-08-03T04:00:00Z'),
+  };
+
+  it('recupera el mismo id tras perder la respuesta HTTP, sin insertar ni escribir otra foto', async () => {
+    const manager = { query: jest.fn().mockResolvedValueOnce([ESCANEO])
+      .mockResolvedValueOnce([capturaPrevia]) };
+    await expect(servicio(manager).storePhoto('scan-id', 'guard-id', fotoPng(),
+      '2026-08-03T00:59:20-03:00')).resolves.toMatchObject({ id: 'foto-previa', sizeBytes: 24 });
+    expect(manager.query).toHaveBeenCalledTimes(2);
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, '2026-08-03T04:59:20Z'])(
+    'rechaza reutilizar contenido con otra hora de captura (%s)', async (hora) => {
+      const manager = { query: jest.fn().mockResolvedValueOnce([ESCANEO])
+        .mockResolvedValueOnce([capturaPrevia]) };
+      await expect(servicio(manager).storePhoto('scan-id', 'guard-id', fotoPng(), hora))
+        .rejects.toThrow('foto reusada');
+    },
+  );
+
+  it('rechaza mover la misma captura a otro escaneo', async () => {
+    const manager = { query: jest.fn().mockResolvedValueOnce([{ ...ESCANEO, id: 'otro' }])
+      .mockResolvedValueOnce([capturaPrevia]) };
+    await expect(servicio(manager).storePhoto('otro', 'guard-id', fotoPng(),
+      '2026-08-03T03:59:20Z')).rejects.toThrow('foto reusada');
+  });
+
+  it('dos reintentos concurrentes conservan el archivo de la transacción ganadora', async () => {
+    const { createHash } = await import('node:crypto');
+    const hash = createHash('sha256').update(fotoPng().buffer).digest('hex');
+    const manager = { query: jest.fn().mockResolvedValueOnce([ESCANEO])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ ...capturaPrevia, storage_path: `tenant-1/patrol-1/${hash}.png` }]) };
+    await expect(servicio(manager).storePhoto('scan-id', 'guard-id', fotoPng(),
+      '2026-08-03T03:59:20Z')).resolves.toMatchObject({ id: 'foto-previa' });
+    expect(rm).not.toHaveBeenCalled();
   });
 
   it('el escaneo de otro guardia no recibe evidencia ajena', async () => {

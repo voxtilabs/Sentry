@@ -116,6 +116,8 @@ services:
       - internal
 
   api:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -134,6 +136,7 @@ services:
         && { [ "$$RUN_DEMO_SEED" != "true" ]
         || node apps/api/dist/database/seeds/development.js; }
         && node apps/api/dist/database/seeds/bootstrap.js
+        && unset DATABASE_ADMIN_URL MIGRATION_DATABASE_URL DATABASE_MIGRATION_URL BOOTSTRAP_SUPERADMIN_PASSWORD DEMO_PASSWORD
         && exec node apps/api/dist/main.js
     environment:
       # staging valida distinto que production (permite mailpit, exige igual
@@ -274,6 +277,8 @@ services:
       - dokploy-network
 
   web:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     build:
       context: .
       dockerfile: Dockerfile.web

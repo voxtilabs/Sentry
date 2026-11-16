@@ -5,14 +5,13 @@ import { GuardCameraInput, type PedirPermisoCamara } from './guard-camera-input'
 import { procesarFoto } from './guard-photo';
 import { guardarFoto } from './guard-photo-store';
 import { nuevoUuid } from './guard-storage';
-import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import {
   cargarEstadoTareas, cantidadesDeFotos, modificarEstadoTareas, responderTarea, tareaExigeFoto,
   tareasDelPuntoPorResponder, type BorradorTarea, type EstadoTareas, type ItemTarea,
 } from './guard-tareas-modelo';
 
-/** Una tarea a la vez: cámara → pregunta → envío, sin confirmaciones duplicadas. */
-export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScanId, scanId,
+/** Una tarea a la vez: cámara → pregunta → guardado local, sin confirmaciones duplicadas. */
+export function GuardTareasPunto({ nombrePunto, checkpointId, clientScanId, scanId,
   items, estado, foto, idDelEscaneo, onEstado, pedirPermisoCamara,
 }: {
   apiUrl: string; nombrePunto: string; checkpointId: string; clientScanId: string; scanId?: string;
@@ -33,15 +32,10 @@ export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScan
   async function anotar(tarea: ItemTarea, cambio: Partial<BorradorTarea>) {
     const siguiente = await modificarEstadoTareas(estado.patrolId, (actual) => {
       const previo = actual.borradores?.[tarea.id] ?? { value: '', clientScanId, fotos: [] };
-      return { ...actual, borradores: { ...actual.borradores, [tarea.id]: { ...previo, ...cambio } } };
+      return { ...actual, envioSolicitado: actual.envioSolicitado ?? false, borradores: { ...actual.borradores, [tarea.id]: { ...previo, ...cambio } } };
     });
     onEstado(siguiente);
     return siguiente;
-  }
-
-  function registros() {
-    const id = scanId ?? idDelEscaneo();
-    return { [checkpointId]: { clientScanId, ...(id ? { scanId: id } : {}) } };
   }
 
   async function completar(tarea: ItemTarea, value: string) {
@@ -50,7 +44,6 @@ export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScan
     if (!value.trim() || (tareaExigeFoto(tarea, value) && fotos.length < cantidadesDeFotos(tarea).min)) return;
     onEstado(await modificarEstadoTareas(estado.patrolId, (reciente) => responderTarea(reciente, { item: tarea, value,
       respondidaAt: new Date().toISOString(), clientScanId, fotos: reciente.borradores?.[tarea.id]?.fotos ?? fotos })));
-    await sincronizarTareasGuardadas(apiUrl, estado.patrolId, registros());
   }
 
   async function responder(tarea: ItemTarea, value: string) {
@@ -60,6 +53,8 @@ export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScan
     try {
       await anotar(tarea, { value });
       await completar(tarea, value);
+    } catch {
+      setAviso('No pudimos guardar la respuesta. Intenta de nuevo antes de continuar.');
     } finally {
       candado.current = false;
       setOcupada(false);
@@ -86,11 +81,7 @@ export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScan
       if (tarea.responseType === 'foto' || ((tarea.responseType === 'ok_falla' || tarea.responseType === 'si_no') && value)) {
         await completar(tarea, value);
       }
-      await sincronizarTareasGuardadas(apiUrl, estado.patrolId, registros());
-      const guardado = cargarEstadoTareas(estado.patrolId);
-      const pendiente = guardado.borradores?.[tarea.id]?.fotos.some((f) => !f.photoId) ||
-        guardado.cola.some((r) => r.itemId === tarea.id);
-      setAviso(pendiente ? 'Foto guardada en el teléfono. Se enviará automáticamente al recuperar conexión.' : 'Foto enviada.');
+      setAviso('Foto guardada en el teléfono. Se enviará al terminar la ronda.');
     } catch {
       setAviso('No pudimos guardar la foto. Vuelve a tomarla antes de continuar.');
     } finally {
@@ -101,10 +92,10 @@ export function GuardTareasPunto({ apiUrl, nombrePunto, checkpointId, clientScan
 
   return <section className="guardia-tareas-punto" aria-labelledby="guardia-tareas-titulo">
     <h2 id="guardia-tareas-titulo">Tareas de {nombrePunto}</h2>
-    <p className="guardia-nota">{pendientes.length} {pendientes.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}. Las fotos se envían al tomarlas.</p>
+    <p className="guardia-nota">{pendientes.length} {pendientes.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}. Las fotos se enviarán al terminar la ronda.</p>
     <TareaPuntoFormulario key={item.id} item={item} borrador={borrador} ocupada={ocupada}
       onFoto={(archivo) => void capturar(item, archivo)}
-      onTexto={(value) => { void anotar(item, { value }); }}
+      onTexto={(value) => { void anotar(item, { value }).catch(() => setAviso('No pudimos guardar el texto en el teléfono. Intenta de nuevo.')); }}
       onResponder={(value) => void responder(item, value)}
       {...(pedirPermisoCamara ? { pedirPermisoCamara } : {})} />
     {aviso ? <p className="guardia-anuncio" role="status">{aviso}</p> : null}
@@ -146,9 +137,9 @@ export function TareaPuntoFormulario({ item, borrador, ocupada, onFoto, onTexto,
           : <textarea className="guardia-texto" aria-labelledby={campo} placeholder="Escribe tu respuesta"
             maxLength={500} rows={3} value={texto} onChange={(e) => { setTexto(e.target.value); onTexto(e.target.value); }} />}
         <button className="guardia-boton-enviar ancho" type="button" disabled={ocupada || !texto.trim()}
-          onClick={() => onResponder(texto)}>{ocupada ? 'Enviando…' : 'Enviar'}</button>
+          onClick={() => onResponder(texto)}>{ocupada ? 'Guardando…' : 'Enviar'}</button>
       </>}
     </> : null}
-    {ocupada ? <p className="guardia-nota" role="status">Guardando y enviando automáticamente…</p> : null}
+    {ocupada ? <p className="guardia-nota" role="status">Guardando en el teléfono…</p> : null}
   </div>;
 }

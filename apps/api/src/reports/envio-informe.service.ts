@@ -105,6 +105,7 @@ type MotivoAtendido = Extract<
 >;
 
 interface RondaRow {
+  guard_flow_completed?: boolean;
   site_id: string;
   status: string;
   compliance_pct: string | null;
@@ -201,7 +202,7 @@ export class EnvioInformeService {
    */
   async despachar(tenantId: string, patrolId: string, cierre: CierreParaInforme = {}): Promise<ResultadoEnvio> {
     const filas = await this.tenantContext.manager.query<RondaRow[]>(
-      `SELECT site_id, status, compliance_pct FROM patrols WHERE id = $1`,
+      `SELECT site_id, status, compliance_pct, guard_flow_completed FROM patrols WHERE id = $1`,
       [patrolId],
     );
     const ronda = filas[0];
@@ -285,6 +286,13 @@ export class EnvioInformeService {
     const yaRegistrados = await this.registradas(patrolId);
     if (planTentativo.every((destino) => yaRegistrados.has(clave(destino)))) {
       return omitir(patrolId, 'ya_enviado', suprimidos.length);
+    }
+
+    // El teléfono acumula evidencia durante el recorrido. No producir un PDF
+    // parcial por vencer la gracia mientras aún se está transfiriendo el lote.
+    // Las rondas vencidas conservan el aviso de incumplimiento automático.
+    if (ronda.guard_flow_completed === false && ronda.status !== 'vencida') {
+      return omitir(patrolId, 'evidencia_pendiente', suprimidos.length);
     }
 
     const modelo = await this.informe.buildModel(patrolId, {
@@ -441,7 +449,7 @@ export class EnvioInformeService {
    */
   async estadoDeEnvio(patrolId: string, requester: Pick<AuthenticatedUser, 'sub' | 'role'>) {
     const filas = await this.tenantContext.manager.query<RondaRow[]>(
-      `SELECT site_id, status, compliance_pct FROM patrols WHERE id = $1`,
+      `SELECT site_id, status, compliance_pct, guard_flow_completed FROM patrols WHERE id = $1`,
       [patrolId],
     );
     const ronda = filas[0];

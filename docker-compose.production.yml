@@ -143,6 +143,7 @@ services:
       - no-new-privileges:true
 
   api:
+    cap_drop: [ALL]
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -217,6 +218,7 @@ services:
       - traefik.http.services.sentrycore-api.loadbalancer.server.port=3001
 
   web:
+    cap_drop: [ALL]
     build:
       context: .
       dockerfile: Dockerfile.web

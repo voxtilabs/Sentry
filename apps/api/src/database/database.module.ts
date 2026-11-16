@@ -7,6 +7,7 @@ import { SupportAccessService } from '../platform-data/support-access.service';
 import { DATABASE_ENTITIES } from './data-source';
 import { TenantContextInterceptor } from './tenant-context/tenant-context.interceptor';
 import { TenantContextService } from './tenant-context/tenant-context.service';
+import { RuntimeDatabaseSecurity } from './runtime-security';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { TenantContextService } from './tenant-context/tenant-context.service';
     }),
   ],
   providers: [
+    RuntimeDatabaseSecurity,
     TenantContextService,
     SupportAccessService,
     Reflector,
