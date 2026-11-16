@@ -3,6 +3,7 @@
 import { FormEvent, useDeferredValue, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CompanyCardSettings } from './company-card-settings';
+import { IconPlus, IconX } from '@tabler/icons-react';
 
 export interface PlatformTenant {
   id: string;
@@ -81,6 +82,7 @@ export function PlatformManagement({
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [generatedCodes, setGeneratedCodes] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
@@ -153,14 +155,21 @@ export function PlatformManagement({
   return (
     <>
       <section className="stat-grid" id="resumen">
-        <PlatformMetric label="Tenants activos" value={totals.active} detail={`${tenants.length - totals.active} suspendidos`} />
+        <PlatformMetric label="Empresas activas" value={totals.active} detail={`${tenants.length - totals.active} suspendidas`} />
         <PlatformMetric label="Usuarios" value={totals.users} detail={`${totals.sites} recintos`} />
         <PlatformMetric label="Rondas del mes" value={totals.patrols} detail="Toda la plataforma" />
       </section>
-      <div className="management-grid">
-      <section className="management-card" id="alta">
+      <div className="panel-platform-actions">
+        <button type="button" className={creating ? 'secondary-button' : 'primary-button'}
+          aria-expanded={creating} aria-controls="alta" onClick={() => setCreating(!creating)}>
+          {creating ? <IconX size={18} aria-hidden="true" /> : <IconPlus size={18} aria-hidden="true" />}
+          {creating ? 'Cerrar formulario' : 'Nueva empresa'}
+        </button>
+      </div>
+      <div className="management-grid panel-platform-grid">
+      <section className="management-card panel-create-company" id="alta" hidden={!creating}>
         <div className="card-heading">
-          <div><span className="eyebrow">Onboarding</span><h2>Nueva empresa</h2></div>
+          <div><span className="eyebrow">Alta de empresa</span><h2>Nueva empresa</h2></div>
         </div>
         <form className="management-form" onSubmit={submit}>
           <label>Nombre visible<input name="displayName" required minLength={2} /></label>
