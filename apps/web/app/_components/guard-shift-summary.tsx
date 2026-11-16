@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { listarPendientes } from './guard-photo-store';
 import { cargarEstadoTareas } from './guard-tareas-modelo';
-import { confirmarTerminoDeRonda } from './guard-round-finish';
+import { cerrarRondaManualmente } from './guard-round-finish';
 
 import { GuardChecklist } from './guard-checklist';
 import {
@@ -68,7 +68,7 @@ export function GuardShiftSummary({
   async function finish() {
     setClosing(true);setFinishError('');
     try {
-      await confirmarTerminoDeRonda(apiUrl,estado.patrolId,(path)=>window.location.replace(path));
+      await cerrarRondaManualmente(apiUrl,estado.patrolId,(path)=>window.location.replace(path));
     } catch(e) { setFinishError(e instanceof Error?e.message:'Conéctate para confirmar el cierre de la ronda.');setClosing(false); }
   }
   const cierre = estado.cierre;
@@ -85,7 +85,7 @@ export function GuardShiftSummary({
   return (
     <section className="guardia-resumen" aria-labelledby="guardia-resumen-titulo">
       <h2 id="guardia-resumen-titulo">
-        {closing ? 'Enviando fotos y respuestas…' : 'TÉRMINO DE RONDA'}
+        {closing ? 'Cerrando ronda…' : 'TÉRMINO DE RONDA'}
       </h2>
 
       {cierre.pct === undefined ? (
@@ -181,18 +181,17 @@ export function GuardShiftSummary({
 
       <button
         className="guardia-boton-primario"
-        disabled={closing || pendientes}
+        disabled={closing}
         onClick={() => void finish()}
         type="button"
       >
-        {closing ? 'Enviando fotos y respuestas…' : 'TÉRMINO DE RONDA'}
+        {closing ? 'Cerrando ronda…' : 'TÉRMINO DE RONDA'}
       </button>
       {finishError ? <p role="alert">{finishError}</p> : null}
-      <p className="guardia-nota">Al terminar se envían las fotos y respuestas guardadas. Puedes iniciar otra ronda. Tu jornada sigue abierta.</p>
+      <p className="guardia-nota">Puedes terminar aunque falten puntos, fotos o respuestas; quedarán indicados en el informe. Lo capturado se conserva y se sincroniza con conexión. Tu jornada sigue abierta.</p>
       {pendientes ? (
         <p className="guardia-aviso">
-          Todavía queda trabajo por subir. No cierres la app hasta que la barra de arriba diga
-          &laquo;Todo subido&raquo;.
+          Todavía queda trabajo por subir. Se conserva en el teléfono y se reintenta con conexión.
         </p>
       ) : null}
 

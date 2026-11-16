@@ -175,6 +175,20 @@ describe('terminar la ronda sin completar los puntos', () => {
       vacio({ alCerrarRonda: jest.fn() }) as unknown as EnvioInformeService,
     );
 
+  it('el cierre manual finaliza el flujo aunque falten puntos y respuestas',async()=>{
+    const query=jest.fn().mockResolvedValueOnce([{id:RONDA,status:'en_curso',site_id:RECINTO,expected_checkpoint_ids:['p1','p2']}]).mockResolvedValueOnce([{checkpoint_id:'p1',anomalies:[]}]).mockResolvedValue([]);
+    const result=await servicioConReglas(query).finishPatrolEarly(GUARDIA,RONDA);
+    expect(result).toMatchObject({status:'incompleta',compliancePct:50});
+    expect(String(query.mock.calls.find(c=>String(c[0]).includes('UPDATE patrols'))?.[0])).toMatch(/guard_flow_completed\s*=\s*true/);
+  });
+  it('recupera una incompleta cerrada sin cambiar su hora ni cumplimiento',async()=>{
+    const query=jest.fn().mockResolvedValueOnce([{id:RONDA,status:'incompleta',site_id:RECINTO,expected_checkpoint_ids:['p1','p2'],guard_flow_completed:false,compliance_pct:'50'}]).mockResolvedValue([]);
+    await expect(servicioConReglas(query).finishPatrolEarly(GUARDIA,RONDA)).resolves.toMatchObject({status:'incompleta',compliancePct:50});
+    const update=String(query.mock.calls.find(c=>String(c[0]).includes('UPDATE patrols'))?.[0]);
+    expect(update).toMatch(/guard_flow_completed\s*=\s*true/);
+    expect(update).not.toMatch(/closed_at\s*=|compliance_pct\s*=/);
+  });
+
   it('NO la marca completada cuando faltan puntos: queda incompleta', async () => {
     // Es la diferencia entre darle una salida al guardia y darle una forma de
     // fingir que recorrio. El informe tiene que decir lo que paso.
@@ -227,11 +241,11 @@ describe('terminar la ronda sin completar los puntos', () => {
     expect(r.compliancePct).toBe(100);
   });
 
-  it('no deja cerrar una ronda ya cerrada', async () => {
+  it('no deja cerrar una ronda pendiente que no empezó', async () => {
     const query = jest
       .fn()
       .mockResolvedValueOnce([
-        { id: RONDA, status: 'completada', site_id: RECINTO, expected_checkpoint_ids: [] },
+        { id: RONDA, status: 'pendiente', site_id: RECINTO, expected_checkpoint_ids: [] },
       ]);
 
     await expect(

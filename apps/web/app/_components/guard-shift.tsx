@@ -71,6 +71,7 @@ import {
 } from './guard-scan-photo-flow';
 import { subirFotoPersistida } from './guard-evidence-upload';
 import { GuardShiftSummary } from './guard-shift-summary';
+import { cerrarRondaManualmente } from './guard-round-finish';
 import { procesarFoto } from './guard-photo';
 import {
   borrarFoto,
@@ -257,18 +258,8 @@ function Ronda({
     setCerrandoLibre(true);
     setErrorLibre(undefined);
     try {
-      const cuerpo = motivoCierre.trim().length >= 3 ? { reason: motivoCierre.trim() } : {};
-      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/finish-early`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cuerpo),
-      });
-      if (!respuesta.ok) {
-        const datos = (await respuesta.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(datos?.message ?? 'No pudimos cerrar la ronda');
-      }
-      window.location.assign('/app/guardia');
+      await cerrarRondaManualmente(apiUrl,patrol.id,path=>window.location.replace(path),
+        motivoCierre.trim().length>=3?{reason:motivoCierre.trim()}:{});
     } catch (e) {
       setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar la ronda');
       setCerrandoLibre(false);
@@ -288,15 +279,7 @@ function Ronda({
     setCerrandoLibre(true);
     setErrorLibre(undefined);
     try {
-      const respuesta = await fetch(`${apiUrl}/guard/patrols/${patrol.id}/free-roam/finish`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!respuesta.ok) {
-        const cuerpo = (await respuesta.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(cuerpo?.message ?? 'No pudimos cerrar el recorrido');
-      }
-      window.location.assign('/app/guardia');
+      await cerrarRondaManualmente(apiUrl,patrol.id,path=>window.location.replace(path),{freeRoam:!estado.cierre});
     } catch (e) {
       setErrorLibre(e instanceof Error ? e.message : 'No pudimos cerrar el recorrido');
       setCerrandoLibre(false);
@@ -1221,7 +1204,7 @@ function Ronda({
             </div>
           ) : null}
 
-          {!estado.cierre ? <div className="terminar-ronda">
+          <div className="terminar-ronda">
             {confirmandoCierre ? (
               <div className="terminar-ronda-alerta" role="alertdialog" aria-labelledby="alerta-fin">
                 <h3 id="alerta-fin">¿Terminar la ronda ahora?</h3>
@@ -1230,8 +1213,7 @@ function Ronda({
                 ) : (
                   <p>
                     Te quedan <strong>{puntosPendientes} punto{puntosPendientes === 1 ? '' : 's'} sin marcar</strong>.
-                    La ronda queda incompleta y tu supervisor lo va a ver así. Esto no se puede
-                    deshacer.
+                    Las fotos y tareas que falten quedarán indicadas en el informe. Lo que ya capturaste se conserva para sincronizarlo con conexión. Esto no se puede deshacer.
                   </p>
                 )}
                 {!patrol.isFreeRoam ? (
@@ -1275,10 +1257,10 @@ function Ronda({
                 onClick={() => setConfirmandoCierre(true)}
                 type="button"
               >
-                Terminar la ronda
+                {estado.cierre ? 'TÉRMINO DE RONDA' : 'Terminar la ronda'}
               </button>
             )}
-          </div> : null}
+          </div>
         </>
       ) : null}
 

@@ -100,6 +100,7 @@ interface FilaPlantilla {
 
 interface FilaRonda {
   id: string;
+  status?: string;
   tenant_id: string;
   site_id: string;
   shift_id: string | null;
@@ -308,18 +309,19 @@ export class ChecklistsService {
   async templateForPatrol(patrolId: string, guardId: string, includeScanIds = false) {
     const ronda = await this.rondaDelGuardia(patrolId, guardId);
     const plantilla = await this.plantillaDeLaRonda(ronda);
+    const recovery=includeScanIds?{patrolStatus:ronda.status,syncScans:await this.tenantContext.manager.query<Array<{
+      clientScanId:string;scanId:string;checkpointId:string;
+    }>>(`SELECT client_scan_id AS "clientScanId",id AS "scanId",checkpoint_id AS "checkpointId"
+          FROM scans WHERE patrol_id=$1 ORDER BY scanned_at_server`,[patrolId])}:{};
     if (!plantilla) {
-      return { patrolId, hasChecklist: false as const };
+      return { patrolId, hasChecklist: false as const, ...recovery };
     }
     return {
       patrolId,
       hasChecklist: true as const,
       template: { id: plantilla.id, name: plantilla.name,
         items: await this.conCantidadesDeFotos(plantilla.items, ronda.site_id) },
-      ...(includeScanIds ? { syncScans: await this.tenantContext.manager.query<Array<{
-        clientScanId: string; scanId: string; checkpointId: string;
-      }>>(`SELECT client_scan_id AS "clientScanId", id AS "scanId", checkpoint_id AS "checkpointId"
-           FROM scans WHERE patrol_id=$1 ORDER BY scanned_at_server`, [patrolId]) } : {}),
+      ...recovery,
     };
   }
 
@@ -532,7 +534,7 @@ export class ChecklistsService {
 
   private async rondaDelGuardia(patrolId: string, guardId: string): Promise<FilaRonda> {
     const filas = await this.tenantContext.manager.query<FilaRonda[]>(
-      `SELECT p.id, p.tenant_id, p.site_id, a.shift_id, p.checklist_template_id
+      `SELECT p.id, p.status, p.tenant_id, p.site_id, a.shift_id, p.checklist_template_id
        FROM patrols p
        LEFT JOIN shift_assignments a
          ON a.tenant_id = p.tenant_id AND a.id = p.shift_assignment_id

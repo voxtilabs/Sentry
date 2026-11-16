@@ -2,9 +2,11 @@ import { pedirApi } from './guard-outbox';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { estadoTareasInicial, type EstadoTareas } from './guard-tareas-modelo';
 import { recuperarTareasGuardadas, tareasGuardadasConTrabajo } from './guard-tareas-recuperacion';
+import { enviarTareasAlTerminar } from './guard-round-finish';
 
 jest.mock('./guard-outbox', () => ({ pedirApi: jest.fn() }));
 jest.mock('./guard-tareas-flujo', () => ({ sincronizarTareasGuardadas: jest.fn() }));
+jest.mock('./guard-round-finish', () => ({ enviarTareasAlTerminar: jest.fn() }));
 const pedir = jest.mocked(pedirApi), sincronizar = jest.mocked(sincronizarTareasGuardadas);
 const propia = 'a0000000-0000-4000-8000-000000000007';
 const ajena = 'b0000000-0000-4000-8000-000000000007';
@@ -14,6 +16,16 @@ const pendiente = (patrolId: string): EstadoTareas => ({ ...estadoTareasInicial(
 }] });
 beforeEach(() => jest.resetAllMocks());
 describe('recuperación tras cerrar una ronda y volver a la portada sin asignación', () => {
+  it('tras un cierre manual sube lo capturado sin exigir completar la respuesta',async()=>{
+    pedir.mockResolvedValue(new Response(JSON.stringify({patrolStatus:'incompleta',syncScans:[]})));
+    await recuperarTareasGuardadas('/api',[pendiente(propia)]);
+    expect(enviarTareasAlTerminar).toHaveBeenCalledWith('/api',propia,{permitirIncompletas:true});
+  });
+  it('un borrador con foto ya recibida no se vuelve a reenviar para siempre',()=>{
+    const estado={...estadoTareasInicial(propia),borradores:{tarea:{value:'',clientScanId:'scan',fotos:[{clientPhotoId:'foto',photoId:'recibo'}]}}};
+    const data=JSON.stringify(estado);
+    expect(tareasGuardadasConTrabajo({length:1,key:()=>`sentrycore.guard.tareas.v1:${propia}`,getItem:()=>data})).toEqual([]);
+  });
   it('encuentra trabajo entre las rondas guardadas sin ofrecer plantillas o JSON corrupto', () => {
     const filas = new Map([
       ['sentrycore.guard.tareas.v1:'+propia, JSON.stringify(pendiente(propia))],
@@ -41,6 +53,7 @@ describe('recuperación tras cerrar una ronda y volver a la portada sin asignaci
     await recuperarTareasGuardadas('/api', estados, undefined, descartadas);
     await recuperarTareasGuardadas('/api', estados, undefined, descartadas);
     expect(sincronizar).not.toHaveBeenCalled();
+    expect(enviarTareasAlTerminar).not.toHaveBeenCalled();
     expect(pedir).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(estados)).toBe(antes);
   });
