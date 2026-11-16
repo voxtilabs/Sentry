@@ -1,6 +1,8 @@
 'use client';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+
+import { GuardCameraInput, type PedirPermisoCamara } from './guard-camera-input';
 
 import type { Criticidad } from './guard-outbox';
 
@@ -33,15 +35,16 @@ export function GuardEventForm({
   enviando,
   mensaje,
   onReportar,
+  pedirPermisoCamara,
 }: {
   enviando: boolean;
   mensaje?: string;
   onReportar: (entrada: { criticidad: Criticidad; texto: string; foto?: File }) => void;
+  pedirPermisoCamara?: PedirPermisoCamara;
 }) {
   const [criticidad, setCriticidad] = useState<Criticidad>('media');
   const [texto, setTexto] = useState('');
   const [foto, setFoto] = useState<File>();
-  const campoFoto = useRef<HTMLInputElement>(null);
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -53,7 +56,6 @@ export function GuardEventForm({
 
   function quitarFoto() {
     setFoto(undefined);
-    if (campoFoto.current) campoFoto.current.value = '';
   }
 
   return (
@@ -102,18 +104,9 @@ export function GuardEventForm({
           una vez y reusa esa imagen todo el mes; la evidencia deja de valer.
         */}
         <div className="guardia-foto">
-          <label className="guardia-boton-secundario ancho" htmlFor="guardia-foto-campo">
-            {foto ? 'Repetir foto' : 'Tomar foto'}
-          </label>
-          <input
-            accept="image/*"
-            capture="environment"
-            className="guardia-invisible"
-            id="guardia-foto-campo"
-            onChange={(evento) => setFoto(evento.target.files?.[0])}
-            ref={campoFoto}
-            type="file"
-          />
+          <GuardCameraInput id="guardia-foto-campo" onFoto={setFoto}
+            etiqueta={foto ? 'Repetir foto' : 'Tomar foto'}
+            {...(pedirPermisoCamara ? { pedirPermiso: pedirPermisoCamara } : {})} />
           {foto ? (
             <p className="guardia-nota">
               Foto tomada. Se sube al recuperar señal; si cierras la app antes, se pierde.{' '}

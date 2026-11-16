@@ -29,6 +29,8 @@ import type { Criticidad, VeredictoSync } from './guard-outbox';
  */
 
 const CLAVE_RONDA = 'sentrycore.guard.patrol.v1';
+/** Los puntos dejados para el final, por ronda. Decision de recorrido, no hecho de terreno. */
+export const CLAVE_SALTADOS = 'sentrycore.guard.saltados.v1';
 
 /** Textos en español de las marcas de `scanAnomalySchema`. El sistema marca, no rechaza. */
 const ETIQUETAS_ANOMALIA: Record<ScanAnomaly, string> = {
@@ -414,14 +416,47 @@ function resolverCierre(
   return confirmado ? { ...cierre, confirmado: true } : undefined;
 }
 
-/** El punto al que el guardia tiene que ir ahora: el primero sin escanear. */
+/**
+ * El punto al que el guardia tiene que ir ahora: el primero sin escanear que no
+ * haya dejado para después.
+ *
+ * Reportado en terreno: el punto 6 está al fondo de un pasillo sin salida —se
+ * entra derecho y se sale haciendo una U— y si ahí falla el escaneo, la
+ * pantalla se queda pidiendo el 6. El guardia ya caminó de vuelta: para
+ * obedecerla tiene que rehacer el pasillo entero, y si vuelve a fallar, otra
+ * vez.
+ *
+ * Los saltados NO se pierden: cuando ya no queda ningún otro pendiente, vuelven
+ * a salir. Sacarlos de la lista sería peor que el problema que arregla —la
+ * ronda terminaría "completa" con un punto que nadie pisó—.
+ */
 export function siguientePunto(
   puntos: readonly PuntoRuta[],
   registros: EstadoRonda['puntos'],
+  saltados: readonly string[] = [],
 ): PuntoRuta | undefined {
-  return [...puntos]
+  const pendientes = [...puntos]
     .sort((a, b) => a.position - b.position)
-    .find((punto) => registros[punto.id] === undefined);
+    .filter((punto) => registros[punto.id] === undefined);
+  return pendientes.find((punto) => !saltados.includes(punto.id)) ?? pendientes[0];
+}
+
+/**
+ * Si dejar este punto para después tiene sentido: solo cuando hay OTRO punto
+ * pendiente al que ir. Ofrecerlo en el último no ayuda a nadie —no hay a dónde
+ * seguir— y dejaría al guardia creyendo que la ronda se puede cerrar sola.
+ */
+export function sePuedeSaltar(
+  puntos: readonly PuntoRuta[],
+  registros: EstadoRonda['puntos'],
+  saltados: readonly string[],
+  punto: PuntoRuta | undefined,
+): boolean {
+  if (punto === undefined) return false;
+  return puntos.some(
+    (otro) =>
+      otro.id !== punto.id && registros[otro.id] === undefined && !saltados.includes(otro.id),
+  );
 }
 
 export function puntosFaltantes(
@@ -453,3 +488,13 @@ export const ETIQUETAS_CRITICIDAD: Record<Criticidad, string> = {
   alta: 'Alta',
   panico: 'PÁNICO',
 };
+
+/** A confirmed server close survives an Android/WebView restart until evidence is reviewed. */
+export function restaurarCierreServidor(estado: EstadoRonda, puntos: readonly PuntoRuta[],
+  cierre: { status: string; closedAt?: string | null; compliancePct?: number | null }): EstadoRonda {
+  if (!['completada','incompleta','vencida'].includes(cierre.status)) return estado;
+  const faltantes=puntosFaltantes(puntos,estado.puntos);
+  return registrarCierre(estado,{cerradaAt:cierre.closedAt??estado.cierre?.cerradaAt??new Date().toISOString(),
+    scanned:puntos.length-faltantes.length,expected:puntos.length,faltantes: faltantes.map(p=>p.id),
+    ...(cierre.compliancePct==null?{}:{pct:cierre.compliancePct}),alertaEnviada:false,confirmado:true});
+}

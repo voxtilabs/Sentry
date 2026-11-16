@@ -1,0 +1,12 @@
+# Instalar torch CPU primero desde https://download.pytorch.org/whl/cpu.
+torch==2.6.0+cpu
+torchvision==0.21.0+cpu
+numpy==1.26.4
+opencv-python==4.10.0.84
+imageio==2.36.1
+ultralytics==8.3.59
+transformers==4.48.0
+scipy==1.15.3
+playwright==1.64.1
+patchright==1.64.2
+recognizer @ git+https://github.com/Vinyzu/recognizer.git@8a002c4574a1158ca4fa8519279427fce3614c97

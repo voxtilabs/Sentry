@@ -26,7 +26,7 @@ import { tareasDelCierre } from './guard-tareas-modelo';
 
 const CLAVE_RESPUESTAS = 'sentrycore.guard.checklist.v1';
 
-type TipoRespuesta = 'ok_falla' | 'texto' | 'numero';
+type TipoRespuesta = 'ok_falla' | 'si_no' | 'texto' | 'numero' | 'foto';
 
 interface ItemChecklist {
   id: string;
@@ -199,21 +199,21 @@ function Item({
         {item.label}
       </p>
 
-      {item.responseType === 'ok_falla' ? (
+      {item.responseType === 'ok_falla' || item.responseType === 'si_no' ? (
         <div className="guardia-ok-falla" role="group" aria-labelledby={`item-${item.id}`}>
           <button
             className={`guardia-boton-opcion${valor === 'ok' ? ' elegida' : ''}`}
-            onClick={() => onResponder({ value: 'ok' })}
+            onClick={() => onResponder({ value: item.responseType === 'si_no' ? 'si' : 'ok' })}
             type="button"
           >
-            OK
+            SÍ
           </button>
           <button
             className={`guardia-boton-opcion falla${esFalla ? ' elegida' : ''}`}
-            onClick={() => onResponder({ value: 'falla', ...(respuesta?.notes ? { notes: respuesta.notes } : {}) })}
+            onClick={() => onResponder({ value: item.responseType === 'si_no' ? 'no' : 'falla', ...(respuesta?.notes ? { notes: respuesta.notes } : {}) })}
             type="button"
           >
-            Falla
+            NO
           </button>
         </div>
       ) : (

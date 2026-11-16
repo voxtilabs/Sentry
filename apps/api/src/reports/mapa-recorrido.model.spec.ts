@@ -81,6 +81,16 @@ const entrada = (parcial: Partial<EntradaMapa> = {}): EntradaMapa => ({
 });
 
 describe('proyectar', () => {
+  it('el mapa conserva cada posición medida, también en curvas y junto a un hueco', () => {
+    const filas = [traza(RECINTO.lat, RECINTO.lng, 0, 5),
+      traza(RECINTO.lat + 0.0002, RECINTO.lng, 1, 5),
+      traza(RECINTO.lat + 0.0002, RECINTO.lng + 0.0002, 6, 5)];
+    const mapa = construirMapaRecorrido(entrada({ traza: filas }));
+    expect(mapa.traza).toHaveLength(3);
+    const real = proyectar(Number(filas[1]!.latitude), Number(filas[1]!.longitude), mapa.origen!);
+    expect(mapa.traza[1]!.este).toBeCloseTo(real.este, 5);
+    expect(mapa.traza[1]!.norte).toBeCloseTo(real.norte, 5);
+  });
   it('convierte grados a metros locales con el norte hacia arriba', () => {
     const arriba = proyectar(RECINTO.lat + 0.001, RECINTO.lng, RECINTO);
 

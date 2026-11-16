@@ -128,6 +128,8 @@ describe('ChecklistsService — guardar una tarea con punto, hora y foto (#265)'
       TAREA_DEL_REFRIGERADOR.checkpointId,
       '11:00',
       true, // requiresPhoto
+      null, // hereda mínimo
+      null, // hereda máximo
     ]);
   });
 
@@ -167,7 +169,7 @@ describe('ChecklistsService — guardar una tarea con punto, hora y foto (#265)'
 
     // Y se guarda como tarea general: sin punto, sin hora.
     const [, parametros] = insertsDeItems(query)[0]!;
-    expect(parametros.slice(5)).toEqual([null, null, false]);
+    expect(parametros.slice(5)).toEqual([null, null, false, null, null]);
   });
 
   it('una tarea sin punto ni hora sigue guardandose como tarea general del turno', async () => {
@@ -181,7 +183,7 @@ describe('ChecklistsService — guardar una tarea con punto, hora y foto (#265)'
     });
 
     const [, parametros] = insertsDeItems(query)[0]!;
-    expect(parametros.slice(5)).toEqual([null, null, false]);
+    expect(parametros.slice(5)).toEqual([null, null, false, null, null]);
     // Y no se consulto ningun punto: no hay nada que comprobar.
     const consultasDePuntos = query.mock.calls.filter(([sql]: [string]) =>
       sql.includes('FROM checkpoints'),

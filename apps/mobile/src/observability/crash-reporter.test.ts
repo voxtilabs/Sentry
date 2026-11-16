@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import test, { beforeEach } from 'node:test';
 
+import { leerCaidas, usarColaEnMemoria } from './cola-de-caidas';
 import {
+  endpointDeCaidas,
   formatearErrorParaReporte,
   instalarReportadorGlobal,
+  registrarArranqueYVerificarCierre,
+  reiniciarEstadoDelReportador,
   reportarCaida,
   setStorageAdapter,
   vaciarColaDeCaidas,
+  veredictoDeRespuesta,
   type StorageAdapter,
 } from './crash-reporter';
 import { sanitizarTexto } from './scrubber';
@@ -26,6 +31,11 @@ setStorageAdapter(fakeStorage);
 
 beforeEach(() => {
   storeMock.clear();
+  // La cola real vive en la base cifrada del telefono (expo-sqlite), que no
+  // existe corriendo en Node: aca se usa la misma cola en memoria a la que
+  // cae un telefono sin base.
+  usarColaEnMemoria();
+  reiniciarEstadoDelReportador();
 });
 
 test('sanitizarTexto elimina correos, tokens Bearer, JWT y cookies sensibles', () => {
@@ -108,27 +118,13 @@ test('reportarCaida sin apiUrl encola la caída para reintento offline', async (
   const error = new Error('Caída en subterráneo sin señal');
   await reportarCaida(error, { fatal: false });
 
-  const encoladasStr = storeMock.get('sentrycore.crash_queue.v1');
-  assert.ok(encoladasStr);
-  const encoladas = JSON.parse(encoladasStr);
+  const encoladas = await leerCaidas();
   assert.equal(encoladas.length, 1);
-  assert.equal(encoladas[0].errorMessage, 'Caída en subterráneo sin señal');
+  assert.equal(encoladas[0]?.payload.errorMessage, 'Caída en subterráneo sin señal');
 });
 
 test('vaciarColaDeCaidas despacha los reportes pendientes cuando hay apiUrl', async () => {
-  storeMock.set(
-    'sentrycore.crash_queue.v1',
-    JSON.stringify([
-      {
-        errorName: 'ErrorOffline',
-        errorMessage: 'Error guardado sin señal',
-        appVersion: '0.1.0',
-        deviceModel: 'Android',
-        androidVersion: '13',
-        fatal: false,
-      },
-    ]),
-  );
+  await reportarCaida(new Error('Error guardado sin señal'), { fatal: false });
 
   const llamadas: unknown[] = [];
   const fetchOriginal = globalThis.fetch;
@@ -142,10 +138,9 @@ test('vaciarColaDeCaidas despacha los reportes pendientes cuando hay apiUrl', as
     assert.equal(llamadas.length, 1);
     assert.equal(
       (llamadas[0] as { url: string }).url,
-      'http://api.local/crash-reports',
+      'http://api.local/api/observability/crash-reports',
     );
-    // Cola vaciada y eliminada
-    assert.equal(storeMock.get('sentrycore.crash_queue.v1'), undefined);
+    assert.deepEqual(await leerCaidas(), []);
   } finally {
     globalThis.fetch = fetchOriginal;
   }
@@ -243,12 +238,196 @@ test('instalarReportadorGlobal ante un error FATAL encola antes de ceder el proc
 
     assert.equal(handlerPrevioLlamado, true);
 
-    const encoladasStr = storeMock.get('sentrycore.crash_queue.v1');
-    assert.ok(encoladasStr);
-    const encoladas = JSON.parse(encoladasStr);
+    const encoladas = await leerCaidas();
     assert.equal(encoladas.length, 1);
-    assert.equal(encoladas[0].errorMessage, 'Fatal en el escaneo');
-    assert.equal(encoladas[0].fatal, true);
+    assert.equal(encoladas[0]?.payload.errorMessage, 'Fatal en el escaneo');
+    assert.equal(encoladas[0]?.payload.fatal, true);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+test('el POST va a la ruta REAL de la API, no a /crash-reports (#273)', () => {
+  // La version anterior mandaba a `${origen}/crash-reports`: 404 en cada
+  // caida, descartada en silencio por no ser 5xx. La app "tenia" reporte de
+  // caidas y el panel nunca vio una.
+  assert.equal(
+    endpointDeCaidas('https://sentrycore.voxtilabs.cl'),
+    'https://sentrycore.voxtilabs.cl/api/observability/crash-reports',
+  );
+  // El portal entrega por el puente una base que YA trae /api: configurar una
+  // u otra no puede cambiar el destino.
+  assert.equal(
+    endpointDeCaidas('https://sentrycore.voxtilabs.cl/api'),
+    'https://sentrycore.voxtilabs.cl/api/observability/crash-reports',
+  );
+  assert.equal(
+    endpointDeCaidas('https://sentrycore.voxtilabs.cl/api/'),
+    'https://sentrycore.voxtilabs.cl/api/observability/crash-reports',
+  );
+});
+
+test('el POST declara el Origin del portal o el servidor lo rechaza por CSRF (#273)', async () => {
+  const cabeceras: Record<string, string>[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    cabeceras.push((init?.headers ?? {}) as Record<string, string>);
+    return new Response('{}', { status: 202 });
+  }) as typeof fetch;
+
+  try {
+    await reportarCaida(new Error('con origen'), { apiUrl: 'https://portal.cl' });
+    // `csrf-origin.middleware` solo deja pasar sin Origin a un cliente nativo
+    // SIN cookies, y este fetch va con las del WebView: sin esta cabecera es
+    // 403 siempre.
+    assert.equal(cabeceras[0]?.Origin, 'https://portal.cl');
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+test('el veredicto separa lo que puede valer despues de lo que no valdra nunca (#273)', () => {
+  assert.equal(veredictoDeRespuesta(202), 'entregado');
+  // Todavia no hay sesion: el arranque reporta la caida de ayer antes del login.
+  assert.equal(veredictoDeRespuesta(401), 'reintentar');
+  // El techo por usuario/hora del servidor se libera solo.
+  assert.equal(veredictoDeRespuesta(429), 'reintentar');
+  assert.equal(veredictoDeRespuesta(503), 'reintentar');
+  // El cuerpo no cumple el contrato y no lo va a cumplir en el proximo intento.
+  assert.equal(veredictoDeRespuesta(400), 'descartar');
+  // Modulo apagado para la empresa.
+  assert.equal(veredictoDeRespuesta(404), 'descartar');
+  assert.equal(veredictoDeRespuesta(403), 'descartar');
+});
+
+test('con el modulo apagado deja de intentar hasta el proximo arranque (#273)', async () => {
+  let intentos = 0;
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    intentos += 1;
+    return new Response(
+      JSON.stringify({ message: 'Esta seccion no esta disponible para tu empresa' }),
+      { status: 404 },
+    );
+  }) as typeof fetch;
+
+  try {
+    await reportarCaida(new Error('primera'), { apiUrl: 'https://portal.cl' });
+    await reportarCaida(new Error('segunda'), { apiUrl: 'https://portal.cl' });
+    await reportarCaida(new Error('tercera'), { apiUrl: 'https://portal.cl' });
+
+    // Una sola ida al servidor: sin el pestillo, el telefono golpea un 404 por
+    // cada caida y por cada vuelta a primer plano, gastando bateria del
+    // guardia en contar que la empresa no quiere el modulo.
+    assert.equal(intentos, 1);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+test('sin señal la caida espera en cola y sale despues (#273)', async () => {
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error('Network request failed');
+  }) as typeof fetch;
+
+  try {
+    await reportarCaida(new Error('caida en el subterraneo'), { apiUrl: 'https://portal.cl' });
+    assert.equal((await leerCaidas()).length, 1);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+
+  const enviadas: unknown[] = [];
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    enviadas.push(JSON.parse(String(init?.body)));
+    return new Response('{}', { status: 202 });
+  }) as typeof fetch;
+
+  try {
+    await vaciarColaDeCaidas('https://portal.cl');
+    assert.equal(enviadas.length, 1);
+    assert.equal((enviadas[0] as { errorMessage: string }).errorMessage, 'caida en el subterraneo');
+    assert.deepEqual(await leerCaidas(), []);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+test('una caida vieja se tira sin gastar la red del guardia (#273)', async () => {
+  const { encolarCaida } = await import('./cola-de-caidas');
+  const hace10Dias = new Date(Date.now() - 10 * 24 * 60 * 60 * 1_000).toISOString();
+  await encolarCaida({ errorName: 'Vieja', errorMessage: 'de la semana pasada' }, hace10Dias);
+
+  let intentos = 0;
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    intentos += 1;
+    return new Response('{}', { status: 202 });
+  }) as typeof fetch;
+
+  try {
+    await vaciarColaDeCaidas('https://portal.cl');
+    assert.equal(intentos, 0);
+    assert.deepEqual(await leerCaidas(), []);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+test('la caida NATIVA se reporta como tal y no como un JSON pegado (#273)', async () => {
+  // Antes se pasaba el payload ya armado por formatearErrorParaReporte(), que
+  // lo trataba como un objeto cualquiera: el reporte entero terminaba dentro
+  // de `errorMessage` y el nombre volvia a ser 'Error'. En el panel la caida
+  // que mato el proceso se veia igual que cualquier otra.
+  storeMock.set('sentrycore.clean_exit.v1', 'false');
+
+  const enviadas: Record<string, unknown>[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    enviadas.push(JSON.parse(String(init?.body)));
+    return new Response('{}', { status: 202 });
+  }) as typeof fetch;
+
+  try {
+    await registrarArranqueYVerificarCierre('https://portal.cl');
+    assert.equal(enviadas.length, 1);
+    assert.equal(enviadas[0]?.errorName, 'NativeCrash');
+    assert.equal(enviadas[0]?.fatal, true);
+    assert.ok(!String(enviadas[0]?.errorMessage).includes('{'));
+    // Y queda marcada la corrida actual como en curso, para detectar la proxima.
+    assert.equal(storeMock.get('sentrycore.clean_exit.v1'), 'false');
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+test('el reporte no lleva NADA del guardia: solo los campos del contrato (#273)', async () => {
+  const enviadas: Record<string, unknown>[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    enviadas.push(JSON.parse(String(init?.body)));
+    return new Response('{}', { status: 202 });
+  }) as typeof fetch;
+
+  try {
+    await reportarCaida(new Error('fallo al escanear'), { apiUrl: 'https://portal.cl' });
+    const permitidos = new Set([
+      'errorName',
+      'errorMessage',
+      'stack',
+      'appVersion',
+      'deviceModel',
+      'androidVersion',
+      'bridgeProtocolVersion',
+      'fatal',
+      'occurredAt',
+    ]);
+    // Se comprueba mirando el JSON que SALE, no confiando en el scrubber del
+    // servidor: esa es la promesa del issue y es la unica forma de verla.
+    for (const clave of Object.keys(enviadas[0] ?? {})) {
+      assert.ok(permitidos.has(clave), `el reporte no deberia llevar "${clave}"`);
+    }
   } finally {
     globalThis.fetch = fetchOriginal;
   }

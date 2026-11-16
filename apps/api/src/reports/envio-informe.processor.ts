@@ -1,10 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import type { Job } from 'bullmq';
+import { DelayedError, type Job } from 'bullmq';
 import { DataSource } from 'typeorm';
 
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
-import { ENVIO_INFORME_QUEUE_NAME } from './envio-informe.constants';
+import { ENVIO_INFORME_EVIDENCE_POLL_MS, ENVIO_INFORME_QUEUE_NAME } from './envio-informe.constants';
 import { EnvioInformeService } from './envio-informe.service';
 import type { EnvioInformeJobData, ResultadoEnvio } from './envio-informe.types';
 
@@ -41,12 +41,20 @@ export class EnvioInformeProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<EnvioInformeJobData>): Promise<ResultadoEnvio> {
+  async process(job: Job<EnvioInformeJobData>, token?: string): Promise<ResultadoEnvio> {
     const { tenantId, patrolId } = job.data;
 
     const resultado = await this.enTenant(tenantId, () =>
-      this.envio.despachar(tenantId, patrolId),
+      this.envio.despachar(tenantId, patrolId, {
+        ...(job.data.closingCheckpointId ? { closingCheckpointId: job.data.closingCheckpointId } : {}),
+        ...(job.data.closingPhotoRequired === undefined ? {} : { closingPhotoRequired: job.data.closingPhotoRequired }),
+      }),
     );
+
+    if (resultado.omitido === 'evidencia_pendiente') {
+      await job.moveToDelayed(Date.now() + ENVIO_INFORME_EVIDENCE_POLL_MS, token);
+      throw new DelayedError();
+    }
 
     /**
      * La ronda todavia no figura cerrada: se REINTENTA, no se descarta.

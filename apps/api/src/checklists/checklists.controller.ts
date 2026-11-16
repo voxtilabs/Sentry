@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, DefaultValuePipe, Get, Param, ParseBoolPipe, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { IsUUID } from 'class-validator';
 import type { Request } from 'express';
 
@@ -70,8 +70,9 @@ export class ChecklistsController {
   /** La plantilla que le toca a ESTA ronda, ya resuelta por recinto y turno. */
   @Get('patrols/:patrolId/template')
   @Permissions('patrols:execute')
-  templateForPatrol(@Param() params: PatrolParam, @Req() request: Autenticado) {
-    return this.checklists.templateForPatrol(params.patrolId, request.user.sub);
+  templateForPatrol(@Param() params: PatrolParam, @Req() request: Autenticado,
+    @Query('includeScanIds', new DefaultValuePipe(false), ParseBoolPipe) includeScanIds: boolean) {
+    return this.checklists.templateForPatrol(params.patrolId, request.user.sub, includeScanIds);
   }
 
   @Post('patrols/:patrolId/responses')

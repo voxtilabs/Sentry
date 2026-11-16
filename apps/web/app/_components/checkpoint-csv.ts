@@ -91,7 +91,7 @@ export const CHECKPOINT_CSV_TEMPLATE = [
   'Patio norte;;normal;2;-33.448500;-70.669000;no;Revisar iluminación;',
 ].join('\n');
 
-function detectDelimiter(source: string): ',' | ';' {
+export function detectDelimiter(source: string): ',' | ';' {
   const firstLine = source.split(/\r?\n/, 1)[0] ?? '';
   return countOutsideQuotes(firstLine, ';') >= countOutsideQuotes(firstLine, ',') ? ';' : ',';
 }
@@ -106,7 +106,7 @@ function countOutsideQuotes(value: string, target: string): number {
   return count;
 }
 
-function splitCsv(source: string, delimiter: string): string[][] {
+export function splitCsv(source: string, delimiter: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';

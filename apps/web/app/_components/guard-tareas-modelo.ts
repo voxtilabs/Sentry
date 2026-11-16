@@ -1,6 +1,8 @@
 'use client';
 
 import { borrarClave, escribirJson, leerJson } from './guard-storage';
+import { DEFAULT_PATROL_RULES } from '@sentrycore/shared';
+import { leerTareasDurables, persistirTareasDurables, borrarTareasDurables } from './guard-photo-store';
 
 /**
  * Las tareas del turno, vistas desde el teléfono (#265).
@@ -36,8 +38,9 @@ import { borrarClave, escribirJson, leerJson } from './guard-storage';
 
 const CLAVE_PLANTILLA = 'sentrycore.guard.tareas.plantilla.v1';
 const CLAVE_ESTADO = 'sentrycore.guard.tareas.v1';
+const estadosActuales = new Map<string, EstadoTareas>();
 
-export type TipoRespuestaTarea = 'ok_falla' | 'texto' | 'numero';
+export type TipoRespuestaTarea = 'ok_falla' | 'si_no' | 'texto' | 'numero' | 'foto';
 
 export interface ItemTarea {
   id: string;
@@ -59,6 +62,8 @@ export interface ItemTarea {
   dueLocalTime?: string | null;
   /** Foto SIEMPRE, esté todo bien o mal. Distinta de `requiresPhotoOnFail`. */
   requiresPhoto?: boolean;
+  photoMinCount?: number | null;
+  photoMaxCount?: number | null;
 }
 
 export type PlantillaTareas =
@@ -83,7 +88,12 @@ export function tareasDelPunto(
 ): ItemTarea[] {
   return items
     .filter((item) => item.checkpointId === checkpointId)
-    .sort((a, b) => a.position - b.position);
+    .sort((a, b) => {
+      // El CSV puede traer la pregunta antes de la foto. En terreno siempre
+      // van primero las capturas; position conserva el orden dentro de cada paso.
+      const paso = (item: ItemTarea) => item.responseType === 'foto' ? 0 : item.requiresPhoto ? 1 : 2;
+      return paso(a) - paso(b) || a.position - b.position;
+    });
 }
 
 /**
@@ -107,9 +117,39 @@ export function tareasDelCierre(items: readonly ItemTarea[]): ItemTarea[] {
  * cuando se marca falla, que es la regla vieja y sigue valiendo.
  */
 export function tareaExigeFoto(item: ItemTarea, valor: string | undefined): boolean {
-  if (item.requiresPhoto === true) return true;
+  if (item.requiresPhoto === true || item.responseType === 'foto') return true;
   return item.requiresPhotoOnFail && (valor ?? '').trim().toLowerCase() === 'falla';
 }
+
+export function cantidadesDeFotos(item: ItemTarea) {
+  const min = item.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount;
+  return { min, max: Math.max(min, item.photoMaxCount ?? DEFAULT_PATROL_RULES.taskPhotoMaxCount) };
+}
+
+/** La evidencia de una tarea del mismo punto también respalda su escaneo. */
+export function tareaCubreFotoDelPunto(items: readonly ItemTarea[], checkpointId: string): boolean {
+  return items.some((item) => item.checkpointId === checkpointId &&
+    (item.requiresPhoto === true || item.responseType === 'foto'));
+}
+
+/** El cierre del servidor no puede tapar la evidencia que aún pide el último punto. */
+export function vistaConEvidenciaPendiente(vista: 'ronda' | 'novedad' | 'resumen',
+  trabajo: { plantillaLista: boolean; fotoPendiente: boolean; tareasPendientes: boolean }) {
+  return vista === 'resumen' && (!trabajo.plantillaLista || trabajo.fotoPendiente || trabajo.tareasPendientes)
+    ? 'ronda' : vista;
+}
+
+/** Reabre el último punto escaneado que aún tenga trabajo, incluso tras cerrar el WebView. */
+export function puntoConTareasParaRetomar(items: readonly ItemTarea[], estado: EstadoTareas,
+  registros: Readonly<Record<string, { scannedAt: string; clientScanId: string; scanId?: string }>>) {
+  const candidato = Object.entries(registros)
+    .sort(([, a], [, b]) => b.scannedAt.localeCompare(a.scannedAt))
+    .find(([id]) => tareasDelPuntoPorResponder(items, estado, id).length);
+  return candidato ? { checkpointId: candidato[0], ...candidato[1] } : undefined;
+}
+
+export interface FotoTarea { clientPhotoId: string; photoId?: string }
+export interface BorradorTarea { value: string; clientScanId: string; fotos: FotoTarea[] }
 
 // --------------------------------------------------------- la cola de la ronda
 
@@ -132,6 +172,8 @@ export interface RespuestaTareaEnCola {
   clientScanId?: string;
   /** Id de la foto YA subida. Sin él, una respuesta que exige foto no viaja. */
   photoId?: string;
+  fotos?: FotoTarea[];
+  minFotos?: number;
   /** Esta respuesta no vale sin foto. Se congela al responder, con el valor dado. */
   exigeFoto: boolean;
   estado: 'pendiente' | 'rechazada';
@@ -144,6 +186,8 @@ export interface EstadoTareas {
   cola: RespuestaTareaEnCola[];
   /** Items que el servidor ya tiene ('aplicado' o 'duplicado'): no se re-ofrecen. */
   enviadas: string[];
+  /** Fotos y texto a salvo aunque aún falte responder la pregunta. */
+  borradores?: Record<string, BorradorTarea>;
 }
 
 /** Lo que entra en `POST /checklists/patrols/:id/responses`, y nada más. */
@@ -152,6 +196,7 @@ export interface RespuestaParaEnviar {
   value: string;
   notes?: string;
   photoId?: string;
+  photoIds?: string[];
 }
 
 export interface ResultadoTarea {
@@ -186,6 +231,7 @@ export function responderTarea(
     clientPhotoId?: string;
     /** Id de servidor de esa foto, cuando ya subió. */
     photoId?: string;
+    fotos?: FotoTarea[];
   },
 ): EstadoTareas {
   if (estado.enviadas.includes(entrada.item.id)) return estado;
@@ -199,6 +245,7 @@ export function responderTarea(
     ...(entrada.clientScanId ? { clientScanId: entrada.clientScanId } : {}),
     ...(entrada.clientPhotoId ? { clientPhotoId: entrada.clientPhotoId } : {}),
     ...(entrada.photoId ? { photoId: entrada.photoId } : {}),
+    ...(entrada.fotos ? { fotos: entrada.fotos, minFotos: cantidadesDeFotos(entrada.item).min } : {}),
     exigeFoto: tareaExigeFoto(entrada.item, entrada.value),
     estado: 'pendiente',
   };
@@ -206,8 +253,11 @@ export function responderTarea(
   // Corregirse antes de que salga sí se puede: esa respuesta todavía no llegó a
   // ninguna parte, así que la última pisa a la anterior y no se acumulan dos
   // respuestas del mismo item en la cola.
+  const borradores = { ...estado.borradores };
+  delete borradores[entrada.item.id];
   return {
     ...estado,
+    ...(estado.borradores ? { borradores } : {}),
     cola: [...estado.cola.filter((otra) => otra.itemId !== respuesta.itemId), respuesta],
   };
 }
@@ -221,11 +271,18 @@ export function anotarFotoDeTarea(
   clientPhotoId: string,
   photoId: string,
 ): EstadoTareas {
+  const anotar = (fotos: FotoTarea[]) => fotos.map((foto) =>
+    foto.clientPhotoId === clientPhotoId ? { ...foto, photoId } : foto);
   return {
     ...estado,
     cola: estado.cola.map((respuesta) =>
-      respuesta.clientPhotoId === clientPhotoId ? { ...respuesta, photoId } : respuesta,
+      ({ ...respuesta,
+        ...(respuesta.clientPhotoId === clientPhotoId ? { photoId } : {}),
+        ...(respuesta.fotos ? { fotos: anotar(respuesta.fotos) } : {}),
+      }),
     ),
+    ...(estado.borradores ? { borradores: Object.fromEntries(Object.entries(estado.borradores)
+      .map(([id, borrador]) => [id, { ...borrador, fotos: anotar(borrador.fotos) }])) } : {}),
   };
 }
 
@@ -240,12 +297,16 @@ export function anotarFotoDeTarea(
 export function loteParaEnviar(estado: EstadoTareas): RespuestaParaEnviar[] {
   return estado.cola
     .filter((respuesta) => respuesta.estado === 'pendiente')
-    .filter((respuesta) => !respuesta.exigeFoto || respuesta.photoId !== undefined)
+    .filter((respuesta) => respuesta.fotos
+      ? respuesta.fotos.every((foto) => foto.photoId) &&
+        (!respuesta.exigeFoto || respuesta.fotos.length >= (respuesta.minFotos ?? 1))
+      : !respuesta.exigeFoto || respuesta.photoId !== undefined)
     .map((respuesta) => ({
       itemId: respuesta.itemId,
       value: respuesta.value,
       ...(respuesta.notes ? { notes: respuesta.notes } : {}),
       ...(respuesta.photoId ? { photoId: respuesta.photoId } : {}),
+      ...(respuesta.fotos?.length ? { photoIds: respuesta.fotos.map((foto) => foto.photoId!) } : {}),
     }));
 }
 
@@ -333,14 +394,61 @@ export function fotosDeTareaAdoptables(
   }
 
   const adoptables: { clientPhotoId: string; scanId: string }[] = [];
-  for (const respuesta of estado.cola) {
+  for (const respuesta of [...estado.cola, ...Object.values(estado.borradores ?? {})]) {
+    if (respuesta.fotos) {
+      const scanId = respuesta.clientScanId ? idPorEscaneo.get(respuesta.clientScanId) : undefined;
+      if (scanId) for (const foto of respuesta.fotos) {
+        if (!foto.photoId) adoptables.push({ clientPhotoId: foto.clientPhotoId, scanId });
+      }
+      continue;
+    }
     // Con `photoId` ya está arriba; sin `clientPhotoId` no hay foto que subir.
-    if (respuesta.photoId !== undefined) continue;
+    if (!('itemId' in respuesta) || respuesta.photoId !== undefined) continue;
     if (!respuesta.clientPhotoId || !respuesta.clientScanId) continue;
     const scanId = idPorEscaneo.get(respuesta.clientScanId);
     if (scanId !== undefined) adoptables.push({ clientPhotoId: respuesta.clientPhotoId, scanId });
   }
   return adoptables;
+}
+
+/** Repara capturas anteriores al diario durable solo cuando su tarea es inequívoca. */
+export function recuperarCapturasTareas(estado: EstadoTareas, items: readonly ItemTarea[],
+  scans: readonly { clientScanId: string; scanId: string; checkpointId: string }[],
+  fotos: readonly { clientEventId: string; serverId: string | null; destino: string }[]): EstadoTareas {
+  let siguiente = estado;
+  const usadas = new Set([...estado.cola.flatMap((r) => r.fotos?.map((f) => f.clientPhotoId) ?? (r.clientPhotoId ? [r.clientPhotoId] : [])),
+    ...Object.values(estado.borradores ?? {}).flatMap((b) => b.fotos.map((f) => f.clientPhotoId))]);
+  for (const foto of fotos) {
+    if (foto.destino !== 'tarea' || usadas.has(foto.clientEventId)) continue;
+    const scan = scans.find((s) => s.scanId === foto.serverId);
+    if (!scan) continue;
+    const candidatas = items.filter((i) => i.checkpointId === scan.checkpointId &&
+      !estado.enviadas.includes(i.id) && (i.responseType === 'foto' || i.requiresPhoto || i.requiresPhotoOnFail));
+    if (candidatas.length !== 1) continue;
+    const item = candidatas[0]!;
+    const enCola = siguiente.cola.find((r) => r.itemId === item.id);
+    const borrador = siguiente.borradores?.[item.id] ?? { value: '', clientScanId: scan.clientScanId, fotos: [] };
+    const actuales = enCola?.fotos ?? (enCola?.clientPhotoId
+      ? [{ clientPhotoId: enCola.clientPhotoId, ...(enCola.photoId ? { photoId: enCola.photoId } : {}) }] : borrador.fotos);
+    if (actuales.length >= cantidadesDeFotos(item).max) continue;
+    const nuevas = [...actuales, { clientPhotoId: foto.clientEventId }];
+    siguiente = enCola ? { ...siguiente, cola: siguiente.cola.map((r) => r.itemId === item.id ? { ...r, fotos: nuevas } : r) }
+      : { ...siguiente, borradores: { ...siguiente.borradores, [item.id]: { ...borrador, fotos: nuevas } } };
+    usadas.add(foto.clientEventId);
+  }
+  for (const item of items) {
+    const borrador = siguiente.borradores?.[item.id];
+    if (!borrador || siguiente.enviadas.includes(item.id)) continue;
+    const value = item.responseType === 'foto' ? 'foto' : borrador.value;
+    const automatica = item.responseType === 'foto' ||
+      (item.responseType === 'si_no' && ['si', 'no'].includes(value)) ||
+      (item.responseType === 'ok_falla' && ['ok', 'falla'].includes(value));
+    if (automatica && (!tareaExigeFoto(item, value) || borrador.fotos.length >= cantidadesDeFotos(item).min)) {
+      siguiente = responderTarea(siguiente, { item, value, fotos: borrador.fotos,
+        clientScanId: borrador.clientScanId, respondidaAt: new Date().toISOString() });
+    }
+  }
+  return siguiente;
 }
 
 // ------------------------------------------------------------- lo que falta
@@ -349,7 +457,7 @@ export function fotosDeTareaAdoptables(
 export function tareaRespondida(estado: EstadoTareas, itemId: string): boolean {
   return (
     estado.enviadas.includes(itemId) ||
-    estado.cola.some((respuesta) => respuesta.itemId === itemId)
+    estado.cola.some((respuesta) => respuesta.itemId === itemId && respuesta.estado !== 'rechazada')
   );
 }
 
@@ -405,16 +513,60 @@ export function cargarPlantillaTareas(patrolId: string): PlantillaTareas | undef
 }
 
 export function cargarEstadoTareas(patrolId: string): EstadoTareas {
+  const actual = estadosActuales.get(patrolId);
+  if (actual) return actual;
   const guardado = leerJson<EstadoTareas | null>(`${CLAVE_ESTADO}:${patrolId}`, null);
   return guardado && guardado.patrolId === patrolId ? guardado : estadoTareasInicial(patrolId);
 }
 
-export function guardarEstadoTareas(estado: EstadoTareas): void {
-  escribirJson(`${CLAVE_ESTADO}:${estado.patrolId}`, estado);
+function notificarTareas(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('sentrycore:tareas'));
 }
+
+const escrituras = new Map<string, Promise<EstadoTareas>>();
+let rehidratacion: Promise<EstadoTareas[]> | undefined;
+
+/** IndexedDB es el registro durable; localStorage queda como lectura rápida y migración. */
+export function rehidratarTareasDurables(): Promise<EstadoTareas[]> {
+  rehidratacion ??= leerTareasDurables().then((estados) => {
+    for (const estado of estados) {
+      estadosActuales.set(estado.patrolId, estado);
+      escribirJson(`${CLAVE_ESTADO}:${estado.patrolId}`, estado);
+    }
+    if (estados.length) notificarTareas();
+    return estados;
+  });
+  return rehidratacion.then(() => [...estadosActuales.values()]);
+}
+
+/** Modifica desde el estado más reciente y confirma el commit antes de avanzar en pantalla. */
+export function modificarEstadoTareas(patrolId: string, modificar: (actual: EstadoTareas) => EstadoTareas): Promise<EstadoTareas> {
+  const anterior = escrituras.get(patrolId) ?? Promise.resolve(estadoTareasInicial(patrolId));
+  const siguiente = anterior.catch(() => estadoTareasInicial(patrolId)).then(async () => {
+    await rehidratarTareasDurables();
+    const nuevo = modificar(cargarEstadoTareas(patrolId));
+    await persistirTareasDurables(nuevo);
+    estadosActuales.set(patrolId, nuevo);
+    escribirJson(`${CLAVE_ESTADO}:${patrolId}`, nuevo);
+    notificarTareas();
+    return nuevo;
+  });
+  escrituras.set(patrolId, siguiente);
+  const limpiar = () => { if (escrituras.get(patrolId) === siguiente) escrituras.delete(patrolId); };
+  void siguiente.then(limpiar, limpiar);
+  return siguiente;
+}
+
+export async function guardarEstadoTareas(estado: EstadoTareas): Promise<void> {
+  await modificarEstadoTareas(estado.patrolId, () => estado);
+}
+
+export function _reiniciarTareasDurables(): void { rehidratacion = undefined; escrituras.clear(); estadosActuales.clear(); }
 
 /** Se llama solo cuando la ronda cerró y no queda nada por subir. */
 export function olvidarEstadoTareas(patrolId: string): void {
+  estadosActuales.delete(patrolId);
   borrarClave(`${CLAVE_ESTADO}:${patrolId}`);
   borrarClave(`${CLAVE_PLANTILLA}:${patrolId}`);
+  void borrarTareasDurables(patrolId);
 }

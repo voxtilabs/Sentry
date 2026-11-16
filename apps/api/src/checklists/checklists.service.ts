@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_PATROL_RULES } from '@sentrycore/shared';
 
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { EventsStreamService } from '../events-stream/events-stream.service';
@@ -60,7 +61,9 @@ const SELECT_PLANTILLA = `
            'requiresPhotoOnFail', i.requires_photo_on_fail,
            'checkpointId', i.checkpoint_id,
            'dueLocalTime', i.due_local_time,
-           'requiresPhoto', i.requires_photo
+           'requiresPhoto', i.requires_photo,
+           'photoMinCount', i.photo_min_count,
+           'photoMaxCount', i.photo_max_count
          ) ORDER BY i.position) FILTER (WHERE i.id IS NOT NULL), '[]'::jsonb) AS items
   FROM checklist_templates t
   LEFT JOIN checklist_items i ON i.tenant_id = t.tenant_id AND i.template_id = t.id
@@ -82,6 +85,8 @@ export interface ChecklistItemView {
   dueLocalTime: string | null;
   /** Foto siempre, este todo bien o mal. Distinta de `requiresPhotoOnFail`. */
   requiresPhoto: boolean;
+  photoMinCount?: number | null;
+  photoMaxCount?: number | null;
 }
 
 interface FilaPlantilla {
@@ -98,6 +103,7 @@ interface FilaRonda {
   tenant_id: string;
   site_id: string;
   shift_id: string | null;
+  checklist_template_id?: string | null;
 }
 
 interface Falla {
@@ -179,7 +185,7 @@ export class ChecklistsService {
        ORDER BY t.is_active DESC, t.name`,
       [siteId ?? null],
     );
-    return filas.map((fila) => this.vista(fila));
+    return Promise.all(filas.map((fila) => this.vista(fila)));
   }
 
   async createTemplate(input: CreateChecklistTemplateDto) {
@@ -216,7 +222,7 @@ export class ChecklistsService {
     // DTO), asi que el recinto guardado es el que manda.
     const existentes = await this.tenantContext.manager.query<
       Array<{ id: string; site_id: string | null }>
-    >(`SELECT id, site_id FROM checklist_templates WHERE id = $1`, [templateId]);
+    >(`SELECT id, site_id FROM checklist_templates WHERE id = $1 FOR UPDATE`, [templateId]);
     const plantilla = existentes[0];
     if (!plantilla) throw new NotFoundException('El checklist no existe');
     if (input.name === undefined && input.items === undefined) {
@@ -229,10 +235,21 @@ export class ChecklistsService {
          FROM checklist_responses r
          JOIN checklist_items i ON i.tenant_id = r.tenant_id AND i.id = r.item_id
          WHERE i.template_id = $1
+         UNION ALL SELECT p.id FROM patrols p WHERE p.checklist_template_id = $1
          LIMIT 1`,
         [templateId],
       );
-      if (respondidas.length) {
+      if (respondidas.length || input.replaceAnswered) {
+        if (input.replaceAnswered) {
+          const anterior = await this.getTemplate(templateId);
+          // La transacción del request mantiene el archivo y el alta atómicos.
+          await this.tenantContext.manager.query(
+            `UPDATE checklist_templates SET is_active = false, updated_at = now() WHERE id = $1`, [templateId]);
+          const nueva = await this.createTemplate({ name: input.name ?? anterior.name,
+            ...(anterior.siteId ? { siteId: anterior.siteId } : {}),
+            ...(anterior.shiftId ? { shiftId: anterior.shiftId } : {}), items: input.items });
+          return { ...nueva, previousTemplateId: templateId, versionCreated: true };
+        }
         throw new ConflictException(
           'Este checklist ya tiene respuestas registradas: desactívalo y crea uno nuevo',
         );
@@ -288,16 +305,21 @@ export class ChecklistsService {
   // -------------------------------------------------------------- ejecucion
 
   /** Lo que el guardia tiene que responder en esta ronda, ya resuelto. */
-  async templateForPatrol(patrolId: string, guardId: string) {
+  async templateForPatrol(patrolId: string, guardId: string, includeScanIds = false) {
     const ronda = await this.rondaDelGuardia(patrolId, guardId);
-    const plantilla = await this.plantillaVigente(ronda.site_id, ronda.shift_id);
+    const plantilla = await this.plantillaDeLaRonda(ronda);
     if (!plantilla) {
       return { patrolId, hasChecklist: false as const };
     }
     return {
       patrolId,
       hasChecklist: true as const,
-      template: { id: plantilla.id, name: plantilla.name, items: plantilla.items },
+      template: { id: plantilla.id, name: plantilla.name,
+        items: await this.conCantidadesDeFotos(plantilla.items, ronda.site_id) },
+      ...(includeScanIds ? { syncScans: await this.tenantContext.manager.query<Array<{
+        clientScanId: string; scanId: string; checkpointId: string;
+      }>>(`SELECT client_scan_id AS "clientScanId", id AS "scanId", checkpoint_id AS "checkpointId"
+           FROM scans WHERE patrol_id=$1 ORDER BY scanned_at_server`, [patrolId]) } : {}),
     };
   }
 
@@ -312,10 +334,11 @@ export class ChecklistsService {
    */
   async saveResponses(patrolId: string, guardId: string, input: SubmitChecklistDto) {
     const ronda = await this.rondaDelGuardia(patrolId, guardId);
-    const plantilla = await this.plantillaVigente(ronda.site_id, ronda.shift_id);
+    const plantilla = await this.plantillaDeLaRonda(ronda);
     if (!plantilla) throw new ConflictException('Esta ronda no tiene un checklist vigente');
 
-    const items = new Map(plantilla.items.map((item) => [item.id, item] as const));
+    const items = new Map((await this.conCantidadesDeFotos(plantilla.items, ronda.site_id))
+      .map((item) => [item.id, item] as const));
     // Solo las tareas CON hora necesitan vencimiento, y se resuelven todas de
     // una vez antes del bucle: adentro seria una consulta por item. Un checklist
     // sin horas —el caso de #129, que sigue siendo la mayoria— no paga nada.
@@ -342,16 +365,40 @@ export class ChecklistsService {
         continue;
       }
 
-      if (item.requiresPhoto && !respuesta.photoId) {
+      const photoIds = respuesta.photoIds ?? (respuesta.photoId ? [respuesta.photoId] : []);
+      if (respuesta.photoId && respuesta.photoIds && respuesta.photoId !== respuesta.photoIds[0]) {
+        results.push(rechazo(respuesta.itemId, 'La foto principal no coincide con la lista de fotos'));
+        continue;
+      }
+      if (new Set(photoIds).size !== photoIds.length) {
+        results.push(rechazo(respuesta.itemId, 'No se puede repetir una foto en la tarea'));
+        continue;
+      }
+      if ((item.requiresPhoto || item.responseType === 'foto') && !photoIds.length) {
         results.push(rechazo(respuesta.itemId, 'Este item exige foto'));
         continue;
       }
-      if (item.requiresPhotoOnFail && interpretada.failed && !respuesta.photoId) {
+      if (item.requiresPhotoOnFail && interpretada.failed && !photoIds.length) {
         results.push(rechazo(respuesta.itemId, 'Este item exige foto cuando se marca falla'));
         continue;
       }
-      if (respuesta.photoId && !(await this.fotoDeLaRonda(respuesta.photoId, patrolId))) {
-        results.push(rechazo(respuesta.itemId, 'La foto no pertenece a esta ronda'));
+      const exigeFoto = item.requiresPhoto || item.responseType === 'foto' ||
+        (item.requiresPhotoOnFail && interpretada.failed);
+      if ((exigeFoto && photoIds.length < (item.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount)) ||
+          photoIds.length > (item.photoMaxCount ?? DEFAULT_PATROL_RULES.taskPhotoMaxCount)) {
+        results.push(rechazo(respuesta.itemId,
+          `Esta tarea requiere entre ${item.photoMinCount ?? DEFAULT_PATROL_RULES.taskPhotoMinCount} y ${item.photoMaxCount ?? DEFAULT_PATROL_RULES.taskPhotoMaxCount} fotos`));
+        continue;
+      }
+      let fotosValidas = true;
+      for (const photoId of photoIds) {
+        if (!(await this.fotoDeLaRonda(photoId, patrolId, item.checkpointId))) {
+          fotosValidas = false;
+          break;
+        }
+      }
+      if (!fotosValidas) {
+        results.push(rechazo(respuesta.itemId, 'La foto no pertenece a esta ronda o a este punto'));
         continue;
       }
 
@@ -379,7 +426,7 @@ export class ChecklistsService {
           interpretada.value,
           respuesta.notes?.trim() ?? null,
           interpretada.failed,
-          respuesta.photoId ?? null,
+          photoIds[0] ?? null,
           // Se escribe en el INSERT o no se escribe nunca: sentrycore_app tiene
           // REVOKE UPDATE sobre checklist_responses, asi que no existe la opcion
           // de "calcularlo despues".
@@ -391,6 +438,15 @@ export class ChecklistsService {
         // Reenvio del lote offline: la primera respuesta manda y no se reescribe.
         results.push({ itemId: item.id, status: 'duplicado' });
         continue;
+      }
+      // Evidencia append-only. El primer id sigue en photo_id para clientes antiguos.
+      if (respuesta.photoIds?.length) {
+        await this.tenantContext.manager.query(
+          `INSERT INTO checklist_response_photos (tenant_id, response_id, photo_id, position)
+           SELECT app_tenant_id(), $1, id, ord::int
+           FROM unnest($2::uuid[]) WITH ORDINALITY AS fotos(id, ord)`,
+          [guardada.id, photoIds],
+        );
       }
 
       results.push({
@@ -458,13 +514,29 @@ export class ChecklistsService {
     return filas[0];
   }
 
+  /** La pregunta que el guardia vio no cambia al publicar una configuración nueva. */
+  private async plantillaDeLaRonda(ronda: FilaRonda) {
+    if (ronda.checklist_template_id) {
+      const filas = await this.tenantContext.manager.query<FilaPlantilla[]>(
+        `${SELECT_PLANTILLA} WHERE t.id = $1 GROUP BY t.id`, [ronda.checklist_template_id]);
+      return filas[0];
+    }
+    const plantilla = await this.plantillaVigente(ronda.site_id, ronda.shift_id);
+    if (plantilla && ronda.checklist_template_id === null) {
+      await this.tenantContext.manager.query(
+        `UPDATE patrols SET checklist_template_id = $2 WHERE id = $1 AND checklist_template_id IS NULL`,
+        [ronda.id, plantilla.id]);
+    }
+    return plantilla;
+  }
+
   private async rondaDelGuardia(patrolId: string, guardId: string): Promise<FilaRonda> {
     const filas = await this.tenantContext.manager.query<FilaRonda[]>(
-      `SELECT p.id, p.tenant_id, p.site_id, a.shift_id
+      `SELECT p.id, p.tenant_id, p.site_id, a.shift_id, p.checklist_template_id
        FROM patrols p
        LEFT JOIN shift_assignments a
          ON a.tenant_id = p.tenant_id AND a.id = p.shift_assignment_id
-       WHERE p.id = $1 AND p.guard_id = $2`,
+       WHERE p.id = $1 AND p.guard_id = $2 FOR UPDATE OF p`,
       [patrolId, guardId],
     );
     const ronda = filas[0];
@@ -574,10 +646,11 @@ export class ChecklistsService {
     };
   }
 
-  private async fotoDeLaRonda(photoId: string, patrolId: string): Promise<boolean> {
+  private async fotoDeLaRonda(photoId: string, patrolId: string, checkpointId: string | null): Promise<boolean> {
     const filas = await this.tenantContext.manager.query<Array<{ id: string }>>(
-      `SELECT id FROM scan_photos WHERE id = $1 AND patrol_id = $2`,
-      [photoId, patrolId],
+      `SELECT id FROM scan_photos WHERE id = $1 AND patrol_id = $2
+         AND ($3::uuid IS NULL OR checkpoint_id = $3::uuid)`,
+      [photoId, patrolId, checkpointId],
     );
     return filas.length > 0;
   }
@@ -682,13 +755,26 @@ export class ChecklistsService {
     items: CreateChecklistTemplateDto['items'],
     siteId: string | null,
   ) {
+    const claves = new Set<string>();
+    for (const item of items) {
+      const clave = JSON.stringify([item.checkpointId ?? null, item.dueLocalTime ?? null,
+        item.label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es')]);
+      if (claves.has(clave)) throw new BadRequestException('Hay tareas duplicadas en el mismo punto y horario');
+      claves.add(clave);
+      if (item.photoMinCount != null && item.photoMaxCount != null && item.photoMinCount > item.photoMaxCount) {
+        throw new BadRequestException('El mínimo de fotos no puede superar el máximo');
+      }
+      if (item.responseType === 'foto' && !item.checkpointId) {
+        throw new BadRequestException('Una tarea de solo fotos necesita un punto de control');
+      }
+    }
     await this.verificarLugarYHora(items, siteId);
     for (const [indice, item] of items.entries()) {
       await this.tenantContext.manager.query(
         `INSERT INTO checklist_items (
           tenant_id, template_id, position, label, response_type, requires_photo_on_fail,
-          checkpoint_id, due_local_time, requires_photo
-        ) VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7::time, $8)`,
+          checkpoint_id, due_local_time, requires_photo, photo_min_count, photo_max_count
+        ) VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7::time, $8, $9, $10)`,
         [
           templateId,
           indice + 1,
@@ -697,10 +783,33 @@ export class ChecklistsService {
           item.requiresPhotoOnFail ?? false,
           item.checkpointId ?? null,
           item.dueLocalTime ?? null,
-          item.requiresPhoto ?? false,
+          item.responseType === 'foto' || (item.requiresPhoto ?? false),
+          item.photoMinCount ?? null,
+          item.photoMaxCount ?? null,
         ],
       );
     }
+  }
+
+  private async conCantidadesDeFotos(items: ChecklistItemView[], siteId: string | null) {
+    const reglasPorPunto = new Map<string, Awaited<ReturnType<RulesService['effective']>>>();
+    const salida: ChecklistItemView[] = [];
+    for (const item of items) {
+      if (!item.requiresPhoto && !item.requiresPhotoOnFail && item.responseType !== 'foto') {
+        salida.push(item);
+        continue;
+      }
+      const clave = item.checkpointId ?? '';
+      let reglas = reglasPorPunto.get(clave);
+      if (!reglas) {
+        reglas = await this.rules.effective({ siteId, checkpointId: item.checkpointId });
+        reglasPorPunto.set(clave, reglas);
+      }
+      const minimo = item.photoMinCount ?? reglas.taskPhotoMinCount;
+      salida.push({ ...item, photoMinCount: minimo,
+        photoMaxCount: Math.max(minimo, item.photoMaxCount ?? reglas.taskPhotoMaxCount) });
+    }
+    return salida;
   }
 
   /** Un fallo de correo JAMAS puede botar la respuesta ya registrada. */
@@ -791,14 +900,14 @@ export class ChecklistsService {
     }
   }
 
-  private vista(fila: FilaPlantilla) {
+  private async vista(fila: FilaPlantilla) {
     return {
       id: fila.id,
       name: fila.name,
       siteId: fila.site_id,
       shiftId: fila.shift_id,
       isActive: fila.is_active,
-      items: fila.items,
+      items: await this.conCantidadesDeFotos(fila.items, fila.site_id),
     };
   }
 }
@@ -815,6 +924,17 @@ function rechazo(itemId: string, reason: string): ChecklistResponseResult {
 function interpretar(item: ChecklistItemView, respuesta: ChecklistResponseDto): Interpretacion {
   const valor = respuesta.value.trim();
   if (!valor) return { ok: false, reason: 'La respuesta viene vacía' };
+
+  if (item.responseType === 'foto') {
+    return valor === 'foto' ? { ok: true, value: 'foto', failed: false }
+      : { ok: false, reason: 'Esta tarea se completa con fotografías' };
+  }
+  if (item.responseType === 'si_no') {
+    const normalizado = valor.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return normalizado === 'si' || normalizado === 'no'
+      ? { ok: true, value: normalizado, failed: false }
+      : { ok: false, reason: 'Esta pregunta solo admite "sí" o "no"' };
+  }
 
   if (item.responseType === 'ok_falla') {
     const normalizado = valor.toLowerCase();

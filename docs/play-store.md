@@ -54,7 +54,7 @@ fecha de lanzamiento con el cliente: son dos semanas de diferencia.
 | Compras en la aplicación | **No** (la licencia se cobra a la empresa fuera de la tienda) |
 | Público objetivo | 18 años o más |
 | Diseñada para familias | **No** |
-| Correo de contacto | «soporte@voxtilabs.cl» |
+| Correo de contacto | `service@voxtilabs.cl` |
 | Sitio web | «https://voxtilabs.cl» |
 | Política de privacidad | «https://voxtilabs.cl/privacidad-sentrycore» |
 
@@ -63,6 +63,49 @@ fecha de lanzamiento con el cliente: son dos semanas de diferencia.
 > revisión hay que entregar **credenciales de prueba funcionales** o el revisor
 > ve una pantalla de login y rechaza por "no se pudo acceder al contenido". Se
 > entrega una cuenta demo de GUARDIA, no una cuenta de un cliente real.
+
+### Corrección del rechazo de seguridad infantil (2 de noviembre de 2026, #440)
+
+La categoría que figuraba en Console era **Sociales**; la categoría correspondiente al
+producto es **Empresa**, como indica esta ficha. Corregirla en Presencia en Google Play →
+Configuración de la tienda. La categoría real y la declaración deben describir el producto:
+no afirmar que ofrece chat social, citas o mensajería anónima.
+
+El canal **Ayuda y reportes** está disponible sin iniciar sesión, en el selector de guardias
+y en la cabecera de todos los paneles. Abre un formulario dentro del WebView; no es un
+`mailto:` ni abre el navegador. Permite seleccionar **Seguridad infantil**, escribir texto
+y opcionalmente un correo. `POST /api/feedback` confirma con folio solo después de encolar
+el reporte de forma durable. No adjunta fotos, coordenadas ni datos de sesión. Los fallos
+mantienen el texto y permiten reintentar; no se presenta un reporte offline como enviado.
+
+Estándares públicos (sin login):
+**https://sentrycore.voxtilabs.cl/seguridad-infantil**.
+Formulario público: **https://sentrycore.voxtilabs.cl/ayuda**.
+Contacto confirmado por el titular: **Bruno Urrea — service@voxtilabs.cl**.
+
+En Política y programas → Contenido de la aplicación → Estándares de seguridad infantil,
+si la declaración sigue siendo requerida tras corregir la categoría:
+
+- Indicar la URL de los estándares y el contacto anteriores.
+- Certificar el mecanismo de comentarios dentro de la app después de comprobar el formulario.
+- Revisar las declaraciones sobre retirada de CSAM, notificación a autoridades competentes y
+  cumplimiento de leyes. Son compromisos operativos del responsable; el formulario por sí
+  solo no los sustituye. Procedimiento: [seguridad-infantil.md](./seguridad-infantil.md).
+- En las instrucciones para revisión: «Desde el acceso, pulsa Ayuda y reportes. Selecciona
+  Seguridad infantil, escribe un reporte y pulsa Enviar reporte. Verás el folio de recepción
+  sin salir de SentryCore. También está disponible después de iniciar sesión.»
+- Revisar Seguridad de los datos: el mensaje del reporte y el correo opcional se recogen
+  para asistencia y seguridad. No declarar estos datos como no recopilados si la declaración
+  actual no los contempla. Mantener concordancia con la política de privacidad publicada.
+- Guardar y enviar los cambios a revisión desde Resumen de publicación. No dar por aprobada
+  la corrección hasta recibir la decisión de Google.
+
+Esta corrección utiliza el contenido web que ya carga la app 0.3.2 (9). No cambia permisos,
+SDK ni código nativo, por lo que no genera otro AAB ni requiere incrementar versionCode.
+Si Console requiere un nuevo artefacto para el trámite, el siguiente debe tener código
+mayor que 9; no reconstruir ni reutilizar un código ya subido sin esa necesidad.
+
+Fuente oficial: [preguntas frecuentes de Google sobre seguridad infantil](https://support.google.com/googleplay/android-developer/answer/14747720?hl=es).
 
 ---
 

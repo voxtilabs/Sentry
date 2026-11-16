@@ -1,14 +1,12 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { confirmarTerminoDeRonda } from './guard-round-finish';
 
 import { GuardChecklist } from './guard-checklist';
-import { marcarSalidaDeJornada } from './guard-outbox';
 import {
   ETIQUETAS_CRITICIDAD,
   hayPendientesDeSubir,
-  olvidarEstadoRonda,
   puntosPorQr,
   puntosSinFoto,
   type EstadoRonda,
@@ -16,7 +14,7 @@ import {
 } from './guard-shift-state';
 
 /**
- * Cierre y resumen del turno (#93).
+ * Cierre y resumen de la ronda. La jornada continúa aunque termine un recorrido.
  *
  * Aparece sola al escanear el punto de cierre: el servidor cierra la ronda con
  * su porcentaje real y esta pantalla lo muestra. El porcentaje NO se calcula
@@ -47,9 +45,14 @@ export function GuardShiftSummary({
   apiUrl: string;
   onVolver: () => void;
 }) {
-  const router = useRouter();
-  const [salida, setSalida] = useState<string>();
-  const [marcando, setMarcando] = useState(false);
+  const [closing,setClosing]=useState(false);
+  const [finishError,setFinishError]=useState('');
+  async function finish() {
+    setClosing(true);setFinishError('');
+    try {
+      await confirmarTerminoDeRonda(apiUrl,estado.patrolId,(path)=>window.location.replace(path));
+    } catch(e) { setFinishError(e instanceof Error?e.message:'Conéctate para confirmar el cierre de la ronda.');setClosing(false); }
+  }
   const cierre = estado.cierre;
   if (!cierre) return null;
 
@@ -60,21 +63,10 @@ export function GuardShiftSummary({
   // conteo no le dice al guardia a qué puerta tiene que volver.
   const sinFoto = puntosSinFoto(puntos, estado.puntos);
 
-  async function terminarJornada() {
-    setMarcando(true);
-    const resultado = await marcarSalidaDeJornada(apiUrl);
-    setSalida(resultado.mensaje);
-    setMarcando(false);
-    if (resultado.ok && !pendientes) {
-      olvidarEstadoRonda(estado.patrolId);
-      router.refresh();
-    }
-  }
-
   return (
     <section className="guardia-resumen" aria-labelledby="guardia-resumen-titulo">
       <h2 id="guardia-resumen-titulo">
-        {cierre.confirmado ? 'Ronda cerrada' : 'Ronda terminada, falta subirla'}
+        {closing ? 'Confirmando…' : 'TÉRMINO DE RONDA'}
       </h2>
 
       {cierre.pct === undefined ? (
@@ -170,17 +162,14 @@ export function GuardShiftSummary({
 
       <button
         className="guardia-boton-primario"
-        disabled={marcando}
-        onClick={() => void terminarJornada()}
+        disabled={closing || pendientes}
+        onClick={() => void finish()}
         type="button"
       >
-        {marcando ? 'Marcando…' : 'Marcar salida de jornada'}
+        {closing ? 'Confirmando…' : 'TÉRMINO DE RONDA'}
       </button>
-      {salida ? (
-        <p className="guardia-anuncio" role="status" aria-live="polite">
-          {salida}
-        </p>
-      ) : null}
+      {finishError ? <p role="alert">{finishError}</p> : null}
+      <p className="guardia-nota">Puedes iniciar otra ronda. Tu jornada sigue abierta.</p>
       {pendientes ? (
         <p className="guardia-aviso">
           Todavía queda trabajo por subir. No cierres la app hasta que la barra de arriba diga

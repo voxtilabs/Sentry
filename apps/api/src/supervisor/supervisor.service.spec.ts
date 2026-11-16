@@ -60,6 +60,13 @@ afterEach(() => {
 });
 
 describe('SupervisorService', () => {
+  it.each(['companyCode', 'renewCompanyCode'] as const)('%s exige un recinto asignado antes de consultar o renovar el código', async method => {
+    const query = jest.fn().mockResolvedValue([]);
+    await expect(servicio(query)[method](SUPERVISOR)).rejects.toThrow('No tienes recintos asignados');
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM supervisor_sites'), [SUPERVISOR]);
+  });
+
   it('un recinto NO asignado responde 403, aunque el permiso alcance', async () => {
     const query = jest.fn().mockResolvedValueOnce([]); // supervisor_sites vacio
     await expect(servicio(query).listRoutes('site-id', SUPERVISOR)).rejects.toThrow(

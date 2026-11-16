@@ -240,7 +240,12 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
 
+      # Sin `packages` la accion pide 'tools', que Google retiro del repositorio:
+      # sdkmanager sale con 1 y el trabajo muere antes de compilar nada. Mismo
+      # arreglo que en apk-de-prueba.yml (#412).
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Instalar dependencias aisladas
         run: npm ci

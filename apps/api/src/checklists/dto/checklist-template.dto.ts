@@ -1,20 +1,24 @@
 import { Transform, Type } from 'class-transformer';
+import { TASK_PHOTO_COUNT_RANGE } from '@sentrycore/shared';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
   MaxLength,
+  Min,
+  Max,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 
-export const CHECKLIST_RESPONSE_TYPES = ['ok_falla', 'texto', 'numero'] as const;
+export const CHECKLIST_RESPONSE_TYPES = ['ok_falla', 'si_no', 'texto', 'numero', 'foto'] as const;
 export type ChecklistResponseType = (typeof CHECKLIST_RESPONSE_TYPES)[number];
 
 export class ChecklistItemDto {
@@ -72,6 +76,18 @@ export class ChecklistItemDto {
   @IsOptional()
   @IsBoolean()
   requiresPhoto?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(TASK_PHOTO_COUNT_RANGE.min)
+  @Max(TASK_PHOTO_COUNT_RANGE.max)
+  photoMinCount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(TASK_PHOTO_COUNT_RANGE.min)
+  @Max(TASK_PHOTO_COUNT_RANGE.max)
+  photoMaxCount?: number;
 }
 
 export class CreateChecklistTemplateDto {
@@ -107,6 +123,10 @@ export class CreateChecklistTemplateDto {
  * hizo. Para mover el alcance se desactiva esta y se crea otra.
  */
 export class UpdateChecklistTemplateDto {
+  /** Publica una versión nueva si la anterior ya se entregó a una ronda. */
+  @IsOptional()
+  @IsBoolean()
+  replaceAnswered?: boolean;
   /** Se recorta antes de validar. Ver `ChecklistItemDto.label`. */
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()

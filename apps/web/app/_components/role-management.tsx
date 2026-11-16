@@ -2,6 +2,7 @@
 
 import { FormEvent, useDeferredValue, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { CompanyCardSettings } from './company-card-settings';
 
 export interface PlatformTenant {
   id: string;
@@ -79,6 +80,7 @@ export function PlatformManagement({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [generatedCodes, setGeneratedCodes] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
@@ -127,8 +129,11 @@ export function PlatformManagement({
       adminGivenName: data.get('adminGivenName'),
       adminFamilyName: data.get('adminFamilyName'),
       adminPassword: data.get('adminPassword'),
+      ...(data.get('loginCardUid') ? { loginCardUid: data.get('loginCardUid') } : {}),
     });
     if (!response.ok) return setMessage(await responseMessage(response));
+    const created = await response.json() as { id: string; companyAccessCode?: string };
+    if (created.companyAccessCode) setGeneratedCodes(current => ({ ...current, [created.id]: created.companyAccessCode! }));
     form.reset();
     setMessage('Empresa y administrador creados correctamente.');
     startTransition(() => router.refresh());
@@ -162,6 +167,7 @@ export function PlatformManagement({
           <label>Razón social<input name="legalName" required minLength={3} /></label>
           <label>Identificador URL<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="seguridad-andina" /></label>
           <label>Plan<select name="planKey"><option value="base">Base</option><option value="pro">Pro</option></select></label>
+          <label>Tarjeta de empresa (UID NFC opcional)<input name="loginCardUid" maxLength={64} autoComplete="off" placeholder="Configurable también después del alta" /></label>
           <div className="form-divider">Administrador inicial</div>
           <label>Nombre<input name="adminGivenName" required /></label>
           <label>Apellido<input name="adminFamilyName" required /></label>
@@ -209,6 +215,9 @@ export function PlatformManagement({
                 {(nearUserLimit || nearSiteLimit) ? <span className="limit-warning">Cerca del límite del plan</span> : null}
               </div>
               <span className={`state-chip ${tenant.status}`}>{tenant.status === 'active' ? 'Activa' : 'Suspendida'}</span>
+              <details open={Boolean(generatedCodes[tenant.id])}><summary>Código y tarjeta de empresa</summary>
+                <CompanyCardSettings apiUrl={apiUrl} role="superadmin" tenantId={tenant.id} initialCode={generatedCodes[tenant.id]} />
+              </details>
               <button className="secondary-button" onClick={() => toggle(tenant)} disabled={pending}>
                 {tenant.status === 'active' ? 'Suspender' : 'Reactivar'}
               </button>

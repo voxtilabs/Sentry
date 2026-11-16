@@ -6,6 +6,7 @@ import { Permissions } from '../auth/decorators/permissions.decorator';
 import { SkipTenantContext } from '../database/tenant-context/skip-tenant-context.decorator';
 import { PlatformMetricsQueryDto } from './dto/platform-metrics-query.dto';
 import { ProvisionTenantDto } from './dto/provision-tenant.dto';
+import { ReponerAdminDto } from './dto/reponer-admin.dto';
 import { PlatformMetricsService } from './platform-metrics.service';
 import { ProvisioningService } from './provisioning.service';
 
@@ -32,6 +33,17 @@ export class PlatformOpsController {
   @Permissions('platform:tenants:manage')
   provision(@Req() request: Autenticado, @Body() input: ProvisionTenantDto) {
     return this.provisioning.altaCompleta(request.user.sub, input);
+  }
+
+  /**
+   * Repone el acceso del ADMIN de una empresa que quedo sin administrador:
+   * manda la invitacion a un correo que si reciba. No fija ni devuelve ninguna
+   * clave — la persona define la suya desde el enlace.
+   */
+  @Post('tenant-admin/invitation')
+  @Permissions('platform:tenants:manage')
+  reponerAdmin(@Req() request: Autenticado, @Body() input: ReponerAdminDto) {
+    return this.provisioning.reponerAdmin(request.user.sub, input);
   }
 
   @Get('metrics')

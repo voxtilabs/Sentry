@@ -1,3 +1,4 @@
+import { elServidorDesmienteElAviso } from './sync-estado';
 import { resumirEstadoServidor } from './sync-estado-modelo';
 
 describe('resumirEstadoServidor', () => {
@@ -35,5 +36,33 @@ describe('resumirEstadoServidor', () => {
       records: { total: 6, lastReceivedAt: null },
     });
     expect(resumen.confirmadas).toBe(6);
+  });
+});
+
+describe('el aviso de "sin señal" pegado (reporte de terreno del 21-09-2026)', () => {
+  /*
+   * Bruno, desde el celular del guardia: «de repente tira sin señal y no la
+   * recupera a menos que cerremos la app». El aviso de conectividad lo empuja
+   * el shell nativo UNA vez por cambio; el que dice que la red volvio puede no
+   * llegar nunca —Android agrupa los callbacks con la pantalla apagada— y la
+   * pantalla se queda con el ultimo que si llego.
+   */
+  it('si el servidor contestó DESPUÉS del aviso, hay señal', () => {
+    expect(elServidorDesmienteElAviso(1_000, 2_000)).toBe(true);
+  });
+
+  it('si el servidor contestó ANTES, el aviso tiene razón', () => {
+    // Perder la señal después de una respuesta buena es lo normal: ahí el
+    // aviso es el dato fresco y la respuesta, historia.
+    expect(elServidorDesmienteElAviso(2_000, 1_000)).toBe(false);
+  });
+
+  it('sin aviso de corte no hay nada que desmentir', () => {
+    expect(elServidorDesmienteElAviso(null, 2_000)).toBe(false);
+  });
+
+  it('con aviso de corte y ninguna respuesta, se le cree al aviso', () => {
+    // El caso del subterráneo de verdad: no hay evidencia en contra.
+    expect(elServidorDesmienteElAviso(1_000, null)).toBe(false);
   });
 });

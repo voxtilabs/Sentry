@@ -1,3 +1,4 @@
+import { referenceAvailable, referenceCommand } from '../geo/reference-native';
 import { Camera, CameraView } from 'expo-camera';
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
@@ -7,6 +8,7 @@ import { detenerTraza, iniciarTraza } from '../geo/traza';
 import { ErrorEscaneo, type ManejadoresNativos } from './native';
 import type {
   EstadoConexionPayload,
+  CapacidadesDispositivo,
   EstadoPermiso,
   Permiso,
   ResultadoPermisoPayload,
@@ -116,9 +118,15 @@ async function permiso(permisoSolicitado: Permiso, pedir: boolean) {
  * Manejadores seguros antes de integrar el lector (#57). El puente queda
  * operativo sin fingir que existe una antena: #57 sustituye solo ese puerto.
  */
-export function crearManejadoresBase(): ManejadoresNativos {
+export type ManejadoresBase = Omit<ManejadoresNativos, 'capacidades'> & {
+  capacidades: () => Promise<CapacidadesDispositivo & { gpsReferencia: boolean }>;
+};
+
+export function crearManejadoresBase(): ManejadoresBase {
   return {
+    referencia: referenceCommand,
     capacidades: async () => ({
+      gpsReferencia: referenceAvailable,
       tieneNfc: false,
       nfcActivado: false,
       // `CameraView.isAvailableAsync()` es SOLO web (expo-camera lo marca

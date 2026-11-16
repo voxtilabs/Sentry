@@ -70,5 +70,5 @@ export default async function Home() {
     }
   }
 
-  return <LoginScreen />;
+  return <LoginScreen initialCompanyLogin={peticionDeAppDelGuardia(cabeceras)} />;
 }

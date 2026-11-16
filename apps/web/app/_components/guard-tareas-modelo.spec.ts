@@ -87,11 +87,18 @@ function estadoCon(...respuestas: Array<Parameters<typeof responderTarea>[1]>): 
 }
 
 describe('qué tarea toca en qué punto', () => {
-  it('al escanear un punto salen SUS tareas, en orden de posición', () => {
+  it('al escanear un punto salen SUS capturas antes de pedir la lectura', () => {
     expect(tareasDelPunto(TODAS, 'punto-cocina').map((item) => item.id)).toEqual([
-      'tarea-temperatura',
       'tarea-refrigerador',
+      'tarea-temperatura',
     ]);
+  });
+
+  it('solo fotos va antes de la pregunta aunque el CSV haya puesto primero la pregunta', () => {
+    const pregunta: ItemTarea = { ...EN_EL_MISMO_PUNTO, responseType: 'si_no' };
+    const imagen: ItemTarea = { ...A_LAS_ONCE, responseType: 'foto', position: 10 };
+    expect(tareasDelPunto([pregunta, imagen], 'punto-cocina').map((i) => i.id))
+      .toEqual([imagen.id, pregunta.id]);
   });
 
   it('la tarea de otro punto no aparece: es lo que hace que el guardia vaya', () => {

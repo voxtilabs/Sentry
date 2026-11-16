@@ -31,6 +31,12 @@ copias ni preguntar directamente por un rol.
 
 ## Alcance obligatorio
 
+`POST /api/feedback` es un canal público de la plataforma (#440): acepta reportes
+antes del login y con cualquiera de los cuatro roles, sin leer datos de tenants.
+Rechaza IDs de tenant, usuario, recinto, destinatarios y adjuntos en el DTO. No
+permite consultar reportes: solo devuelve un folio al encolar para el buzón de
+soporte configurado. Mantiene validación de origen y límite de abuso independiente.
+
 Conceder un permiso no basta por sí solo:
 
 - `SUPERADMIN` es el único rol que cruza tenants. `platform:support:access` no habilita acceso
