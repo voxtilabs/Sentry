@@ -15,7 +15,7 @@ import { crearClientePuente } from '../_lib/bridge/web-client';
 import {
   EVENTO_CONSENTIMIENTO_ACEPTADO,
   reportarPermisoUbicacion,
-  traducirEstadoPermiso,
+  permisoPermiteUbicacion,
 } from './guard-permiso-ubicacion';
 
 export { ErrorEscaneoPortal } from '../_lib/bridge/web-client';
@@ -274,6 +274,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
         void (async () => {
           const reporte = await reportarPermisoUbicacion({
             consultar: (permiso) => cliente.consultarPermiso(permiso),
+            consultarSegundoPlano: () => cliente.consultarPermiso('ubicacion-segundo-plano'),
             reportar: (estadoApi, deviceInfo) =>
               reportarPermisoAlServidor(apiUrl, estadoApi, deviceInfo),
             deviceInfo: marcaEquipo,
@@ -303,7 +304,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
            * permiso. El unico camino al dialogo del sistema pasa por un texto
            * que la persona acaba de leer.
            */
-          if (cancelado || !reporte.hecho || reporte.estado === 'concedido') return;
+          if (cancelado || !reporte.hecho || permisoPermiteUbicacion(reporte.estado)) return;
           if (reporte.estado === 'no_disponible') return; // el equipo no tiene GPS
           if (!(await consentimientoActivo(apiUrl)) || cancelado) return;
           setDivulgacionPendiente(true);
@@ -347,12 +348,13 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
     const alAceptarElAviso = () => {
       void (async () => {
         try {
-          const resultado = await cliente.pedirPermiso('ubicacion', true);
-          await reportarPermisoAlServidor(
-            apiUrl,
-            traducirEstadoPermiso(resultado.estado),
-            infoEquipo,
-          );
+          await cliente.pedirPermiso('ubicacion', true);
+          await reportarPermisoUbicacion({
+            consultar: (permiso) => cliente.consultarPermiso(permiso),
+            consultarSegundoPlano: () => cliente.consultarPermiso('ubicacion-segundo-plano'),
+            reportar: (estado, deviceInfo) => reportarPermisoAlServidor(apiUrl, estado, deviceInfo),
+            deviceInfo: infoEquipo,
+          });
         } catch {
           // Sin puente o reporte caído: la próxima carga de la pantalla lo
           // reintenta por la vía de la consulta. No hay nada útil que mostrar
@@ -374,11 +376,12 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
       void (async () => {
         const reporte = await reportarPermisoUbicacion({
           consultar: (permiso) => cliente.consultarPermiso(permiso),
+          consultarSegundoPlano: () => cliente.consultarPermiso('ubicacion-segundo-plano'),
           reportar: (estadoApi, deviceInfo) =>
             reportarPermisoAlServidor(apiUrl, estadoApi, deviceInfo),
           deviceInfo: infoEquipo,
         });
-        if (reporte.hecho && reporte.estado === 'concedido') {
+        if (reporte.hecho && permisoPermiteUbicacion(reporte.estado)) {
           setAvisoUbicacion(undefined);
         }
       })();
@@ -398,6 +401,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
     if (fase === 'listo') {
       await reportarPermisoUbicacion({
         consultar: (permiso) => cliente.consultarPermiso(permiso),
+        consultarSegundoPlano: () => cliente.consultarPermiso('ubicacion-segundo-plano'),
         reportar: (estadoApi, deviceInfo) =>
           reportarPermisoAlServidor(apiUrl, estadoApi, deviceInfo),
         deviceInfo: marca,
@@ -451,11 +455,12 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
       setAvisoUbicacion(AJUSTES_UBICACION);
     }
     if (apiUrl) {
-      await reportarPermisoAlServidor(
-        apiUrl,
-        traducirEstadoPermiso(pedido.estado),
-        infoEquipo ?? 'desconocido',
-      ).catch(() => undefined);
+      await reportarPermisoUbicacion({
+        consultar: (permiso) => cliente.consultarPermiso(permiso),
+        consultarSegundoPlano: () => cliente.consultarPermiso('ubicacion-segundo-plano'),
+        reportar: (estado, deviceInfo) => reportarPermisoAlServidor(apiUrl, estado, deviceInfo),
+        deviceInfo: infoEquipo ?? 'desconocido',
+      }).catch(() => undefined);
     }
   }, [apiUrl, cliente, infoEquipo]);
 

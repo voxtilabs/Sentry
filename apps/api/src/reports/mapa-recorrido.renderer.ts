@@ -788,7 +788,7 @@ export function armarNotas(mapa: MapaRecorrido, fondo: FondoCartografico | null 
   if (mapa.trazaDescartadaPorError > 0) {
     notas.push(
       `Se dejaron fuera del dibujo ${mapa.trazaDescartadaPorError} posición(es) con error de ` +
-        'GPS sobre el máximo configurado. La distancia total sí las considera.',
+        'GPS sobre el máximo configurado; esas posiciones no suman distancia.',
     );
   }
 

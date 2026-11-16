@@ -74,6 +74,8 @@ export function parametrosTraza(rules: PatrolRules): ParametrosTraza {
   const piso = intervaloReferencia * MUESTRAS_PERDIDAS_PARA_HUECO;
   return {
     maxAccuracyM: plan.maxAccuracyM,
+    measurementGapSeconds: rules.gpsTrackGapMinSeconds,
+    maxSpeedKmh: rules.impossibleSpeedKmh,
     gapMinSeconds: Math.max(rules.gpsTrackGapMinSeconds, piso),
     stopMinSeconds: Math.max(rules.gpsTrackStopMinSeconds, piso),
     stopRadiusM: rules.gpsTrackStopRadiusM,

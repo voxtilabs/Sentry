@@ -1,4 +1,6 @@
 import { haversineM } from './haversine';
+import { DEFAULT_PATROL_RULES } from '@sentrycore/shared';
+import { splitTrack, measuredDistance } from './track-segments';
 
 /**
  * La traza del recorrido como DATO, no como dibujo (#134).
@@ -72,6 +74,9 @@ export interface ParametrosTraza {
   readonly maxAccuracyM: number;
   /** Segundos sin una posicion utilizable a partir de los cuales hay hueco. */
   readonly gapMinSeconds: number;
+  /** Render/measurement silence threshold; coverage may allow battery-saving cadence. */
+  readonly measurementGapSeconds?: number;
+  readonly maxSpeedKmh?: number;
   /** Radio dentro del cual se considera que no se movio, en metros. */
   readonly stopRadiusM: number;
   /** Segundos quieto a partir de los cuales se declara una detencion. */
@@ -150,8 +155,8 @@ export interface AnalisisTraza {
   readonly windowTo: Date | null;
   readonly windowMinutes: number;
   /**
-   * Distancia total, en metros: la suma de los tramos entre posiciones
-   * utilizables consecutivas. Es `measuredDistanceM + gapDistanceM`.
+   * Distancia medida, en metros, sin ruido ni rectas sobre huecos.
+   * `gapDistanceM` es una estimación diagnóstica y no se suma a este valor.
    */
   readonly distanceM: number;
   /** La parte medida con posiciones seguidas, sin huecos de por medio. */
@@ -204,7 +209,13 @@ export function analizarTraza(entrada: EntradaTraza): AnalisisTraza {
   const ventanaMs = inicio && fin ? Math.max(0, fin.getTime() - inicio.getTime()) : 0;
 
   const huecos = detectarHuecos(puntos, confiables, imprecisos, inicio, fin, parametros);
-  const { total, medida, enHuecos } = distancias(confiables, parametros);
+  const { enHuecos } = distancias(confiables, parametros);
+  const segments = splitTrack(puntos.map(p => ({ ...p, recordedAt: p.instante })), {
+    maxAccuracyM: parametros.maxAccuracyM,
+    maxGapSeconds: parametros.measurementGapSeconds ?? parametros.gapMinSeconds,
+    maxSpeedKmh: parametros.maxSpeedKmh ?? DEFAULT_PATROL_RULES.impossibleSpeedKmh,
+  });
+  const medida = measuredDistance(segments);
   const detenciones = detectarDetenciones(confiables, parametros);
 
   const minutosHueco = huecos.reduce((suma, hueco) => suma + hueco.minutes, 0);
@@ -220,7 +231,7 @@ export function analizarTraza(entrada: EntradaTraza): AnalisisTraza {
     windowFrom: inicio,
     windowTo: fin,
     windowMinutes: redondear(minutosVentana),
-    distanceM: redondear(total),
+    distanceM: redondear(medida),
     measuredDistanceM: redondear(medida),
     gapDistanceM: redondear(enHuecos),
     gaps: huecos,

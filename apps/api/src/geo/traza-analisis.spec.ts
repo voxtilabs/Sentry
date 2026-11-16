@@ -73,8 +73,7 @@ describe('analizarTraza — distancia (#134)', () => {
     expect(analisis.points).toBe(3);
     expect(analisis.usablePoints).toBe(2);
     expect(analisis.lowAccuracyPoints).toBe(1);
-    expect(analisis.distanceM).toBeGreaterThan(95);
-    expect(analisis.distanceM).toBeLessThan(105);
+    expect(analisis.distanceM).toBe(0);
   });
 
   it('una posicion sin precision informada se trata como utilizable', () => {
@@ -94,7 +93,7 @@ describe('analizarTraza — distancia (#134)', () => {
     expect(analisis.measuredDistanceM).toBeLessThan(105);
     expect(analisis.gapDistanceM).toBeGreaterThan(395);
     expect(analisis.distanceM).toBeCloseTo(
-      analisis.measuredDistanceM + analisis.gapDistanceM,
+      analisis.measuredDistanceM,
       1,
     );
   });
@@ -312,4 +311,22 @@ describe('analizarTraza — tiempo detenido (#134)', () => {
   it('los umbrales aplicados viajan en la respuesta para poder auditar el numero', () => {
     expect(analizar([]).thresholds).toEqual(PARAMETROS);
   });
+});
+
+
+describe('distancia acreditable sin puentes sobre silencios', () => {
+  it('no incorpora a distanceM la recta sobre 39 minutos sin registro', () => {
+    const result = analizar([fila(0,0),fila(1,1),fila(40,5)]);
+    expect(result.gapDistanceM).toBeGreaterThan(395);
+    expect(result.distanceM).toBeCloseTo(result.measuredDistanceM,1);
+    expect(result.distanceM).toBeLessThan(105);
+  });
+});
+
+
+it('el ruido de un salto imposible no infla distancia y se conserva la serie cruda', () => {
+  const result = analizar([fila(0,0),fila(1,30),fila(2,0)]);
+  expect(result.points).toBe(3);
+  expect(result.distanceM).toBe(0);
+  expect(result.measuredDistanceM).toBe(0);
 });
