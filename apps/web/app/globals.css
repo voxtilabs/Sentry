@@ -1465,3 +1465,18 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .operations-reports>.row-actions{gap:.75rem;flex-wrap:wrap;margin-top:1rem;font-size:.82rem;color:var(--muted);}
 .operations-reports .informes-pdf-boton{border:1px solid var(--line);border-radius:8px;padding:.5rem .75rem;font-size:.85rem;}
 .operations-personnel .management-form{margin-bottom:1.25rem;}
+
+/* Configuración de correos: superficies planas y controles compartidos con el panel. */
+.mail-settings { display: grid; gap: 1.25rem; margin-top: 1.25rem; }
+.mail-settings-section { border: 0; border-top: 1px solid var(--border, #d8dce2); margin: 0; padding: 1rem 0 0; min-width: 0; }
+.mail-settings-section > legend, .mail-settings-section > h3 { padding: 0; font-size: 1rem; font-weight: 600; margin: 0 0 .75rem; }
+.mail-settings .mail-toggle { display: flex; align-items: flex-start; flex-direction: row; gap: .65rem; margin: .75rem 0; cursor: pointer; }
+.mail-settings .mail-toggle input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex-shrink: 0; margin: .1rem 0 0; }
+.mail-settings input[type="number"], .mail-settings select { max-width: 22rem; }
+.mail-frequency { border: 1px solid var(--border, #d8dce2); border-radius: .5rem; padding: .9rem 1rem; margin: 1rem 0 0; min-width: 0; }
+.mail-frequency legend { font-weight: 600; padding: 0 .3rem; }
+.mail-addresses { min-width: 0; }
+.mail-settings > .primary-button { justify-self: start; }
+.mail-settings .form-note { margin: .55rem 0 .8rem; text-align: left; font-size: .8rem; color: var(--muted, #596579); }
+.mail-settings .mail-toggle { align-items: center; min-height: 44px; }
+.mail-settings .mail-toggle input[type="checkbox"] { min-height: 0; padding: 0; max-width: 1.15rem; margin: 0; }

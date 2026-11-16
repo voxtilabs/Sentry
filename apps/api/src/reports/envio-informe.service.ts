@@ -101,7 +101,7 @@ const RONDAS_CERRADAS = new Set(['completada', 'incompleta', 'vencida']);
  */
 type MotivoAtendido = Extract<
   MotivoOmision,
-  'envio_desactivado' | 'sin_destinatarios' | 'dominio_no_despachable'
+  'envio_desactivado' | 'sobre_umbral' | 'sin_destinatarios' | 'dominio_no_despachable'
 >;
 
 interface RondaRow {
@@ -277,10 +277,12 @@ export class EnvioInformeService {
       destinatarios,
       puedeEstarBajoUmbral,
       reglas.autoSendReportOnClose,
+      reglas.reportOnlyBelowThreshold,
     );
     if (planTentativo.length === 0) {
-      await this.marcarAtendida(patrolId, 'envio_desactivado');
-      return omitir(patrolId, 'envio_desactivado', suprimidos.length);
+      const reason = reglas.reportOnlyBelowThreshold ? 'sobre_umbral' : 'envio_desactivado';
+      await this.marcarAtendida(patrolId, reason);
+      return omitir(patrolId, reason, suprimidos.length);
     }
 
     const yaRegistrados = await this.registradas(patrolId);
@@ -330,32 +332,14 @@ export class EnvioInformeService {
     // recien calculado, no con el que quedo persistido: entre el cierre y el
     // despacho pudo entrar un escaneo atrasado desde la sincronizacion offline.
     const bajoUmbral = modelo.compliance.pct < reglas.complianceThreshold;
-    const plan = this.planificar(destinatarios, bajoUmbral, reglas.autoSendReportOnClose);
+    const plan = this.planificar(destinatarios, bajoUmbral, reglas.autoSendReportOnClose, reglas.reportOnlyBelowThreshold);
 
-    // El plan DEFINITIVO puede quedar vacio aunque el tentativo no lo estuviera.
-    // Pasa cuando el envio automatico esta apagado y el cumplimiento recien
-    // calculado quedo por encima del umbral: el tentativo planifico la alerta
-    // porque el persistido era mas bajo —o era NULL, que es el caso corriente de
-    // una ronda cerrada por el reloj— y el modelo la desactiva.
-    //
-    // Con `destinatarios` no vacio, `plan` vacio implica SIEMPRE
-    // `autoSendReportOnClose` apagado —con el prendido el informe va a todos y el
-    // plan nunca queda vacio—, y por eso lleva ese motivo. Lo acompaña una de dos:
-    // la ronda quedo por encima del umbral, o quedo por debajo pero ningun
-    // destinatario es administrador (la alerta solo va a los que tienen `userId`,
-    // ver `planificar()`). En ambos casos el hecho que se registra es el mismo que
-    // marca el camino tentativo: no habia nada que mandar.
-    //
-    // TIENE que dejar marca. Sin ella el bucle de mas abajo no escribe ninguna
-    // fila en `report_deliveries`, y `report_dispatch_backlog()` descuenta las
-    // rondas por entrega O por marca (1725472900000-CreateReportDispatchBacklog):
-    // sin ninguna de las dos, esta ronda vuelve a salir rezagada en CADA pasada
-    // del barrido durante toda la ventana de rescate, ocupando el cupo de las que
-    // si se perdieron. El PDF ya dibujado se tira, que es el costo asumido de
-    // decidir el veredicto con el cumplimiento recien calculado.
+    // La sincronización offline puede elevar el cumplimiento desde el cierre.
+    // Registrar la omisión deliberada evita que el barrido reenvíe estas rondas.
     if (plan.length === 0) {
-      await this.marcarAtendida(patrolId, 'envio_desactivado');
-      return omitir(patrolId, 'envio_desactivado', suprimidos.length);
+      const reason = reglas.reportOnlyBelowThreshold ? 'sobre_umbral' : 'envio_desactivado';
+      await this.marcarAtendida(patrolId, reason);
+      return omitir(patrolId, reason, suprimidos.length);
     }
 
     const adjuntar = pdf.length <= maxBytes;
@@ -483,6 +467,7 @@ export class EnvioInformeService {
       patrolId,
       status: ronda.status,
       autoSendEnabled: reglas.autoSendReportOnClose,
+      onlyBelowThreshold: reglas.reportOnlyBelowThreshold,
       complianceThreshold: reglas.complianceThreshold,
       compliancePct: ronda.compliance_pct === null ? null : Number(ronda.compliance_pct),
       deliveries: entregas.map((entrega) => ({
@@ -553,7 +538,8 @@ export class EnvioInformeService {
   /**
    * El plan de correos de este despacho.
    *
-   * Bajo umbral, el administrador recibe DOS: el informe como todos los dias y
+   * El modo reportOnlyBelowThreshold entrega una sola alerta por destinatario.
+   * En el modo anterior, el administrador recibe DOS: el informe como todos los dias y
    * la alerta con otro asunto. No es redundancia: el informe se archiva y la
    * alerta se atiende, y quien tiene la bandeja llena necesita distinguirlos.
    *
@@ -567,7 +553,11 @@ export class EnvioInformeService {
     destinatarios: readonly DestinatarioEnvio[],
     bajoUmbral: boolean,
     enviarInforme: boolean,
+    soloBajoUmbral = false,
   ): DestinatarioEnvio[] {
+    if (soloBajoUmbral) {
+      return bajoUmbral ? destinatarios.map((destino) => ({ ...destino, kind: 'alerta' as const })) : [];
+    }
     const informes = enviarInforme ? [...destinatarios] : [];
     if (!bajoUmbral) return informes;
     const alertas = destinatarios

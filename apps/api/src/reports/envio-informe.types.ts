@@ -26,6 +26,7 @@ export type MotivoOmision =
   | 'ronda_sin_cerrar'
   | 'evidencia_pendiente'
   | 'envio_desactivado'
+  | 'sobre_umbral'
   | 'sin_destinatarios'
   /**
    * Habia destinatarios, pero TODOS caian en un dominio que no se despacha
