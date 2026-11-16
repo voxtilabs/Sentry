@@ -102,8 +102,8 @@ describe('fotos y cola de tareas al finalizar sin pérdida de evidencia', () => 
     const scans = [{ clientScanId: 'cliente-scan', scanId: 'servidor-scan', checkpointId: 'punto' }];
     const fotos = [{ clientEventId: 'f2', serverId: 'servidor-scan', destino: 'tarea' }];
     const recuperada = recuperarCapturasTareas(base, [item], scans, fotos);
-    expect(recuperada.cola[0]?.value).toBe('foto');
-    expect(recuperada.cola[0]?.fotos).toHaveLength(2);
+    expect(recuperada.cola).toEqual([]);
+    expect(recuperada.borradores?.tarea?.fotos).toHaveLength(2);
     expect(recuperarCapturasTareas(base, [item, { ...item, id: 'otra' }], scans, fotos)).toEqual(base);
     expect(recuperarCapturasTareas(base, [{ ...tarea, responseType: 'texto' }], scans, fotos).cola).toEqual([]);
   });

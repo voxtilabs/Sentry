@@ -54,11 +54,17 @@ describe('tareas: foto antes de la pregunta y envío sin confirmación extra', (
     expect(html).toContain('>Enviar</button>');
     expect(html).not.toContain('Guardar tarea');
   });
-  it('solo fotos no pide escribir ni confirmar una respuesta', () => {
-    const html = formulario({ ...tarea, responseType: 'foto' }, 1);
+  it('solo fotos permite confirmar una foto y seguir agregando hasta tres', () => {
+    const item = { ...tarea, responseType: 'foto' as const, photoMinCount: 1 };
+    const html = formulario(item, 1);
     expect(html).not.toContain('<textarea');
     expect(html).not.toContain('>SÍ</button>');
-    expect(html).not.toContain('>Enviar</button>');
+    expect(html).toContain('Enviar tarea');
+    expect(html).toContain('Agregar foto');
+    expect(html).not.toContain('disabled=""');
+    expect(formulario(item, 0)).toMatch(/disabled=""[^>]*>Enviar tarea/);
+    expect(formulario(item, 3)).toContain('Enviar tarea');
+    expect(formulario(item, 3)).not.toContain('Agregar foto');
   });
   it('el valor inicial es un mínimo de una foto y un máximo de tres', () => {
     expect(cantidadesDeFotos({ ...tarea, photoMinCount: null, photoMaxCount: null })).toEqual({ min: 1, max: 3 });
