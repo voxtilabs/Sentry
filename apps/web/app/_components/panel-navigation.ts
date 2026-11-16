@@ -20,6 +20,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
         { view: 'visitas', icon: '+', label: 'Registro de visitas' },
         { view: 'informes', icon: '▤', label: 'Informes' },
         { view: 'envios', icon: '✉', label: 'Envíos de correo' },
+        { view: 'correos', icon: '✉', label: 'Destinatarios de informes' },
       ],
     },
     {
@@ -95,6 +96,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
       visitas: { title: 'Registro de visitas', subtitle: 'Ingresos y salidas de los recintos autorizados.' },
       informes: { title: 'Informes de operación', subtitle: 'Cumplimiento, tendencias y evidencia de las rondas.' },
       envios: { title: 'Envíos de correo', subtitle: 'Confirma qué comunicaciones salieron y si llegaron.' },
+      correos: {title:'Destinatarios de informes',subtitle:'Configura quién recibe los informes de cada recinto de la empresa.'},
       personas: { title: 'Personas y acceso', subtitle: 'Administra usuarios, roles y protección de ingreso.' },
       recintos: { title: 'Recintos', subtitle: 'Organiza instalaciones y sus puntos de control.' },
       reglas: { title: 'Reglas de operación', subtitle: 'Define cómo trabaja la empresa y qué evidencia exige.' },
@@ -105,7 +107,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
     },
     SUPERVISOR: {
       correos: {title:'Destinatarios de informes',subtitle:'Configura los correos de tus recintos asignados.'},
-      personas: {title:'Guardias de mis recintos',subtitle:'Completa la identificación opcional del personal asignado.'},
+      personas: {title:'Guardias de mis recintos',subtitle:'Crea guardias y completa la identificación opcional del personal asignado.'},
       resumen: { title: 'Mis recintos', subtitle: 'Estado actual de los recintos que tienes asignados.' },
       planificacion: { title: 'Planificación', subtitle: 'Programa turnos, recorridos y tareas de terreno.' },
       'ronda-patron': { title: 'Ronda patrón', subtitle: 'Registra el recorrido de referencia y la posición GPS de cada NFC.' },
