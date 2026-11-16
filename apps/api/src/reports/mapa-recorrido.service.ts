@@ -139,6 +139,8 @@ export class MapaRecorridoService {
       escaneos,
       recinto: { latitude: ronda.site_latitude, longitude: ronda.site_longitude },
       maxErrorTrazaM: reglas.mapTrackMaxAccuracyM,
+      maxGapSeconds: reglas.gpsTrackGapMinSeconds,
+      maxSpeedKmh: reglas.impossibleSpeedKmh,
       maxPuntosTraza: reglas.mapMaxTrackPoints,
       // gpsTrackingEnabled y no gpsSharingMandatory: con GPS opcional el PDF
       // salia sin trayecto aunque el guardia hubiera aceptado y hubiera puntos.

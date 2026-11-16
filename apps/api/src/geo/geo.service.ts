@@ -12,6 +12,7 @@ import type { TrackPointDto } from './dto/append-track.dto';
 import type { GrantConsentDto } from './dto/grant-consent.dto';
 import { planDeMuestreo } from './gps-rules';
 import { haversineM } from './haversine';
+import { splitTrack, measuredDistance } from './track-segments';
 
 const SIN_CONSENTIMIENTO =
   'No tienes consentimiento vigente de geolocalización: no se registra tu recorrido';
@@ -132,9 +133,8 @@ export class GeoService {
     if (!patrol) throw new NotFoundException('La ronda asignada no existe');
     if (patrol.status !== 'en_curso') throw new ConflictException(FUERA_DE_RONDA);
 
-    // Las reglas del RECINTO, y antes del filtrado: tanto el maximo error
-    // aceptable como la velocidad imposible se configuran hasta ese nivel, y
-    // son las que deciden que se guarda.
+    // Reglas del recinto para clasificar calidad. El filtrado de distancia y
+    // dibujo se aplica al leer, preservando las mediciones originales.
     const reglasDelRecinto = await this.rules.effective({ siteId: patrol.site_id });
 
     // La ultima posicion ya guardada es la referencia contra la que se mide el
@@ -199,13 +199,10 @@ export class GeoService {
         continue;
       }
 
-      // Precision peor que el maximo: el telefono mismo dice que no sabe donde
-      // esta. Un hueco en la traza es un dato honesto —track-summary lo mide—;
-      // una posicion a 146 m del guardia es un dato falso que despues alimenta
-      // el kilometraje y el mapa del informe.
+      // Classify quality without destroying evidence: poor fixes explain why
+      // coverage is missing. Measurement/rendering exclude them with splitTrack.
       if (punto.accuracyM !== null && punto.accuracyM !== undefined && punto.accuracyM > maximoError) {
         imprecisos += 1;
-        continue;
       }
 
       // Y la precision declarada no alcanza: hay posiciones que dicen +-15 m y
@@ -222,13 +219,14 @@ export class GeoService {
           );
           if ((metros / segundos) * 3.6 > velocidadMaxima) {
             saltosImposibles += 1;
-            continue;
           }
         }
       }
 
       vistos.add(clave);
-      referencia = { instante, latitude: punto.latitude, longitude: punto.longitude };
+      if (punto.accuracyM === null || punto.accuracyM === undefined || punto.accuracyM <= maximoError) {
+        referencia = { instante, latitude: punto.latitude, longitude: punto.longitude };
+      }
       aceptados.push(punto);
     }
 
@@ -267,10 +265,9 @@ export class GeoService {
       duplicates: duplicados,
       outsideShift: fueraDeTurno,
       /**
-       * Descartadas por calidad, contadas aparte de `outsideShift` a proposito:
-       * el telefono necesita distinguir "no me lo aceptaste porque no tocaba"
-       * de "no me lo aceptaste porque tu GPS venia mal", y quien mire el turno
-       * despues tambien.
+       * Clasificadas por calidad (conservadas), aparte de `outsideShift`:
+       * Permiten distinguir falta de autorización de señal insuficiente sin
+       * borrar las posiciones que explican por qué no hubo traza medible.
        */
       imprecise: imprecisos,
       impossibleJumps: saltosImposibles,
@@ -332,15 +329,10 @@ export class GeoService {
     const confiable = (punto: PuntoTraza) =>
       punto.accuracyM === null || punto.accuracyM <= maximoError;
 
-    // Se recorre la serie confiable en orden: dos puntos buenos separados por
-    // uno malo siguen midiendo el tramo entre ellos.
     const paraDistancia = points.filter(confiable);
-    let distancia = 0;
-    for (let i = 1; i < paraDistancia.length; i += 1) {
-      const previo = paraDistancia[i - 1]!;
-      const actual = paraDistancia[i]!;
-      distancia += haversineM(previo.latitude, previo.longitude, actual.latitude, actual.longitude);
-    }
+    const segments = splitTrack(points, { maxAccuracyM: maximoError,
+      maxGapSeconds: reglas.gpsTrackGapMinSeconds, maxSpeedKmh: reglas.impossibleSpeedKmh });
+    const distancia = measuredDistance(segments);
 
     const primero = points[0];
     const ultimo = points[points.length - 1];
@@ -402,6 +394,7 @@ export class GeoService {
       lastPointAt: ultimo?.recordedAt ?? null,
       retentionDays: reglas.gpsTrackRetentionDays,
       points,
+      segments,
       checkpoints,
     };
   }

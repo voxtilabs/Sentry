@@ -38,3 +38,9 @@ Implementación revisada en Chromium local: `http://127.0.0.1:4310`. Capturas pr
 ## Resultado
 
 Sin hallazgos P0/P1/P2 pendientes en las pantallas y estados revisados. No se ejecutan los guiones demo que escriben datos sobre empresas productivas: este cambio no altera endpoints ni SQL. La verificación de despliegue debe comprobar salud, vistas reales y continuidad de API/base de datos; no iniciar una ronda de un guardia real para probar el diseño.
+
+## Verificación del despliegue
+
+Panel publicado y comprobado en producción en escritorio/móvil; ADMIN y SUPERVISOR sin errores JavaScript en las capturas. Navegación móvil operativa y sin desbordes. API, PostgreSQL, Redis y cola de sincronización responden correctamente. PostgreSQL y Redis conservaron identificadores y fechas de arranque.
+
+P3 de seguimiento: el catálogo de SUPERADMIN emite una recuperación de hidratación React #418 al mostrar actividad histórica. No se observó bloqueo del catálogo ni del menú. La hipótesis es el formateo localizado de fechas en el componente existente (sin cambios en este trabajo); falta aislarlo para una corrección específica. No afecta a la vista del guardia ni a los flujos de ronda. Las comprobaciones locales de 22 vistas descritas arriba se mantienen sin errores; no se presenta esa comprobación como ausencia de avisos en todos los entornos.

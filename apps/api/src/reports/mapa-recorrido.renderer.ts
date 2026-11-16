@@ -268,7 +268,7 @@ export function dibujarMapaRecorrido(
     // final los puntos. Asi una marca de punto nunca queda tapada por la linea.
     dibujarTraza(doc, mapa, ajuste);
     for (const escaneo of mapa.escaneosDesviados) {
-      dibujarEscaneoDesviado(doc, mapa, escaneo, ajuste);
+      dibujarEscaneoDesviado(doc, escaneo, ajuste);
     }
     for (const punto of mapa.puntos) dibujarPunto(doc, punto, ajuste);
 
@@ -328,7 +328,7 @@ function radioPosicion(cantidad: number): number {
  * Con dos o tres puntos la nube no dice nada que la linea no diga: solo
  * ensucia. Lo que se quiere mostrar es muestreo sostenido.
  */
-const MINIMO_PARA_PUNTEAR = 8;
+
 
 /**
  * Cifras del recorrido, arriba del plano.
@@ -356,13 +356,15 @@ function dibujarResumenTraza(
   const minutos = (ultimo.instante.getTime() - primero.instante.getTime()) / 60_000;
   if (!Number.isFinite(minutos) || minutos <= 0) return 0;
 
+  const breaks = new Set(huecosDeTraza(mapa).map(h => h.desde));
+  const measuredSegments = mapa.traza.filter((_, i) => i > 0 && !breaks.has(i - 1) && (i === 1 || breaks.has(i - 2))).length;
   const celdas: Array<{ rotulo: string; valor: string }> = [
-    { rotulo: 'RECORRIDO', valor: formatearDistancia(mapa.distanciaTrazaM) },
-    { rotulo: 'DURACIÓN', valor: `${formatearEntero(Math.round(minutos))} min` },
+    { rotulo: 'DISTANCIA MEDIDA', valor: formatearDistancia(mapa.distanciaTrazaM) },
+    { rotulo: 'VENTANA GPS', valor: `${formatearEntero(Math.round(minutos))} min` },
     { rotulo: 'POSICIONES', valor: formatearEntero(mapa.trazaTotalRegistrada) },
     {
-      rotulo: 'RITMO MEDIO',
-      valor: `${(mapa.distanciaTrazaM / 1000 / (minutos / 60)).toFixed(1)} km/h`,
+      rotulo: 'TRAMOS MEDIDOS',
+      valor: String(measuredSegments),
     },
   ];
 
@@ -414,7 +416,10 @@ export function huecosDeTraza(mapa: MapaRecorrido): readonly HuecoTraza[] {
   for (let i = 1; i < mapa.traza.length; i += 1) {
     const segundos =
       (mapa.traza[i]!.instante.getTime() - mapa.traza[i - 1]!.instante.getTime()) / 1_000;
-    if (segundos >= HUECO_MINIMO_SEG) huecos.push({ desde: i - 1, segundos });
+    const current = mapa.traza[i]!, previous = mapa.traza[i - 1]!;
+    const interrupted = current.segment !== undefined && previous.segment !== undefined
+      ? current.segment !== previous.segment : segundos >= HUECO_MINIMO_SEG;
+    if (interrupted) huecos.push({ desde: i - 1, segundos });
   }
   return huecos;
 }
@@ -425,31 +430,23 @@ function dibujarTraza(doc: PDFKit.PDFDocument, mapa: MapaRecorrido, ajuste: Ajus
 
   const primero = puntos[0]!;
   if (puntos.length > 1) {
-    /*
-     * El trayecto medido va con linea llena; los tramos en los que el telefono
-     * dejo de reportar, punteados.
-     *
-     * Entre dos posiciones separadas por doce minutos no hay recorrido: hay una
-     * recta que dibujamos nosotros. Pintarla igual que el resto convierte una
-     * laguna del registro en un trayecto acreditado, y eso es exactamente lo
-     * que un informe probatorio no puede hacer. Punteado y no color, porque
-     * esto se imprime en blanco y negro.
-     */
+    // A gap is absence of evidence: no connector or direction arrow may cross it.
     const cortaEn = new Map(huecosDeTraza(mapa).map((h) => [h.desde, h.segundos]));
     doc.save();
     doc.lineWidth(1.3).lineJoin('round').strokeColor(PALETA.gris);
     for (let i = 1; i < puntos.length; i += 1) {
       const anterior = puntos[i - 1]!;
       const siguiente = puntos[i]!;
-      doc.moveTo(anterior.x, anterior.y).lineTo(siguiente.x, siguiente.y);
-      if (cortaEn.has(i - 1)) {
-        doc.dash(3, { space: 2.5 }).stroke().undash();
-      } else {
-        doc.stroke();
-      }
+      if (!cortaEn.has(i - 1)) doc.moveTo(anterior.x, anterior.y).lineTo(siguiente.x, siguiente.y).stroke();
     }
     doc.restore();
-    dibujarFlechasDeSentido(doc, puntos);
+    let inicio = 0;
+    for (let i = 1; i <= puntos.length; i++) {
+      if (i === puntos.length || cortaEn.has(i - 1)) {
+        dibujarFlechasDeSentido(doc, puntos.slice(inicio, i));
+        inicio = i;
+      }
+    }
 
     /*
      * Y encima de la linea, CADA POSICION MEDIDA.
@@ -463,7 +460,7 @@ function dibujarTraza(doc: PDFKit.PDFDocument, mapa: MapaRecorrido, ajuste: Ajus
      * Los puntos deshacen la ambiguedad sin explicar nada: donde hubo muestreo
      * hay puntos, y donde la linea cruza sola es porque ahi no se midio.
      */
-    if (puntos.length >= MINIMO_PARA_PUNTEAR) {
+    if (puntos.length >= 2) {
       // En tinta y no en gris: sobre una linea gris del mismo tono el punto
       // desaparece. El contraste es lo que separa "medido" de "interpolado".
       const radio = radioPosicion(puntos.length);
@@ -581,7 +578,7 @@ function escribirNumero(
 
 /**
  * Escaneo marcado con anomalia de GPS: rombo vacio donde el telefono dijo que
- * estaba, unido con linea punteada al punto que se estaba marcando.
+ * estaba. No se une al punto: esa desviación tampoco es un recorrido medido.
  *
  * El sistema MARCA, no rechaza (ver CLAUDE.md): en un subterraneo el GPS se
  * equivoca por metros sin que nadie haya hecho nada malo. El informe muestra
@@ -589,20 +586,11 @@ function escribirNumero(
  */
 function dibujarEscaneoDesviado(
   doc: PDFKit.PDFDocument,
-  mapa: MapaRecorrido,
   escaneo: MarcaEscaneoMapa,
   ajuste: AjusteMapa,
 ): void {
   const centro = enPdf(ajuste, escaneo);
-  const punto = mapa.puntos.find((candidato) => candidato.numero === escaneo.numeroPunto);
-
   doc.save();
-  if (punto) {
-    const destino = enPdf(ajuste, punto);
-    doc.lineWidth(0.8).dash(2, { space: 2 }).strokeColor(PALETA.alerta);
-    doc.moveTo(centro.x, centro.y).lineTo(destino.x, destino.y).stroke();
-    doc.undash();
-  }
   doc.lineWidth(1.2);
   doc.polygon(
     [centro.x, centro.y - RADIO_ROMBO],
@@ -696,25 +684,13 @@ const LEYENDA: readonly ItemLeyenda[] = [
     },
   },
   {
-    // Tambien junto al recorrido: es el mismo trazo, dibujado distinto donde no
-    // hubo medicion. Un punteado sin explicar se lee como adorno.
-    texto: 'Tramo sin registrar',
-    dibujar: (doc, x, y) => {
-      doc.save();
-      doc.lineWidth(1.3).strokeColor(PALETA.gris).dash(3, { space: 2.5 });
-      doc.moveTo(x - 7, y).lineTo(x + 7, y).stroke();
-      doc.undash();
-      doc.restore();
-    },
-  },
-  {
-    texto: 'Inicio del recorrido',
+    texto: 'Primera posición GPS',
     dibujar: (doc, x, y) => {
       dibujarTriangulo(doc, { x, y }, 5, PALETA.tinta);
     },
   },
   {
-    texto: 'Fin del recorrido',
+    texto: 'Última posición GPS',
     dibujar: (doc, x, y) => {
       doc.rect(x - 4, y - 4, 8, 8).fill(PALETA.tinta);
     },
@@ -757,7 +733,7 @@ export function armarNotas(mapa: MapaRecorrido, fondo: FondoCartografico | null 
 
   if (mapa.hayDatos) {
     notas.push(
-      `Recorrido registrado: ${formatearDistancia(mapa.distanciaTrazaM)} · ` +
+      `Distancia de los tramos medidos: ${formatearDistancia(mapa.distanciaTrazaM)} · ` +
         `${formatearEntero(mapa.trazaTotalRegistrada)} posición(es) de GPS.`,
     );
   }
@@ -826,8 +802,8 @@ export function armarNotas(mapa: MapaRecorrido, fondo: FondoCartografico | null 
     const total = huecos.reduce((suma, h) => suma + h.segundos, 0);
     notas.push(
       `El registro se interrumpió ${huecos.length === 1 ? 'una vez' : `${huecos.length} veces`} ` +
-        `durante la ronda, ${formatearDuracion(total)} en total. Esos tramos van punteados en el ` +
-        'plano: entre esas posiciones no hay recorrido medido, y la distancia los cuenta en línea recta.',
+        `durante la ronda, ${formatearDuracion(total)} en total. Entre esas posiciones no hay recorrido ` +
+        'medido: no se dibujan líneas ni flechas y no se suman metros. La traza es parcial.',
     );
   }
 

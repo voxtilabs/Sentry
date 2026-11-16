@@ -32,6 +32,7 @@ export interface CheckpointTrack {
 export interface RespuestaTrack {
   patrolId: string;
   points: PuntoTrack[];
+  segments?: PuntoTrack[][];
   checkpoints?: CheckpointTrack[];
   totalDistanceM?: number;
   durationMin?: number;
@@ -50,6 +51,14 @@ export function trazaDeRecorrido(puntos: readonly PuntoTrack[]): TrazaMapa | nul
     variante: 'recorrido',
     puntos: validos.map((p) => ({ lat: p.latitude, lng: p.longitude })),
   };
+}
+
+/** Keep server-classified gaps separate; old API responses remain supported. */
+export function trazasDeRecorrido(track: Pick<RespuestaTrack, 'points' | 'segments'>): TrazaMapa[] {
+  return (track.segments ?? [track.points]).flatMap((segment, index) => {
+    const line = trazaDeRecorrido(segment);
+    return line ? [{ ...line, id: `recorrido-${index}` }] : [];
+  });
 }
 
 /**

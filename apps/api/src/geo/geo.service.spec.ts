@@ -70,23 +70,14 @@ const sqlDe = (query: jest.Mock): string[] =>
   query.mock.calls.map(([sql]: [string]) => sql);
 
 describe('GeoService — traza y consentimiento (#15, #134)', () => {
-  /*
-   * Medido en una caminata real de 20 minutos con 94 posiciones (31-08-2026):
-   * diez traian un error declarado de mas de 40 m y una de ellas implicaba
-   * 41 km/h a pie. En el informe eso es el zigzag que el cliente ve y no
-   * entiende, porque el guardia camino derecho.
-   *
-   * El servidor ya recibe `gpsTrackMaxAccuracyM` en las reglas y ya sabe que
-   * velocidad considera imposible: hasta ahora no usaba ninguna de las dos al
-   * guardar, solo al DIBUJAR. Guardar basura y taparla al dibujar significa que
-   * el kilometraje, el tiempo detenido y los huecos se calculan sobre ella.
-   */
-  it('descarta la posicion mas imprecisa que el maximo configurado', async () => {
+  // Calidad de GPS y autorización son ejes distintos. Las posiciones dentro
+  // de una ronda autorizada se conservan, aunque no sirvan para medir/dibujar.
+  it('conserva la posicion imprecisa para diagnosticar la cobertura sin inflar distancia', async () => {
     const query = jest.fn()
       .mockResolvedValueOnce([{ id: 'consent-1' }])
       .mockResolvedValueOnce([RONDA_EN_CURSO])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'track-1' }]);
+      .mockResolvedValueOnce([{ id: 'track-1' }, { id: 'track-2' }]);
 
     const resultado = await servicio(query, { gpsTrackMaxAccuracyM: 40 }).appendTrack(
       'guard-1',
@@ -97,7 +88,9 @@ describe('GeoService — traza y consentimiento (#15, #134)', () => {
       ],
     );
 
-    expect(resultado.stored).toBe(1);
+    expect(resultado.stored).toBe(2);
+    const insert = query.mock.calls.find(([sql]: [string]) => sql.includes('INSERT INTO patrol_tracks'));
+    expect(insert[1][3]).toHaveLength(2);
     expect(resultado.imprecise).toBe(1);
   });
 
@@ -106,12 +99,12 @@ describe('GeoService — traza y consentimiento (#15, #134)', () => {
    * a cien metros de donde el guardia realmente iba. Lo que las delata es el
    * salto contra la anterior, no su propio numero.
    */
-  it('descarta el salto que implica una velocidad imposible', async () => {
+  it('conserva el salto imposible como evidencia, clasificado por separado', async () => {
     const query = jest.fn()
       .mockResolvedValueOnce([{ id: 'consent-1' }])
       .mockResolvedValueOnce([RONDA_EN_CURSO])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'track-1' }]);
+      .mockResolvedValueOnce([{ id: 'track-1' }, { id: 'track-2' }]);
 
     // 0,02 grados de latitud son ~2,2 km. En un minuto serian 133 km/h.
     const resultado = await servicio(query, { impossibleSpeedKmh: 15 }).appendTrack(
@@ -123,7 +116,9 @@ describe('GeoService — traza y consentimiento (#15, #134)', () => {
       ],
     );
 
-    expect(resultado.stored).toBe(1);
+    expect(resultado.stored).toBe(2);
+    const insert = query.mock.calls.find(([sql]: [string]) => sql.includes('INSERT INTO patrol_tracks'));
+    expect(insert[1][3]).toHaveLength(2);
     expect(resultado.impossibleJumps).toBe(1);
   });
 
@@ -460,7 +455,7 @@ describe('GeoService — distancia y duración de la traza', () => {
 
     expect(traza.pointCount).toBe(4);
     expect(traza.lowAccuracyPointCount).toBe(1);
-    expect(traza.totalDistanceM).toBeCloseTo(222.4, 1);
+    expect(traza.totalDistanceM).toBeCloseTo(111.2, 1);
   });
 
   /**
