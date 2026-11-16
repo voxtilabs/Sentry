@@ -1,3 +1,4 @@
+import type { GuardQuotaService } from '../operations/guard-quota.service';
 import { NotFoundException } from '@nestjs/common';
 
 import type { AuditService } from '../audit/audit.service';
@@ -24,6 +25,7 @@ function servicio(query: jest.Mock, revokeAllSessions = jest.fn().mockResolvedVa
       { revokeAllSessions } as unknown as AuthService,
       {} as MailService,
       { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService,
+      {companyLimit:async(n:number)=>n,lock:async()=>{},site:async()=>{},activation:async()=>{}} as unknown as GuardQuotaService,
     ),
     revokeAllSessions,
   };

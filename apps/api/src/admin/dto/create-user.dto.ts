@@ -12,6 +12,8 @@ import {
 import { normalizarUidNfc } from '../uid-nfc';
 
 export class CreateTenantUserDto {
+  @IsOptional() @IsString() @MaxLength(16) rut?: string;
+
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
@@ -52,6 +54,8 @@ export class CreateTenantUserDto {
 }
 
 export class UpdateTenantUserDto {
+  @IsOptional() @IsString() @MaxLength(16) rut?: string;
+
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
   @MinLength(2)

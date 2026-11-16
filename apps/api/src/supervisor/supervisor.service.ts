@@ -229,6 +229,7 @@ export class SupervisorService {
                 longitude: Number(row.longitude),
                 recordedAt: row.position_at,
                 accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
+                maxAccuracyM:rulesBySite.get(row.site_id)?.gpsTrackMaxAccuracyM??null,
               }
             : null,
         };

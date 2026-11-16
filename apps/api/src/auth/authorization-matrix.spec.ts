@@ -1,3 +1,5 @@
+import { GuardRegistrationController } from '../admin/guard-registration.controller';
+import { OperationsController } from '../operations/operations.controller';
 import { ReferenceController } from '../reference/reference.controller';
 import { FeedbackController } from '../feedback/feedback.controller';
 import { METHOD_METADATA } from '@nestjs/common/constants';
@@ -94,6 +96,14 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   publicEndpoint(AuthController, 'selectCompanyGuard'),
   secured(PlatformController, 'companyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
   secured(PlatformController, 'setCompanyCard', ['platform:tenants:manage'], ['SUPERADMIN']),
+  secured(GuardRegistrationController,'create',['reports:read'],['ADMIN','SUPERVISOR'],true),
+  secured(OperationsController, 'sites', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
+  secured(OperationsController, 'recent', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
+  secured(OperationsController, 'recipients', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
+  secured(OperationsController, 'setRecipients', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
+  secured(OperationsController, 'guards', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
+  secured(OperationsController, 'guard', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
+  secured(OperationsController, 'setGuard', ['reports:read'], ['ADMIN', 'SUPERVISOR'], true),
   secured(AdminController, 'companyCard', ['tenant:users:manage'], ['ADMIN'], true),
   secured(AdminController, 'setCompanyCard', ['tenant:users:manage'], ['ADMIN'], true),
   secured(SupervisorController, 'companyCard', ['shifts:manage'], ['SUPERVISOR'], true),
@@ -443,6 +453,8 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
 ] as const;
 
 const CONTROLLERS = [
+  GuardRegistrationController,
+  OperationsController,
   FeedbackController,
   ReferenceController,
   VisitsGuardController,

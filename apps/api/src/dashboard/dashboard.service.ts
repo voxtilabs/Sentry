@@ -9,6 +9,9 @@ interface OverviewRow {
   pending_patrol_count: number;
   active_patrol_count: number;
   completed_patrol_count: number;
+  completed_last_24h?:number;
+  incomplete_last_24h?:number;
+  average_last_24h?:number|null;
 }
 
 interface PatrolSummaryRow {
@@ -29,13 +32,13 @@ export class DashboardService {
     const visibleSites = `
       SELECT site.id
       FROM sites site
-      WHERE NOT $1::boolean
+      WHERE site.is_active AND (NOT $1::boolean
         OR EXISTS (
           SELECT 1
           FROM supervisor_sites assignment
           WHERE assignment.site_id = site.id
             AND assignment.supervisor_id = $2
-        )
+        ))
     `;
 
     const [overviewRows, patrols] = await Promise.all([
@@ -44,33 +47,26 @@ export class DashboardService {
           WITH visible_sites AS (${visibleSites})
           SELECT
             (SELECT count(*)::int FROM visible_sites) AS site_count,
-            CASE
-              WHEN $1::boolean THEN (
-                SELECT count(DISTINCT patrol.guard_id)::int
-                FROM patrols patrol
-                WHERE patrol.site_id IN (SELECT id FROM visible_sites)
-              )
-              ELSE (
-                SELECT count(*)::int
-                FROM memberships membership
-                WHERE membership.role_key = 'GUARDIA'
-              )
-            END AS guard_count,
+            (SELECT count(DISTINCT membership.user_id)::int FROM memberships membership JOIN users u ON u.id=membership.user_id
+             WHERE membership.role_key='GUARDIA' AND u.is_active AND (NOT $1::boolean OR EXISTS(SELECT 1 FROM guard_sites gs WHERE gs.guard_id=membership.user_id AND gs.site_id IN (SELECT id FROM visible_sites)))) AS guard_count,
             (
               SELECT count(*)::int FROM patrols patrol
               WHERE patrol.site_id IN (SELECT id FROM visible_sites)
-                AND patrol.status = 'pendiente'
+                AND patrol.status = 'pendiente' AND patrol.scheduled_end_at >= now()
             ) AS pending_patrol_count,
             (
               SELECT count(*)::int FROM patrols patrol
               WHERE patrol.site_id IN (SELECT id FROM visible_sites)
-                AND patrol.status = 'en_curso'
+                AND patrol.status IN ('en_curso','pausada')
             ) AS active_patrol_count,
             (
               SELECT count(*)::int FROM patrols patrol
               WHERE patrol.site_id IN (SELECT id FROM visible_sites)
                 AND patrol.status = 'completada'
-            ) AS completed_patrol_count
+            ) AS completed_patrol_count,
+            (SELECT count(*)::int FROM patrols p WHERE p.site_id IN(SELECT id FROM visible_sites) AND p.status='completada' AND p.closed_at >= now()-interval '24 hours') AS completed_last_24h,
+            (SELECT count(*)::int FROM patrols p WHERE p.site_id IN(SELECT id FROM visible_sites) AND p.status IN('incompleta','vencida') AND coalesce(p.closed_at,p.scheduled_end_at) >= now()-interval '24 hours') AS incomplete_last_24h,
+            (SELECT round(avg(p.compliance_pct))::int FROM patrols p WHERE p.site_id IN(SELECT id FROM visible_sites) AND p.compliance_pct IS NOT NULL AND p.closed_at >= now()-interval '24 hours') AS average_last_24h
         `,
         scopeParameters,
       ),
@@ -112,6 +108,9 @@ export class DashboardService {
         pendingPatrols: overview.pending_patrol_count,
         activePatrols: overview.active_patrol_count,
         completedPatrols: overview.completed_patrol_count,
+        completedLast24h:overview.completed_last_24h??0,
+        incompleteLast24h:overview.incomplete_last_24h??0,
+        averageLast24h:overview.average_last_24h??null,
       },
       patrols: patrols.map((patrol) => ({
         id: patrol.id,

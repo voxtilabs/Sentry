@@ -1,3 +1,7 @@
+import { PanelAutoRefresh } from '../../_components/panel-auto-refresh';
+import { ReportsWorkspace } from '../../_components/reports-workspace';
+import { ReportRecipients } from '../../_components/report-recipients';
+import { GuardPersonnel } from '../../_components/guard-personnel';
 import { ReferencePatrol } from '../../_components/reference-patrol';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -18,7 +22,6 @@ import { GuardHome, type GuardHomeData } from '../../_components/guard-home';
 import { GuardBottomNav } from '../../_components/guard-bottom-nav';
 import { GuardPoints } from '../../_components/guard-points';
 import { GuardShift } from '../../_components/guard-shift';
-import { InformesPanel } from '../../_components/informes-panel';
 import { LivePatrolBoard } from '../../_components/live-patrol-board';
 import { ReglasConfiguracion } from '../../_components/reglas-configuracion';
 import { RouteEditor, type RouteEditorSite } from '../../_components/route-editor';
@@ -65,6 +68,7 @@ interface TenantOverview {
     pendingPatrols: number;
     activePatrols: number;
     completedPatrols: number;
+    completedLast24h:number;incompleteLast24h:number;averageLast24h:number|null;
   };
   patrols: Array<{
     id: string;
@@ -187,7 +191,7 @@ export default async function RoleDashboard({
   const panelRole: PanelRole = isSupervisor ? 'SUPERVISOR' : 'ADMIN';
   const view = resolvePanelView(panelRole, firstParameter(query.vista));
   const copy = panelViewCopy(panelRole, view);
-  const needsOverview = view === 'resumen' || (!isSupervisor && ['informes', 'envios'].includes(view));
+  const needsOverview = view === 'resumen' || (!isSupervisor && ['envios'].includes(view));
   const needsSites = !isSupervisor && ['personas', 'recintos', 'envios'].includes(view);
 
   const [overview, users, sites, sessions, authPolicy, securityEvents, routeEditorSites, quota] = await Promise.all([
@@ -203,10 +207,14 @@ export default async function RoleDashboard({
 
   const resumen = (
     <div className="panel-view" data-view="resumen">
+      <PanelAutoRefresh />
+      {!overview && <p role="alert">No pudimos consultar el resumen. Reintentaremos automáticamente.</p>}
       <section className="stat-grid">
         <Metric label="Recintos visibles" value={overview?.metrics.sites ?? 0} detail={isSupervisor ? 'Solo asignados' : 'Toda la empresa'} />
-        <Metric label="Rondas en curso" value={overview?.metrics.activePatrols ?? 0} detail={`${overview?.metrics.pendingPatrols ?? 0} pendientes`} />
-        <Metric label="Guardias con rondas" value={overview?.metrics.guards ?? 0} detail="Datos actuales" />
+        <Metric label="Rondas abiertas" value={overview?.metrics.activePatrols ?? 0} detail={`${overview?.metrics.pendingPatrols ?? 0} pendientes`} />
+        <Metric label="Guardias activos" value={overview?.metrics.guards ?? 0} detail={isSupervisor?'Asignados a tus recintos':'Toda la empresa'} />
+        <Metric label="Completadas · últimas 24 h" value={overview?.metrics.completedLast24h??0} detail={`${overview?.metrics.incompleteLast24h??0} incompletas o vencidas`} />
+        <Metric label="Cumplimiento · últimas 24 h" value={overview?.metrics.averageLast24h===null||overview?.metrics.averageLast24h===undefined?'—':`${overview.metrics.averageLast24h}%`} detail="Rondas cerradas con datos" />
       </section>
 
       <section className="activity-card">
@@ -231,7 +239,7 @@ export default async function RoleDashboard({
             <strong>No hay rondas visibles</strong>
             <span>
               {isSupervisor
-                ? 'Solicita que un administrador te asigne un recinto.'
+                ? 'Aún no hay rondas en los recintos visibles. Revisa tus asignaciones si falta algún recinto.'
                 : 'Las rondas aparecerán cuando se programen para un guardia.'}
             </span>
           </div>
@@ -286,14 +294,14 @@ export default async function RoleDashboard({
   } else if (view === 'informes') {
     panel = (
       <div className="panel-view" data-view="informes">
-        <StatsCharts role={panelRole} searchParams={query} />
-        {isSupervisor ? (
-          <SupervisorPanel searchParams={query} />
-        ) : (
-          <InformesPanel rondas={overview?.patrols ?? []} apiUrl={publicApiUrl()} />
-        )}
+        <ReportsWorkspace apiUrl={publicApiUrl()} />
+        <details className="management-card"><summary>Estadísticas y tendencias del período</summary><StatsCharts role={panelRole} searchParams={query} />{isSupervisor && <SupervisorPanel searchParams={query} showReports={false} />}</details>
       </div>
     );
+  } else if (isSupervisor && view === 'personas') {
+    panel=<div className="panel-view"><GuardPersonnel canCreate apiUrl={publicApiUrl()}/></div>;
+  } else if (view === 'correos') {
+    panel=<div className="panel-view"><ReportRecipients apiUrl={publicApiUrl()}/></div>;
   } else if (!isSupervisor && view === 'personas') {
     panel = (
       <div className="panel-view" data-view="personas">
@@ -335,6 +343,7 @@ export default async function RoleDashboard({
   } else if (!isSupervisor && view === 'envios') {
     panel = (
       <div className="panel-view" data-view="envios">
+        <ReportRecipients apiUrl={publicApiUrl()} />
         <EnviosPanel
           searchParams={query}
           recintos={sites}
@@ -353,23 +362,7 @@ export default async function RoleDashboard({
   } else if (isSupervisor && view === 'ronda-patron') {
     panel = <div className="panel-view" data-view="ronda-patron"><ReferencePatrol apiUrl={publicApiUrl()} /></div>;
   } else if (isSupervisor && view === 'consentimiento') {
-    panel = (
-      <div className="panel-view" data-view="consentimiento">
-        <section className="activity-card">
-          <div className="card-heading">
-            <div><span className="eyebrow">Privacidad en terreno</span><h2>Cómo usamos tu ubicación</h2></div>
-          </div>
-          <p>
-            La aplicación registra ubicación únicamente durante una ronda activa. Si la empresa
-            publica un aviso nuevo, tendrás que leerlo y aceptarlo antes de continuar trabajando.
-          </p>
-          <div className="dashboard-empty">
-            <strong>Tu aviso está al día</strong>
-            <span>Cuando cambie, esta pantalla bloqueará la operación hasta que revises la nueva versión.</span>
-          </div>
-        </section>
-      </div>
-    );
+    panel=<div className="panel-view" data-view="consentimiento"><ConsentimientoTrabajador apiUrl={publicApiUrl()} /></div>;
   } else {
     panel = <div className="panel-view" data-view="sesiones"><SessionManagement sessions={sessions} apiUrl={publicApiUrl()} /></div>;
   }
@@ -409,7 +402,7 @@ function Metric({
   detail,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   detail: string;
 }) {
   return (

@@ -12,7 +12,7 @@ import styles from './panel-shell.module.css';
 
 const icons = {
   resumen: IconDashboard, visitas: IconClipboardCheck, informes: IconChartBar,
-  envios: IconMail, personas: IconUsers, recintos: IconBuilding,
+  envios: IconMail, correos: IconMail, personas: IconUsers, recintos: IconBuilding,
   reglas: IconAdjustments, marca: IconPalette, cumplimiento: IconScale,
   diagnostico: IconActivity, sesiones: IconDeviceMobile, planificacion: IconCalendar,
   'ronda-patron': IconRoute, terreno: IconFingerprint, monitoreo: IconActivity,

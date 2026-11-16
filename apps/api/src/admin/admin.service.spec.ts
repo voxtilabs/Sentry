@@ -1,3 +1,4 @@
+import type { GuardQuotaService } from '../operations/guard-quota.service';
 import type { AuditService } from '../audit/audit.service';
 import type { AuthService } from '../auth/auth.service';
 import type { MailService } from '../auth/mail.service';
@@ -12,6 +13,7 @@ function service(query: jest.Mock, revokeAllSessions = jest.fn().mockResolvedVal
       { revokeAllSessions } as unknown as AuthService,
       {} as MailService,
       { record } as unknown as AuditService,
+      {companyLimit:async(n:number)=>n,lock:async()=>{},site:async()=>{},activation:async()=>{}} as unknown as GuardQuotaService,
     ),
     revokeAllSessions,
     record,
@@ -402,4 +404,11 @@ describe('AdminService eliminar recinto', () => {
       'Recinto no encontrado',
     );
   });
+});
+
+describe('límite operativo configurable',()=>{
+ it('informa al supervisor que el límite de empresa lo ajusta el administrador',async()=>{
+  const {admin}=service(jest.fn());jest.spyOn(admin,'getTenantQuota').mockResolvedValue({planKey:'pro',planName:'Pro',maxActiveGuards:20,activeGuardsCount:20,isLimitReached:true,isNearLimit:true});
+  await expect(admin.assertGuardQuotaAvailable()).rejects.toThrow('El administrador puede ajustarlo en Reglas');
+ });
 });

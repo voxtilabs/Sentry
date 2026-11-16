@@ -712,6 +712,16 @@ describe('PatrolReportService — cache de informe de ronda cerrada (#266)', () 
     expect(Buffer.compare(pdf1, buf.pdf)).toBe(0);
   });
 
+  it('regenera y reemplaza la copia antigua que supera el presupuesto del correo',async()=>{
+    const {service}=armarServicio({}, {raiz:dirEvidencia,reglasInforme:{reportMailMaxAttachmentMB:1}});
+    const first=await recolectar(destino=>service.streamTo('patrol-id',destino,{incluirAnexo:true}));
+    const cache=join(dirEvidencia,'tenant-1','patrol-id','informe-ronda-anexo.pdf');
+    await writeFile(cache,Buffer.concat([first,Buffer.from('\n%'),Buffer.alloc(2*1024*1024,0x78)]));
+    const report=await service.toBuffer('patrol-id',{incluirAnexo:true});
+    expect(report.pdf.length).toBeLessThan(1024*1024);
+    expect(await readFile(cache)).toEqual(report.pdf);
+  });
+
   it('una ronda abierta (en curso) no se guarda en cache', async () => {
     const rondaAbierta = { ...RONDA, status: 'en_curso' };
     const { service } = armarServicio({ encabezado: [rondaAbierta] }, { raiz: dirEvidencia });

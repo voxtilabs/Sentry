@@ -1,6 +1,8 @@
 'use client';
 
-import { FormEvent, useDeferredValue, useMemo, useState, useTransition } from 'react';
+import { operationRequest } from './operations-client';
+
+import { FormEvent, useEffect, useDeferredValue, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CompanyCardSettings } from './company-card-settings';
 import { IconPlus, IconX } from '@tabler/icons-react';
@@ -304,6 +306,10 @@ export function AdminManagement({
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingRut,setEditingRut]=useState('');
+  const [initialRut,setInitialRut]=useState('');
+  const [rutLoaded,setRutLoaded]=useState(false);
+  useEffect(()=>{setEditingRut('');setInitialRut('');setRutLoaded(false);const target=users.find(u=>u.id===editingUserId);if(!target||target.role!=='GUARDIA')return;const c=new AbortController();void operationRequest<{rut:string|null}>(`${apiUrl}/operations/guards/${target.id}`,'GET',undefined,c.signal).then(d=>{setEditingRut(d.rut??'');setInitialRut(d.rut??'');setRutLoaded(true);}).catch(()=>{if(!c.signal.aborted)setMessage('No pudimos cargar el RUT; los otros datos se pueden editar sin cambiarlo.');});return()=>c.abort();},[editingUserId,apiUrl,users]);
   const [userQuery, setUserQuery] = useState('');
   const [userRole, setUserRole] = useState<'all' | TenantUser['role']>('all');
   const deferredUserQuery = useDeferredValue(userQuery.trim().toLocaleLowerCase('es'));
@@ -333,6 +339,7 @@ export function AdminManagement({
     const data = new FormData(form);
     const nfcCardUid = data.get('nfcCardUid')?.toString().trim();
     const response = await apiRequest(`${apiUrl}/admin/users`, 'POST', {
+      rut: data.get('role') === 'GUARDIA' ? data.get('rut') || undefined : undefined,
       givenName: data.get('givenName'),
       familyName: data.get('familyName'),
       email: data.get('email') || undefined,
@@ -375,6 +382,7 @@ export function AdminManagement({
     ) return;
     setMessage(null);
     const response = await apiRequest(`${apiUrl}/admin/users/${user.id}`, 'PATCH', {
+      ...(data.get('role')==='GUARDIA' && rutLoaded && editingRut!==initialRut ? {rut:editingRut}:{}),
       givenName: data.get('givenName'),
       familyName: data.get('familyName'),
       role: data.get('role'),
@@ -468,7 +476,7 @@ export function AdminManagement({
             }}>
               <strong>Límite de guardias alcanzado ({activeGuards}/{guardLimit})</strong>
               <p style={{ margin: '0.25rem 0 0' }}>
-                Has alcanzado el límite de {guardLimit} guardias activos para tu plan actual. Contacta a soporte para ampliar tu suscripción.
+                Has alcanzado el límite de {guardLimit} guardias activos para tu plan actual. Revisa el límite en Reglas de operación y la capacidad del plan.
               </p>
             </div>
           ) : nearLimit ? (
@@ -487,6 +495,7 @@ export function AdminManagement({
           <form className="management-form" onSubmit={createUser}>
             <label>Nombre<input name="givenName" required /></label>
             <label>Apellido<input name="familyName" required /></label>
+            <label>RUT (opcional)<input aria-label="RUT (opcional)" name="rut" maxLength={16} placeholder="12.345.678-5" autoComplete="off" /><small>Para guardias. Puedes completarlo después.</small></label>
             <label>Rol<select name="role"><option value="GUARDIA">Guardia</option><option value="SUPERVISOR">Supervisor</option></select></label>
             <label>Tarjeta NFC (código físico opcional)<input name="nfcCardUid" placeholder="Ej: 04A1B2C3D4" /></label>
             <label>Correo (opcional)<input name="email" type="email" /></label>
@@ -531,6 +540,7 @@ export function AdminManagement({
                 <form className="user-edit-form" onSubmit={(event) => updateUser(event, user)}>
                   <label>Nombre<input name="givenName" defaultValue={user.givenName} required minLength={2} /></label>
                   <label>Apellido<input name="familyName" defaultValue={user.familyName} required minLength={2} /></label>
+                  {user.role==='GUARDIA'&&<label>RUT (opcional)<input aria-label="RUT (opcional)" value={editingRut} onChange={e=>setEditingRut(e.target.value)} maxLength={16} autoComplete="off" disabled={!rutLoaded}/><small>Déjalo vacío para quitarlo.</small></label>}
                   <label>Rol<select name="role" defaultValue={user.role}><option value="GUARDIA">Guardia</option><option value="SUPERVISOR">Supervisor</option></select></label>
                   <label>Tarjeta NFC (UID)<input name="nfcCardUid" defaultValue={user.nfcCardUid ?? ''} placeholder="Ej: 04A1B2C3D4" /></label>
                   <div className="row-actions">

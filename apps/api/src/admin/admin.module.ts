@@ -1,3 +1,5 @@
+import { GuardRegistrationController } from './guard-registration.controller';
+import { OperationsModule } from '../operations/operations.module';
 import { Module } from '@nestjs/common';
 
 import { AuditWriterModule } from '../audit/audit-writer.module';
@@ -27,8 +29,8 @@ import { PuntosSupervisorService } from './puntos-supervisor.service';
 // control de "este recinto es tuyo". Se reusa en vez de copiarlo porque un
 // control de acceso duplicado se arregla una vez y queda mal en el otro lado.
 @Module({
-  imports: [DatabaseModule, AuthModule, EvidenceModule, RulesModule, AuditWriterModule, SupervisorModule],
-  controllers: [AdminController, HorarioHabilController, PuntosSupervisorController],
+  imports: [OperationsModule, DatabaseModule, AuthModule, EvidenceModule, RulesModule, AuditWriterModule, SupervisorModule],
+  controllers: [GuardRegistrationController,AdminController, HorarioHabilController, PuntosSupervisorController],
   providers: [AdminService, HorarioHabilService, PuntosSupervisorService],
 })
 export class AdminModule {}

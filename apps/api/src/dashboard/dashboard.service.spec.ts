@@ -39,3 +39,11 @@ describe('DashboardService', () => {
     expect(manager.query).toHaveBeenCalledWith(expect.any(String), [false, 'admin-id']);
   });
 });
+
+describe('resumen operativo reciente',()=>{
+ it('entrega cifras de las últimas 24 h sin confundirlas con el histórico',async()=>{
+  const manager={query:jest.fn().mockResolvedValueOnce([{site_count:2,guard_count:3,pending_patrol_count:0,active_patrol_count:1,completed_patrol_count:99,completed_last_24h:4,incomplete_last_24h:1,average_last_24h:90}]).mockResolvedValueOnce([])};
+  const result=await new DashboardService({manager} as unknown as TenantContextService).getTenantOverview('admin-id','ADMIN');
+  expect(result.metrics).toMatchObject({completedPatrols:99,completedLast24h:4,incompleteLast24h:1,averageLast24h:90});
+ });
+});

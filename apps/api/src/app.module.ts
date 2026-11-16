@@ -1,3 +1,4 @@
+import { OperationsModule } from './operations/operations.module';
 import { ReferenceModule } from './reference/reference.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { Module } from '@nestjs/common';
@@ -52,6 +53,7 @@ import { SyncModule } from './sync/sync.module';
       validate: validateEnv,
     }),
     DatabaseModule,
+    OperationsModule,
     AdminModule,
     AuditModule,
     BrandingModule,

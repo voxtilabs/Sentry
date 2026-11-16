@@ -1,3 +1,4 @@
+import type { GuardQuotaService } from '../operations/guard-quota.service';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { hasPermission } from '@sentrycore/shared';
 
@@ -67,6 +68,7 @@ function armar(opciones: {
     { revokeAllSessions: jest.fn() } as unknown as AuthService,
     {} as MailService,
     { record } as unknown as AuditService,
+      {companyLimit:async(n:number)=>n,lock:async()=>{},site:async()=>{},activation:async()=>{}} as unknown as GuardQuotaService,
   );
   const service = new PuntosSupervisorService(
     admin,

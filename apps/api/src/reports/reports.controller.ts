@@ -1,3 +1,4 @@
+import { PatrolPdfQuery } from '../operations/operations.dto';
 import { Controller, Get, HttpStatus, Param, Query, Req, Res } from '@nestjs/common';
 import { IsUUID } from 'class-validator';
 import type { Request, Response } from 'express';
@@ -45,16 +46,19 @@ export class ReportsController {
   @Permissions('reports:read')
   async patrolReport(
     @Param() params: PatrolParam,
+    @Query() query: PatrolPdfQuery,
     @Req() request: Autenticado,
     @Res({ passthrough: false }) response: Response,
   ) {
     const modelo = await this.informeRonda.buildModel(params.patrolId, {
       requester: request.user,
+      ...(query.photos !== undefined ? {incluirAnexo:query.photos === 'true'} : {}),
     });
 
     // Sin Content-Length a proposito: el largo no se conoce hasta terminar de
     // dibujar, y conocerlo exigiria justamente bufferizar el PDF entero.
     response.status(HttpStatus.OK).set({
+      'Cache-Control':'private, no-store',
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${modelo.filename}"`,
     });
@@ -74,6 +78,7 @@ export class ReportsController {
       query.from,
       query.to,
       request.user,
+      query.photos === 'true',
     );
     this.responderPdf(response, informe.filename, informe.pdf);
   }
@@ -87,7 +92,8 @@ export class ReportsController {
     response
       .status(HttpStatus.OK)
       .set({
-        'Content-Type': 'application/pdf',
+        'Cache-Control':'private, no-store',
+      'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Length': String(pdf.length),
       })

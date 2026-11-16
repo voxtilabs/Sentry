@@ -1,3 +1,4 @@
+import type { GuardQuotaService } from '../operations/guard-quota.service';
 import type { AuditService } from '../audit/audit.service';
 import type { AuthService } from '../auth/auth.service';
 import type { MailService } from '../auth/mail.service';
@@ -9,6 +10,7 @@ const service = (query: jest.Mock) => new AdminService(
   { revokeAllSessions: jest.fn() } as unknown as AuthService,
   {} as MailService,
   { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService,
+      {companyLimit:async(n:number)=>n,lock:async()=>{},site:async()=>{},activation:async()=>{}} as unknown as GuardQuotaService,
 );
 
 describe('AdminService catálogo de recintos (#101)', () => {
