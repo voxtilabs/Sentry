@@ -1,6 +1,10 @@
 import { PANEL_NAVIGATION, panelViewCopy, resolvePanelView } from './panel-navigation';
 
 describe('arquitectura de vistas del panel (#289)', () => {
+  it.each(['ADMIN','SUPERVISOR'] as const)('%s puede abrir destinatarios desde el menú',role=>{
+    expect(resolvePanelView(role,'correos')).toBe('correos');
+    expect(panelViewCopy(role,'correos').title).toBe('Destinatarios de informes');
+  });
   it.each(['ADMIN', 'SUPERVISOR', 'SUPERADMIN'] as const)(
     '%s tiene vistas únicas y una entrada de resumen',
     (role) => {

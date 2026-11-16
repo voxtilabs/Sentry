@@ -15,7 +15,7 @@
 
 Regresiones reproducidas antes: la traza abierta no hacía nuevas consultas después del montaje; las métricas recientes faltaban; toBuffer reutilizaba una caché que excedía el presupuesto. Se verificaron fallando y luego pasando.
 
-2.772 pruebas unitarias API y 997 web correctas, tipos/lint/build. Navegador local a 1440 y 390 px: actualización sin recarga, todos los informes → filtro → limpiar, descarga con fotos, destinatarios conservados, creación de guardia y RUT opcional en el formulario del administrador; sin desbordamiento horizontal. Las capturas usan datos de prueba y permanecen fuera del repositorio.
+2.772 pruebas unitarias API y 999 web correctas, tipos/lint/build. Navegador local a 1440 y 390 px: actualización sin recarga, todos los informes → filtro → limpiar, descarga con fotos, destinatarios conservados, creación de guardia y RUT opcional en el formulario del administrador; sin desbordamiento horizontal. Las capturas usan datos de prueba y permanecen fuera del repositorio.
 
 PostgreSQL real, rol de aplicación y transacciones revertidas: cifrado/borrado del RUT, aislamiento entre empresas, fechas/paginación, destinatarios que conservan otras reglas, límite de empresa y de recinto. Alta mediante un supervisor real de la transacción: membresía GUARDIA, recinto autorizado y RUT de prueba; la función SQL rechaza un recinto ajeno con 42501. Ninguna ronda, consentimiento o correo creado por estas verificaciones. La integración equivalente queda en operations.integration.spec.ts para la base demo.
 
@@ -31,4 +31,11 @@ El identificador de dispositivo es el mismo en las rondas firmadas; las posicion
 
 RUT se limita a identificación laboral opcional y acceso acotado. Se actualiza la política pública del producto en su rama de landing para conservar las Condiciones del Servicio ya publicadas. La URL histórica /privacidad del portal redirige a la política pública; no se alteran avisos aceptados ni se fuerza una reaceptación por corregir un enlace. Referencia primaria consultada: [Ley 19.628 vigente](https://www.bcn.cl/leychile/N?f=2023-05-09&i=141599) y [Ley 21.719, vigencia desde el 1 de diciembre de 2026](https://www.bcn.cl/balance-legislativo/detalle/ficha_LEY_21719_2024-12-13). Estos controles no sustituyen las decisiones del responsable sobre finalidad y conservación.
 
-Las dos migraciones son aditivas; no cambian datos históricos. Deploy manual API/web solo después de comprobar rondas y cierres pendientes en todas las empresas. No APK/AAB, no Actions y no reinicio de PostgreSQL/Redis. Los cambios de packages/shared requieren dos revisiones humanas antes de integrar el PR a staging.
+Las dos migraciones son aditivas; no cambian datos históricos. Deploy manual API/web después de comprobar rondas y cierres pendientes en todas las empresas. El panel sigue pendiente de publicación mientras hay una ronda activa; la landing legal ya responde públicamente. No APK/AAB, no Actions y no reinicio de PostgreSQL/Redis. El propietario autorizó explícitamente fusionar los PR con su cuenta BrunoAle-115 sin esperar revisores; se integraron los 12 PR pendientes a staging sin conflictos, conservando las protecciones del repositorio y sin nuevas ejecuciones de Actions.
+
+
+## Configuración aplicada sin reiniciar
+
+Se añadieron cuatro guardias faltantes y siete asignaciones de la nómina vigente de CASA MATRIZ y MAQUINARIA, con coincidencias existentes preservadas y sin inventar RUT ni aceptar consentimientos. Se agregó el destinatario adicional solicitado a las tres empresas Janssen y sus cuatro recintos activos, conservando los destinatarios previos y las demás reglas. Los límites de guardias quedan en 20 por empresa y 20 por recinto, configurables por el administrador. Los nombres, credenciales, correos y datos de rondas se guardan solo en el expediente privado de operación.
+
+En la revisión final se reprodujo y corrigió una omisión de navegación: ADMIN tenía el permiso de destinatarios pero carecía del enlace para llegar a la pantalla. La regresión falla antes del enlace y pasa para ADMIN/SUPERVISOR después.
