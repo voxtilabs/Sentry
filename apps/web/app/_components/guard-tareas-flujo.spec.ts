@@ -1,5 +1,5 @@
 import { guardarFoto, leerFoto, _reiniciarMemoria, anotarReciboFotoTarea, listarPendientes } from './guard-photo-store';
-import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
+import { adoptarFotosDeTareas, sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { subirFotoDeTarea, enviarRespuestasDeTareas } from './guard-outbox';
 import { cargarEstadoTareas, guardarEstadoTareas, responderTarea, estadoTareasInicial, _reiniciarTareasDurables,
   rehidratarTareasDurables, recuperarCapturasTareas, modificarEstadoTareas, type ItemTarea } from './guard-tareas-modelo';
@@ -11,6 +11,33 @@ const tarea: ItemTarea = { id: 'tarea', position: 1, label: '¿Acceso cerrado?',
 const registros = { punto: { clientScanId: 'cliente-scan', scanId: 'servidor-scan' } };
 const mapa = new Map<string, string>();
 const ventanaOriginal = globalThis.window;
+
+it('solapa cuatro subidas, conserva el orden de los recibos y no pierde fotos ante una falla', async () => {
+  let liberar!: () => void;
+  const espera = new Promise<void>((r) => { liberar = r; });
+  let activas = 0, maximas = 0;
+  const fotos = Array.from({ length: 9 }, (_, i) => ({ clientPhotoId: `paralela-${i}` }));
+  for (const [i, f] of fotos.entries()) await guardarFoto(f.clientPhotoId, new Blob(['foto']), String(i), 'servidor-scan', 'tarea');
+  subir.mockImplementation(async (_api, _scan, _foto, fecha) => {
+    activas++; maximas = Math.max(maximas, activas);
+    await espera; activas--;
+    return fecha === '3' ? { ok: false } : { ok: true, photoId: `servidor-${fecha}` };
+  });
+  const estado = { ...estadoTareasInicial('ronda'), borradores: {
+    tarea: { value: 'si', clientScanId: 'cliente-scan', fotos },
+  } };
+  const pendiente = adoptarFotosDeTareas('/api', estado, registros);
+  await new Promise<void>((r) => setImmediate(r));
+  const antesDeResponder = activas;
+  liberar();
+  const resultado = await pendiente;
+  expect(antesDeResponder).toBe(4);
+  expect(maximas).toBe(4);
+  expect(resultado.borradores!.tarea!.fotos.map((f) => f.photoId))
+    .toEqual(fotos.map((_, i) => i === 3 ? undefined : `servidor-${i}`));
+  expect(await leerFoto('paralela-3')).toBeDefined();
+  expect(enviar).not.toHaveBeenCalled();
+});
 beforeEach(() => {
   mapa.clear(); _reiniciarMemoria(); _reiniciarTareasDurables(); jest.resetAllMocks();
   Object.defineProperty(globalThis, 'window', { configurable: true, value: Object.assign(new EventTarget(), {

@@ -4,6 +4,7 @@ import { subirFotoPersistida } from './guard-evidence-upload';
 import { cargarEstadoRonda } from './guard-shift-state';
 import { cargarEstadoTareas, modificarEstadoTareas } from './guard-tareas-modelo';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
+import { conSubidasAcotadas } from './guard-upload-pool';
 
 /** Persiste la intención antes de la red; un reinicio conserva el reintento. */
 export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string): Promise<void> {
@@ -11,15 +12,16 @@ export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string): 
   await sincronizar(apiUrl);
   const ronda = cargarEstadoRonda(patrolId);
   const scans = new Map(Object.values(ronda.puntos).map((p) => [p.clientScanId, p.scanId]));
-  for (const foto of await listarPendientes()) {
-    if (foto.destino !== 'escaneo' || (!scans.has(foto.clientEventId) && foto.patrolId !== patrolId)) continue;
+  const fotos = (await listarPendientes()).filter((f) =>
+    f.destino === 'escaneo' && (scans.has(f.clientEventId) || f.patrolId === patrolId));
+  await conSubidasAcotadas(fotos, async (foto) => {
     const id = foto.serverId ?? scans.get(foto.clientEventId);
     if (!id) throw new Error('Espera a que se sincronicen los puntos de la ronda.');
     await fijarServerId(foto.clientEventId, id);
     if (await subirFotoPersistida(apiUrl, foto.clientEventId, id) === false) {
       throw new Error('La foto sigue guardada. Conéctate y vuelve a terminar la ronda para completar el envío.');
     }
-  }
+  });
   await sincronizarTareasGuardadas(apiUrl, patrolId, ronda.puntos);
   const tareas = cargarEstadoTareas(patrolId);
   if (tareas.cola.length || Object.values(tareas.borradores ?? {}).some((b) => b.fotos.length)) {
