@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import { startLivePolling } from './live-polling';
 import { MapaBase } from './mapa-base';
 import { resolverOrigenTiles } from './mapa-tiles';
 import {
@@ -27,11 +28,13 @@ export function RecorridoPatrulla({
   patrolId,
   tileUrl,
   attribution,
+  live = false,
 }: {
   apiUrl: string;
   patrolId: string;
   tileUrl: string | null;
   attribution: string;
+  live?: boolean;
 }) {
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'vacio' | 'error'>('cargando');
   const [trazas, setTrazas] = useState<TrazaMapa[]>([]);
@@ -51,11 +54,10 @@ export function RecorridoPatrulla({
   useEffect(() => {
     let vivo = true;
     setEstado('cargando');
-    void (async () => {
-      try {
+    const load = async (signal?: AbortSignal) => {
         const respuesta = await fetch(`${apiUrl}/geo/patrols/${patrolId}/track`, {
           credentials: 'include',
-          cache: 'no-store',
+          cache: 'no-store', signal,
         });
         if (!respuesta.ok) throw new Error(String(respuesta.status));
         const cuerpo = (await respuesta.json()) as RespuestaTrack;
@@ -77,14 +79,14 @@ export function RecorridoPatrulla({
           min: Math.round(cuerpo.durationMin ?? 0),
         });
         setEstado('listo');
-      } catch {
-        if (vivo) setEstado('error');
-      }
-    })();
-    return () => {
-      vivo = false;
     };
-  }, [apiUrl, patrolId]);
+    const fail = () => { if(vivo) setEstado('error'); };
+    const polling = live ? startLivePolling({load, onData:()=>{}, onError:fail, isVisible:()=>document.visibilityState !== 'hidden'}) : null;
+    if(!live) void load().catch(fail);
+    const refresh=()=>{void polling?.refresh();};
+    document.addEventListener('visibilitychange',refresh);window.addEventListener('online',refresh);
+    return () => { vivo = false;polling?.stop();document.removeEventListener('visibilitychange',refresh);window.removeEventListener('online',refresh); };
+  }, [apiUrl, patrolId, live]);
 
   if (estado === 'cargando') {
     return <p className="live-map-empty">Cargando el recorrido…</p>;

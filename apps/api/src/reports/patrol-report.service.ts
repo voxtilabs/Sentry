@@ -212,7 +212,7 @@ export class PatrolReportService {
     // de la empresa: antes se incluia SIEMPRE y prender/apagar el modulo no hacia
     // nada. El correo usa el mismo default; solo una solicitud explícita de
     // versión liviana puede omitir las imágenes.
-    const incluirAnexo = opciones.incluirAnexo ?? (await this.features.isEnabled('photoAppendix'));
+    const incluirAnexo = opciones.incluirAnexo !== false && (await this.features.isEnabled('photoAppendix'));
 
     const encabezados = await this.tenantContext.manager.query<EncabezadoRondaRow[]>(
       `
@@ -571,8 +571,11 @@ export class PatrolReportService {
 
     if (cerrada && rutaCache) {
       try {
-        const bufferEnDisco = await readFile(rutaCache);
-        if (bufferEnDisco.length > 0) {
+        const rules=await this.rules.effective();
+        const budget=rules.reportMailMaxAttachmentMB*1024*1024;
+        const info=await stat(rutaCache);
+        const bufferEnDisco=info.size>0&&info.size<=budget?await readFile(rutaCache):null;
+        if (bufferEnDisco && bufferEnDisco.length > 0) {
           return {
             pdf: bufferEnDisco,
             filename: modelo.filename,

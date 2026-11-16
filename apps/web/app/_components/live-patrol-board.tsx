@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { LiveGuardMap, type LivePosition } from './live-guard-map';
+import { startLivePolling } from './live-polling';
 import { RecorridoPatrulla } from './recorrido-patrulla';
 
 interface LivePatrol {
@@ -11,7 +12,7 @@ interface LivePatrol {
   startedAt: string | null; expectedCheckpoints: number; scannedCheckpoints: number;
   progressPct: number; lastCheckpointName: string | null; lastScanAt: string | null;
   gpsEnabled: boolean;
-  position: null | { latitude: number; longitude: number; recordedAt: string; accuracyM: number | null };
+  position: null | { latitude: number; longitude: number; recordedAt: string; accuracyM: number | null;maxAccuracyM?:number|null };
 }
 interface LiveResponse { refreshedAt: string; pollAfterMs: number; patrols: LivePatrol[] }
 
@@ -27,33 +28,21 @@ export function LivePatrolBoard({
   const [data, setData] = useState<LiveResponse | null>(null);
   const [error, setError] = useState('');
   const [recorridoAbierto, setRecorridoAbierto] = useState<string | null>(null);
-  const inFlight = useRef(false);
-
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    try {
-      const response = await fetch(`${apiUrl}/supervisor/live`, {
-        credentials: 'include', cache: 'no-store', signal,
-      });
-      if (!response.ok) throw new Error(`No pudimos actualizar el tablero (${response.status}).`);
-      setData(await response.json() as LiveResponse); setError('');
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === 'AbortError') return;
-      setError(cause instanceof Error ? cause.message : 'No pudimos actualizar el tablero.');
-    } finally { inFlight.current = false; }
-  }, [apiUrl]);
-
   useEffect(() => {
-    const controller = new AbortController();
-    void refresh(controller.signal);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh(controller.signal);
-    }, 5_000);
-    const onVisibility = () => { if (document.visibilityState === 'visible') void refresh(controller.signal); };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => { controller.abort(); window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); };
-  }, [refresh]);
+    const polling=startLivePolling<LiveResponse>({
+      load:async(signal)=>{
+        const response=await fetch(`${apiUrl}/supervisor/live`,{credentials:'include',cache:'no-store',signal});
+        if(!response.ok)throw new Error(response.status===401?'Tu sesión necesita renovarse. Vuelve a ingresar si el aviso persiste.':`No pudimos actualizar el tablero (${response.status}).`);
+        return response.json() as Promise<LiveResponse>;
+      },
+      onData:(next)=>{setData(next);setError('');},
+      onError:()=>setError('No pudimos actualizar. Reintentaremos automáticamente; los datos visibles pueden estar atrasados.'),
+      isVisible:()=>document.visibilityState !== 'hidden',
+    });
+    const refresh=()=>{void polling.refresh();};
+    document.addEventListener('visibilitychange',refresh);window.addEventListener('online',refresh);window.addEventListener('focus',refresh);
+    return()=>{polling.stop();document.removeEventListener('visibilitychange',refresh);window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
+  },[apiUrl]);
 
   const positions = useMemo<LivePosition[]>(() => (data?.patrols ?? []).flatMap((patrol) =>
     patrol.position ? [{ patrolId: patrol.id, guardName: patrol.guardName, siteName: patrol.siteName, ...patrol.position }] : [],
@@ -83,12 +72,12 @@ export function LivePatrolBoard({
             {patrol.position
               ? `GPS ${clock(patrol.position.recordedAt)}${
                   patrol.position.accuracyM
-                    ? patrol.position.accuracyM > 50
-                      ? ` · ±${Math.round(patrol.position.accuracyM)} m (coordenada estimada)`
+                    ? patrol.position.accuracyM > (patrol.position.maxAccuracyM??50)
+                      ? ` · ±${Math.round(patrol.position.accuracyM)} m (fuera de precisión para medir)`
                       : ` · ±${Math.round(patrol.position.accuracyM)} m`
                     : ''
                 }`
-              : 'GPS habilitado · Sin señal GPS (subterráneo o sin cobertura)'}
+              : 'GPS habilitado · Aún no se recibe una posición para esta ronda'}
           </small>
         )}
         {patrol.gpsEnabled && (
@@ -103,7 +92,7 @@ export function LivePatrolBoard({
             {recorridoAbierto === patrol.id ? 'Ocultar recorrido' : 'Ver recorrido'}
           </button>
         )}
-        {recorridoAbierto === patrol.id && <RecorridoPatrulla apiUrl={apiUrl} patrolId={patrol.id} tileUrl={tileUrl} attribution={attribution} />}
+        {recorridoAbierto === patrol.id && <RecorridoPatrulla live apiUrl={apiUrl} patrolId={patrol.id} tileUrl={tileUrl} attribution={attribution} />}
       </article>)}
     </div>
     {data && !data.patrols.length && <div className="dashboard-empty"><strong>No hay rondas activas</strong><span>Las rondas pendientes o en curso aparecerán aquí automáticamente.</span></div>}

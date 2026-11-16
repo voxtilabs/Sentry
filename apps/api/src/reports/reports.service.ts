@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { FeatureFlagsService } from '../rules/feature-flags.service';
+import { leerEvidencia, MOTIVO_TEXTO } from './evidence-reader';
+import { fotoParaPdf, presupuestoFotoPdf } from './pdf-photo';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 
 import type { AuthenticatedUser } from '../auth/auth.guard';
@@ -74,6 +78,8 @@ export class ReportsService {
     private readonly tenantContext: TenantContextService,
     private readonly rules: RulesService,
     private readonly branding: BrandingService,
+    private readonly config: ConfigService = new ConfigService(),
+    @Optional() private readonly features?: FeatureFlagsService,
   ) {}
 
   /**
@@ -86,13 +92,14 @@ export class ReportsService {
     from?: string,
     to?: string,
     requester: Pick<AuthenticatedUser, 'sub' | 'role'> | null = null,
+    includePhotos = false,
   ): Promise<SiteSummaryReport> {
-    const hasta = to ? new Date(to) : new Date();
-    const desde = from ? new Date(from) : new Date(hasta.getTime() - 30 * 24 * 3_600_000);
+    let hasta = to ? new Date(to) : new Date();
+    let desde = from ? new Date(from) : new Date(hasta.getTime() - 30 * 24 * 3_600_000);
     if (Number.isNaN(desde.getTime()) || Number.isNaN(hasta.getTime())) {
       throw new BadRequestException('El rango de fechas no es valido');
     }
-    if (desde >= hasta) {
+    if (desde >= hasta && from?.length !== 10 && to?.length !== 10) {
       throw new BadRequestException('`from` debe ser anterior a `to`');
     }
 
@@ -112,6 +119,14 @@ export class ReportsService {
     const sitio = sitios[0];
     if (!sitio) throw new NotFoundException('La sucursal no existe');
     await this.verificarAlcance(siteId, requester);
+    if(from?.length===10||to?.length===10){
+      const range=await this.tenantContext.manager.query<Array<{from_at:Date;to_at:Date}>>(`SELECT CASE WHEN length($1::text)=10 THEN ($1::date::timestamp AT TIME ZONE $3) ELSE $1::timestamptz END AS from_at,
+        CASE WHEN length($2::text)=10 THEN (($2::date+1)::timestamp AT TIME ZONE $3) ELSE $2::timestamptz END AS to_at`,[from??desde.toISOString(),to??hasta.toISOString(),sitio.timezone]);
+      desde=new Date(range[0]!.from_at);hasta=new Date(range[0]!.to_at);
+      if(desde>=hasta)throw new BadRequestException('El rango de fechas no es válido.');
+    }
+    if(includePhotos && !(await this.features?.isEnabled('photoAppendix')))throw new ForbiddenException('El anexo fotográfico no está habilitado para esta empresa.');
+
 
     const rondas = await this.tenantContext.manager.query<RondaPeriodoRow[]>(
       `
@@ -169,11 +184,15 @@ export class ReportsService {
       [siteId, desde, hasta],
     );
 
-    const reglas = await this.rules.effective();
+    const fotos=includePhotos ? await this.tenantContext.manager.query<Array<{id:string;storage_path:string;mime_type:string;checkpoint_name:string;scheduled_start_at:Date;guard_name:string}>>(`SELECT ph.id,ph.storage_path,ph.mime_type,c.name AS checkpoint_name,p.scheduled_start_at,trim(u.given_name||' '||u.family_name) AS guard_name
+      FROM scan_photos ph JOIN patrols p ON p.id=ph.patrol_id JOIN checkpoints c ON c.id=ph.checkpoint_id JOIN users u ON u.id=p.guard_id
+      WHERE p.site_id=$1 AND p.scheduled_start_at >= $2 AND p.scheduled_start_at < $3 ORDER BY p.scheduled_start_at,ph.created_at,ph.id LIMIT 501`,[siteId,desde,hasta]) : [];
+    if(fotos.length>500)throw new BadRequestException('Para incluir fotos, elige un período con hasta 500 imágenes. El resumen sin fotos incluye todo el período.');
+    const reglas = await this.rules.effective({siteId});
     // La marca del tenant manda sobre el nombre legal, igual que en el informe
     // de ronda: los dos documentos los ve el mismo cliente final.
     const marca = await this.branding.forDocuments();
-    const pdf = await this.renderizar((doc) => {
+    const pdf = await this.renderizar(async (doc) => {
       this.dibujarResumenSitio(
         doc,
         {
@@ -190,6 +209,19 @@ export class ReportsService {
         hasta,
         reglas.complianceThreshold,
       );
+      if(includePhotos && !fotos.length){doc.addPage();dibujarTituloSeccion(doc,'Anexo fotográfico');doc.text('Las rondas de este período no tienen fotografías registradas.');}
+      for(const [index,foto] of fotos.entries()){
+        const slot=index%2;if(slot===0){doc.addPage();dibujarTituloSeccion(doc,'Anexo fotográfico del período');}
+        const x=doc.page.margins.left,y=slot===0?105:435,width=anchoUtil(doc);
+        const lectura=await leerEvidencia(this.config.getOrThrow<string>('EVIDENCE_PATH'),foto.storage_path,foto.mime_type,{maxBytes:reglas.photoMaxSizeMB*1024*1024});
+        if(lectura.ok){
+          const image=await fotoParaPdf(lectura.contenido,presupuestoFotoPdf(reglas.reportMailMaxAttachmentMB*1024*1024,fotos.length));
+          try{doc.image(image,x,y,{fit:[width,240],align:'center',valign:'center'});}catch{doc.fontSize(10).text('Imagen ilegible.',x,y);}
+        } else doc.fontSize(10).text(MOTIVO_TEXTO[lectura.motivo],x,y);
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(PALETA.tinta).text(recortar(foto.checkpoint_name,80),x,y+246,{width});
+        doc.font('Helvetica').fontSize(8).text(`${formatearFechaHora(foto.scheduled_start_at,sitio.timezone)} · ${foto.guard_name}`,x,y+262,{width});
+        if(slot===1||index===fotos.length-1)dibujarPie(doc,sitio.timezone,marca.mailFooter);
+      }
     });
 
     return {
@@ -222,7 +254,7 @@ export class ReportsService {
    * se arma en memoria sin problema. El informe de ronda, que si puede traer
    * decenas de fotos, va por streaming — ver patrol-report.renderer.ts.
    */
-  private renderizar(dibujar: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
+  private renderizar(dibujar: (doc: PDFKit.PDFDocument) => void | Promise<void>): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
       const partes: Buffer[] = [];
@@ -230,8 +262,7 @@ export class ReportsService {
       doc.on('end', () => resolve(Buffer.concat(partes)));
       doc.on('error', (error: Error) => reject(error));
       try {
-        dibujar(doc);
-        doc.end();
+        Promise.resolve(dibujar(doc)).then(()=>doc.end()).catch(reject);
       } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)));
       }

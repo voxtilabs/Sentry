@@ -15,6 +15,9 @@ const nextConfig: NextConfig = {
   // @sentrycore/shared es un paquete del workspace sin publicar: Next tiene que
   // transpilarlo en vez de tratarlo como dependencia externa ya compilada.
   transpilePackages: ['@sentrycore/shared'],
+  async redirects() {
+    return [{source:'/privacidad',destination:'https://sentry.voxtilabs.cl/privacidad/',permanent:false}];
+  },
   async headers() {
     return [
       {

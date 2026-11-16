@@ -1,3 +1,4 @@
+import { GuardQuotaService } from '../operations/guard-quota.service';
 import {
   BadRequestException,
   ConflictException,
@@ -170,6 +171,7 @@ export class AdminService {
     private readonly auth: AuthService,
     private readonly mail: MailService,
     private readonly audit: AuditService,
+    private readonly quotaLimits:GuardQuotaService,
   ) {}
 
   async listUsers() {
@@ -303,7 +305,7 @@ export class AdminService {
     const row = rows[0];
     const planKey = row?.plan_key ?? 'starter';
     const planQuota = resolvePlanQuota(planKey);
-    const limit = planQuota.maxActiveGuards;
+    const limit = await this.quotaLimits.companyLimit(planQuota.maxActiveGuards);
     const activeGuardsCount = Number(row?.active_guards ?? 0);
     return {
       planKey,
@@ -316,10 +318,21 @@ export class AdminService {
   }
 
   async assertGuardQuotaAvailable(): Promise<void> {
+    await this.quotaLimits.lock();
     const quota = await this.getTenantQuota();
     if (quota.isLimitReached) {
-      throw new BadRequestException(formatQuotaExceededMessage(quota.maxActiveGuards));
+      const planLimit=resolvePlanQuota(quota.planKey).maxActiveGuards;
+      throw new BadRequestException(quota.maxActiveGuards<planLimit?`Esta empresa alcanzó su límite configurado de ${quota.maxActiveGuards} guardias activos. El administrador puede ajustarlo en Reglas, dentro de la capacidad del plan.`:formatQuotaExceededMessage(quota.maxActiveGuards));
     }
+  }
+
+  /** Enrollment from a supervisor always creates a guard in an authorized site. */
+  async createSiteGuard(input: {givenName:string;familyName:string;username:string;password:string},siteId:string){
+    await this.assertGuardQuotaAvailable();
+    await this.quotaLimits.site(siteId);
+    const id=randomUUID(),passwordHash=await hash(input.password,{type:argon2id,memoryCost:65536,timeCost:3,parallelism:1});
+    await this.tenantContext.manager.query('SELECT guard_register_in_site($1,$2,$3,$4,$5,$6)',[id,input.username,passwordHash,input.givenName,input.familyName,siteId]);
+    return {id,invitationSent:false};
   }
 
   async createUser(input: CreateTenantUserDto) {
@@ -421,6 +434,7 @@ export class AdminService {
       );
       if (user[0] && !user[0].is_active && user[0].role_key === 'GUARDIA') {
         await this.assertGuardQuotaAvailable();
+        await this.quotaLimits.activation(userId);
       }
     }
 
@@ -792,6 +806,7 @@ export class AdminService {
     const idCol = membership.role_key === 'SUPERVISOR' ? 'supervisor_id' : 'guard_id';
 
     if (assigned) {
+      if(membership.role_key==='GUARDIA')await this.quotaLimits.site(siteId,userId);
       const result = await this.tenantContext.manager.query<Array<{ site_id: string }>>(
         `INSERT INTO ${table} (tenant_id, ${idCol}, site_id)
          SELECT app_tenant_id(), membership.user_id, site.id

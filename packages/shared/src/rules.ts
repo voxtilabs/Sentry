@@ -18,6 +18,8 @@ export const TASK_PHOTO_COUNT_RANGE = { min: 1, max: 10 } as const;
  * Ver issue #16 (Motor de reglas y funciones configurables por tenant).
  */
 export const patrolRulesSchema = z.object({
+  guardCompanyLimit: z.number().int().min(1).max(500).default(20),
+  guardSiteLimit: z.number().int().min(1).max(500).default(20),
   /** Bajo este porcentaje de cumplimiento, el informe va DIRECTO al admin. */
   complianceThreshold: z.number().int().min(0).max(100).default(70),
 
@@ -481,6 +483,7 @@ export const RULE_UNITS = [
   'attempts',
   'operations',
   'rows',
+  'guards',
   'kmh',
 ] as const;
 export type RuleUnit = (typeof RULE_UNITS)[number];
@@ -496,6 +499,7 @@ export const RULE_UNIT_LABELS: Record<RuleUnit, string> = {
   attempts: 'intentos',
   operations: 'operaciones',
   rows: 'filas',
+  guards:'guardias',
   kmh: 'km/h',
 };
 
@@ -564,6 +568,8 @@ const HASTA_RECINTO = ['platform', 'tenant', 'site'] as const;
 const SOLO_EMPRESA = ['platform', 'tenant'] as const;
 
 export const PATROL_RULE_CATALOG: RuleCatalog = {
+  guardCompanyLimit: {key:'guardCompanyLimit',label:'Límite de guardias por empresa',description:'Máximo de guardias activos, dentro de la capacidad del plan. El administrador puede modificarlo.',type:'integer',unit:'guards',min:1,max:500,default:DEFAULT_PATROL_RULES.guardCompanyLimit,scopes:['platform','tenant'],group:'operacion'},
+  guardSiteLimit: {key:'guardSiteLimit',label:'Límite de guardias por recinto',description:'Máximo de guardias activos asignados a cada sucursal o recinto.',type:'integer',unit:'guards',min:1,max:500,default:DEFAULT_PATROL_RULES.guardSiteLimit,scopes:HASTA_RECINTO,group:'operacion'},
   complianceThreshold: {
     key: 'complianceThreshold',
     label: 'Umbral de cumplimiento',

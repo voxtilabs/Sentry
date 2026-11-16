@@ -87,6 +87,7 @@ async function pedir<T>(ruta: string, parametros?: URLSearchParams): Promise<Res
 
 export async function SupervisorPanel({
   searchParams,
+  showReports = true,
 }: {
   /**
    * Los `searchParams` de la pagina. Se aceptan resueltos o como promesa —que es
@@ -94,6 +95,7 @@ export async function SupervisorPanel({
    * panel abre igual con el ultimo mes; lo que se pierde son los filtros.
    */
   searchParams?: ParametrosUrl | Promise<ParametrosUrl>;
+  showReports?: boolean;
 }) {
   const parametros: ParametrosUrl = (await searchParams) ?? {};
   const texto = (clave: string): string | undefined => {
@@ -212,7 +214,7 @@ export async function SupervisorPanel({
   if (recinto) rutasParams.set('siteId', normalizarUuid(recinto.id));
 
   const [rondas, rutas] = await Promise.all([
-    recinto
+    recinto && showReports
       ? pedir<RondaSupervisor[]>(`/supervisor/sites/${recinto.id}/patrols`)
       : Promise.resolve<ResultadoSupervisor<RondaSupervisor[]>>({ estado: 'ok', datos: [] }),
     recinto && dentroDeTopeRutas
@@ -293,14 +295,14 @@ export async function SupervisorPanel({
 
       <div className="stats-grid">
         <SupervisorRutas resultado={rutas} recinto={recinto} />
-        <SupervisorInformes
+        {showReports && <SupervisorInformes
           resultado={rondas}
           recinto={recinto}
           recintos={opciones}
           rango={{ desde: rango.desde, hasta: rango.hasta, sucursal: sucursalPedida }}
           parametrosUrl={actuales}
           apiUrl={apiPublica()}
-        />
+        />}
       </div>
     </section>
   );

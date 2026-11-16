@@ -17,6 +17,7 @@ export interface RondaInformable {
    * lo que faltaba era no tirarlo al armar esta lista.
    */
   compliancePct?: number | null;
+  timezone?:string;
 }
 
 interface FotoMeta {
@@ -45,10 +46,12 @@ const ESTADO_TEXTO: Record<string, string> = {
   pending: 'Pendiente',
   expired: 'Vencida',
   missed: 'No realizada',
+  completada:'Completada',en_curso:'En curso',pendiente:'Pendiente',vencida:'Vencida',incompleta:'Incompleta',pausada:'Pausada',
 };
 
-function fecha(iso: string): string {
+function fecha(iso: string,timezone?:string): string {
   return new Date(iso).toLocaleString('es-CL', {
+    timeZone:timezone,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -164,7 +167,7 @@ export function InformesPanel({
                   <strong>{ronda.siteName}</strong>
                   <span>{ronda.routeName}</span>
                   <small>
-                    {fecha(ronda.scheduledStartAt)} ·{' '}
+                    {fecha(ronda.scheduledStartAt,ronda.timezone)} ·{' '}
                     {ESTADO_TEXTO[ronda.status] ?? ronda.status}
                     {/*
                       * El cumplimiento va aca y NO con semaforo de colores: el
@@ -187,13 +190,14 @@ export function InformesPanel({
                 <div className="informes-acciones">
                   <a
                     className="informes-descarga"
-                    href={`${apiUrl}/reports/patrols/${ronda.id}`}
+                    href={`${apiUrl}/reports/patrols/${ronda.id}?photos=true`}
                     // El navegador manda la cookie HttpOnly solo; con fetch no
                     // podriamos leerla ni adjuntarla.
                     download={`informe-${ronda.id}.pdf`}
                   >
-                    Descargar PDF
+                    PDF con fotos
                   </a>
+                  <a className="informes-pdf-boton" href={`${apiUrl}/reports/patrols/${ronda.id}?photos=false`} target="_blank" rel="noreferrer">PDF sin fotos</a>
                   <button
                     className="informes-anexo-boton"
                     type="button"

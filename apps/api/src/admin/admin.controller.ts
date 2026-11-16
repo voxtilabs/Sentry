@@ -1,3 +1,4 @@
+import { GuardPersonalService, normalizeGuardRut } from '../operations/guard-personal.service';
 import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { IsBoolean, IsUUID } from 'class-validator';
 import type { Request } from 'express';
@@ -56,7 +57,7 @@ type Autenticado = Request & { user: AuthenticatedUser };
 @Controller('admin')
 @TenantScope()
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly personal: GuardPersonalService) {}
 
   @Get('company-card')
   @Permissions('tenant:users:manage')
@@ -108,14 +109,21 @@ export class AdminController {
 
   @Post('users')
   @Permissions('tenant:users:manage')
-  createUser(@Body() input: CreateTenantUserDto) {
-    return this.admin.createUser(input);
+  async createUser(@Body() input: CreateTenantUserDto,@Req() req:Autenticado) {
+    if(input.rut !== undefined) normalizeGuardRut(input.rut);
+    const result=await this.admin.createUser(input);
+    if(input.rut?.trim() && input.role==='GUARDIA') await this.personal.write(result.id,input.rut,req.user);
+    return result;
   }
 
   @Patch('users/:userId')
   @Permissions('tenant:users:manage')
-  updateUser(@Param() params: UserParam, @Body() input: UpdateTenantUserDto) {
-    return this.admin.updateUser(params.userId, input);
+  async updateUser(@Param() params: UserParam, @Body() input: UpdateTenantUserDto,@Req() req:Autenticado) {
+    if(input.rut !== undefined) normalizeGuardRut(input.rut);
+    const result=await this.admin.updateUser(params.userId,input);
+    if(input.rut !== undefined && input.role==='GUARDIA')await this.personal.write(params.userId,input.rut,req.user);
+    if(input.role!=='GUARDIA')await this.personal.clearForRoleChange(params.userId,req.user);
+    return result;
   }
 
   @Patch('users/:userId/active')

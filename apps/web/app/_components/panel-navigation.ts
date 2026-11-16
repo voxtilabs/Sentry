@@ -60,6 +60,8 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
         { view: 'monitoreo', icon: '●', label: 'Monitoreo en vivo' },
         { view: 'visitas', icon: '+', label: 'Registro de visitas' },
         { view: 'informes', icon: '▤', label: 'Informes' },
+        { view: 'correos', icon: '✉', label: 'Destinatarios de informes' },
+        { view: 'personas', icon: '♙', label: 'Guardias' },
       ],
     },
     {
@@ -102,6 +104,8 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },
     },
     SUPERVISOR: {
+      correos: {title:'Destinatarios de informes',subtitle:'Configura los correos de tus recintos asignados.'},
+      personas: {title:'Guardias de mis recintos',subtitle:'Completa la identificación opcional del personal asignado.'},
       resumen: { title: 'Mis recintos', subtitle: 'Estado actual de los recintos que tienes asignados.' },
       planificacion: { title: 'Planificación', subtitle: 'Programa turnos, recorridos y tareas de terreno.' },
       'ronda-patron': { title: 'Ronda patrón', subtitle: 'Registra el recorrido de referencia y la posición GPS de cada NFC.' },

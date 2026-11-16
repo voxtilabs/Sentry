@@ -1,0 +1,7 @@
+import { startLivePolling } from './live-polling';
+describe('live polling',()=>{
+ beforeEach(()=>jest.useFakeTimers());afterEach(()=>jest.useRealTimers());
+ it('vuelve a pedir la traza y publica datos nuevos sin recargar la página',async()=>{const load=jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);const data=jest.fn();const p=startLivePolling({load,onData:data,onError:jest.fn()});await jest.advanceTimersByTimeAsync(5000);expect(data.mock.calls).toEqual([[1],[2]]);p.stop();});
+ it('no superpone consultas ni mantiene una consulta atascada después del timeout',async()=>{const load=jest.fn((signal:AbortSignal)=>new Promise<number>((_,reject)=>signal.addEventListener('abort',()=>reject(new Error('timeout')))));const error=jest.fn();const p=startLivePolling({load,onData:jest.fn(),onError:error});await jest.advanceTimersByTimeAsync(11000);expect(load).toHaveBeenCalledTimes(1);await jest.advanceTimersByTimeAsync(5000);expect(error).toHaveBeenCalledTimes(1);expect(load).toHaveBeenCalledTimes(2);p.stop();});
+ it('suspende en pestaña oculta y no publica resultados después de desmontarse',async()=>{let visible=false;const load=jest.fn().mockResolvedValue(1),data=jest.fn();const p=startLivePolling({load,onData:data,onError:jest.fn(),isVisible:()=>visible});await jest.advanceTimersByTimeAsync(5000);expect(load).not.toHaveBeenCalled();visible=true;await p.refresh();expect(data).toHaveBeenCalledTimes(1);p.stop();await jest.advanceTimersByTimeAsync(20000);expect(load).toHaveBeenCalledTimes(1);});
+});

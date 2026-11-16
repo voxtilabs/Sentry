@@ -1449,3 +1449,19 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .company-code-settings { padding-bottom: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--border, #d8dee5); }
 .company-code-generated { display: grid; gap: 12px; margin: 16px 0; }
 .company-code-value { display: block; font: 600 1.6rem/1.5 ui-monospace, monospace; letter-spacing: .1em; user-select: all; overflow-wrap: anywhere; }
+
+/* Operational controls keep the same administrative design on small screens. */
+.operations-filters,.operations-summary,.operations-inline{display:flex;gap:1rem;align-items:end;flex-wrap:wrap;margin-block:1rem;}
+.operations-filters label,.operations-summary label,.operations-inline label{display:grid;gap:.4rem;flex:1 1 170px;}
+.operations-filters select,.operations-filters input,.operations-summary select,.operations-inline input{width:100%;min-height:44px;}
+.operations-summary{border-top:1px solid var(--border,#ddd);padding-top:1rem;}.operations-summary .form-note{flex-basis:100%;}
+.operations-recipients{padding:0;list-style:none;}.operations-recipients li{display:flex;gap:1rem;align-items:center;justify-content:space-between;padding:.55rem 0;border-bottom:1px solid var(--border,#ddd);overflow-wrap:anywhere;}
+.operations-personnel{display:grid;grid-template-columns:minmax(200px,1fr) minmax(220px,1fr);gap:1.5rem;margin-top:1rem;}.operations-personnel ul{list-style:none;padding:0;max-height:28rem;overflow:auto;}.operations-personnel li{border-bottom:1px solid var(--border,#ddd);}.operations-personnel li button{width:100%;padding:.8rem;text-align:left;}.operations-personnel small{display:block;font-weight:400;color:var(--text-muted,#606570);margin-top:.3rem;}
+@media(max-width:640px){.operations-personnel{grid-template-columns:1fr;}.operations-filters button,.operations-summary button,.operations-inline button{width:100%;}.operations-filters label{flex-basis:100%;}}
+.operations-reports label,.operations-contacts label,.operations-personnel-search{font-size:.82rem;font-weight:600;color:var(--ink);}
+.operations-filters input,.operations-filters select,.operations-summary select,.operations-contacts select,.operations-contacts input,.operations-personnel-search input{font:inherit;color:var(--ink);border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:.65rem .75rem;min-height:44px;width:100%;}
+.operations-filters input:focus,.operations-filters select:focus,.operations-summary select:focus,.operations-contacts input:focus,.operations-contacts select:focus,.operations-personnel-search input:focus{outline:2px solid var(--blue);outline-offset:2px;}
+.operations-personnel-search{display:grid;gap:.4rem;margin-top:1.2rem;}
+.operations-reports>.row-actions{gap:.75rem;flex-wrap:wrap;margin-top:1rem;font-size:.82rem;color:var(--muted);}
+.operations-reports .informes-pdf-boton{border:1px solid var(--line);border-radius:8px;padding:.5rem .75rem;font-size:.85rem;}
+.operations-personnel .management-form{margin-bottom:1.25rem;}

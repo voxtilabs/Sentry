@@ -129,7 +129,7 @@ describe('LiveMap - renderPositions', () => {
     expect(mockMarker.bindPopup).toHaveBeenCalled();
   });
 
-  it('dibuja marcador con estilo de señal estimada / subterráneo cuando accuracyM > 50', () => {
+  it('advierte precisión insuficiente sin atribuir una causa al receptor', () => {
     const hasAutoFit = { current: false };
     renderPositions(
       mockLeaflet,
@@ -155,7 +155,13 @@ describe('LiveMap - renderPositions', () => {
       }),
     );
     const popupHtml = mockMarker.bindPopup.mock.calls[0][0];
-    expect(popupHtml).toContain('Señal estimada / subterráneo');
+    expect(popupHtml).toContain('Precisión insuficiente para medir');
+  });
+
+  it('aplica el máximo de precisión del recinto aunque sea menor a 50 metros',()=>{
+    renderPositions(mockLeaflet,mockMap,mockLayer,[{...guardiaOptimo,accuracyM:30,maxAccuracyM:20}],{current:false},true);
+    expect(mockLeaflet.circleMarker).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({fillColor:'#f59f00'}));
+    expect(mockMarker.bindPopup.mock.calls[0][0]).toContain('Precisión insuficiente para medir');
   });
 
   it('auto-fit solo se ejecuta en la carga inicial y no en refrescos periódicos para evitar parpadeo', () => {

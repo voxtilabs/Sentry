@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import type { LayerGroup, Map as LeafletMap } from 'leaflet';
 import { formatearAtribucionTileLayer, resolverOrigenTiles } from './mapa-tiles';
 import { COLOR_SECUNDARIO_MARCA } from './mapa-colores';
-import { esCoordenadaValida, formatearPrecisionGps, UMBRAL_GPS_IMPRECISO_M } from './mapa-modelo';
+import { esCoordenadaValida, UMBRAL_GPS_IMPRECISO_M } from './mapa-modelo';
 
 export interface LivePosition {
   patrolId: string;
@@ -14,6 +14,7 @@ export interface LivePosition {
   longitude: number;
   recordedAt: string;
   accuracyM: number | null;
+  maxAccuracyM?:number|null;
 }
 
 export function LiveGuardMap({
@@ -108,7 +109,7 @@ export function renderPositions(
     bounds.extend(point);
 
     const isEstimated =
-      typeof position.accuracyM === 'number' && position.accuracyM > UMBRAL_GPS_IMPRECISO_M;
+      typeof position.accuracyM === 'number' && position.accuracyM > (position.maxAccuracyM??UMBRAL_GPS_IMPRECISO_M);
 
     // Si tiene radio de precisión, dibujamos un círculo tenue de incertidumbre
     if (typeof position.accuracyM === 'number' && position.accuracyM > 0) {
@@ -132,9 +133,9 @@ export function renderPositions(
     });
 
     const horaTexto = formatearHoraLocal(position.recordedAt);
-    const precisionTexto = formatearPrecisionGps(position.accuracyM);
+    const precisionTexto=typeof position.accuracyM==='number'?`±${Math.round(position.accuracyM)} m`:'Precisión no informada';
     const badgeHtml = isEstimated
-      ? `<span style="display:inline-block;padding:2px 6px;margin-top:3px;border-radius:4px;background:#fff9db;color:#916217;font-size:10px;font-weight:700;">Señal estimada / subterráneo</span><br>`
+      ? `<span style="display:inline-block;padding:2px 6px;margin-top:3px;border-radius:4px;background:#fff9db;color:#916217;font-size:10px;font-weight:700;">Precisión insuficiente para medir</span><br>`
       : '';
 
     marker.bindPopup(
