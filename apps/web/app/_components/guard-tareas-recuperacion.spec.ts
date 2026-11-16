@@ -44,6 +44,18 @@ describe('recuperación tras cerrar una ronda y volver a la portada sin asignaci
     expect(pedir).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(estados)).toBe(antes);
   });
+  it('recupera el alias del punto de una ronda anterior sin reemplazar los ids reales', async () => {
+    pedir.mockResolvedValue(new Response(JSON.stringify({ syncScans: [
+      { checkpointId: 'punto', clientScanId: 'original', scanId: 'primero' },
+      { checkpointId: 'punto', clientScanId: 'repetido', scanId: 'segundo' },
+    ] })));
+    await recuperarTareasGuardadas('/api', [pendiente(propia)]);
+    expect(sincronizar).toHaveBeenCalledWith('/api', propia, {
+      original: { checkpointId: 'punto', clientScanId: 'original', scanId: 'primero' },
+      repetido: { checkpointId: 'punto', clientScanId: 'repetido', scanId: 'segundo' },
+      'desde-servidor:punto': { checkpointId: 'punto', clientScanId: 'desde-servidor:punto', scanId: 'primero' },
+    });
+  });
   it('el panel de la ronda activa conserva su propio proceso de sincronización', async () => {
     await recuperarTareasGuardadas('/api', [pendiente(propia)], propia);
     expect(pedir).not.toHaveBeenCalled();

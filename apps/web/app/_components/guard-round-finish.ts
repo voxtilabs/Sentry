@@ -5,15 +5,23 @@ import { cargarEstadoRonda } from './guard-shift-state';
 import { cargarEstadoTareas, modificarEstadoTareas } from './guard-tareas-modelo';
 import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { conSubidasAcotadas } from './guard-upload-pool';
+import { recuperarIdsParaEvidencia } from './guard-scan-recovery';
 
 /** Persiste la intención antes de la red; un reinicio conserva el reintento. */
 export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string): Promise<void> {
   await modificarEstadoTareas(patrolId, (estado) => ({ ...estado, envioSolicitado: true }));
   await sincronizar(apiUrl);
   const ronda = cargarEstadoRonda(patrolId);
-  const scans = new Map(Object.values(ronda.puntos).map((p) => [p.clientScanId, p.scanId]));
+  const idsLocales = new Set(Object.values(ronda.puntos).map((p) => p.clientScanId));
   const fotos = (await listarPendientes()).filter((f) =>
-    f.destino === 'escaneo' && (scans.has(f.clientEventId) || f.patrolId === patrolId));
+    f.destino === 'escaneo' && (idsLocales.has(f.clientEventId) || f.patrolId === patrolId));
+  const estadoTareas = cargarEstadoTareas(patrolId);
+  const necesarios = [...fotos.filter((f) => !f.serverId).map((f) => f.clientEventId),
+    ...[...estadoTareas.cola, ...Object.values(estadoTareas.borradores ?? {})]
+      .filter((r) => r.clientScanId && (r.fotos?.some((f) => !f.photoId) || ('clientPhotoId' in r && r.clientPhotoId && !r.photoId)))
+      .map((r) => r.clientScanId!)];
+  const registros = await recuperarIdsParaEvidencia(apiUrl, patrolId, ronda.puntos, necesarios);
+  const scans = new Map(Object.values(registros).map((p) => [p.clientScanId, p.scanId]));
   await conSubidasAcotadas(fotos, async (foto) => {
     const id = foto.serverId ?? scans.get(foto.clientEventId);
     if (!id) throw new Error('Espera a que se sincronicen los puntos de la ronda.');
@@ -22,7 +30,7 @@ export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string): 
       throw new Error('La foto sigue guardada. Conéctate y vuelve a terminar la ronda para completar el envío.');
     }
   });
-  await sincronizarTareasGuardadas(apiUrl, patrolId, ronda.puntos);
+  await sincronizarTareasGuardadas(apiUrl, patrolId, registros);
   const tareas = cargarEstadoTareas(patrolId);
   if (tareas.cola.length || Object.values(tareas.borradores ?? {}).some((b) => b.fotos.length)) {
     throw new Error('Tus fotos y respuestas siguen guardadas. Conéctate y vuelve a terminar la ronda para completar el envío.');
