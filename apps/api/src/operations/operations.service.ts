@@ -1,8 +1,9 @@
+import type { PatrolRules } from '@sentrycore/shared';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/auth.guard';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { RulesService } from '../rules/rules.service';
-import { OperationsQuery } from './operations.dto';
+import { MailSettingsDto, OperationsQuery } from './operations.dto';
 type Actor = Pick<AuthenticatedUser, 'sub' | 'role'>;
 @Injectable()
 export class OperationsService {
@@ -40,15 +41,36 @@ export class OperationsService {
    ORDER BY p.scheduled_start_at DESC,p.id DESC LIMIT $6 OFFSET $7`, [actor.role === 'ADMIN', actor.sub, query.siteId ?? null, query.from ?? null, query.to ?? null, limit + 1, offset]);
         return { patrols: rows.slice(0, limit), hasMore: rows.length > limit, nextOffset: offset + limit };
     }
-    async recipients(siteId: string, actor: Actor) { await this.site(siteId, actor); const rules = await this.rules.effective({ siteId }); return { siteId, recipients: rules.reportRecipients }; }
-    async setRecipients(siteId: string, recipients: string[], actor: Actor) {
+    async recipients(siteId: string, actor: Actor) { await this.site(siteId, actor); const rules = await this.rules.effective({ siteId }); return this.mailSettings(siteId, rules); }
+    private mailSettings(siteId: string, rules: PatrolRules) { return { siteId, recipients: rules.reportRecipients, onlyBelowThreshold: rules.reportOnlyBelowThreshold,
+            threshold: rules.complianceThreshold, hour: rules.reportDigestHour,
+            dailyEnabled: rules.reportDailyEnabled, weeklyEnabled: rules.reportWeeklyEnabled, monthlyEnabled: rules.reportMonthlyEnabled,
+            dailyRecipients: rules.reportDailyRecipients, weeklyRecipients: rules.reportWeeklyRecipients, monthlyRecipients: rules.reportMonthlyRecipients }; }
+    async setRecipients(siteId: string, recipients: string[], actor: Actor, options?: MailSettingsDto) {
         await this.site(siteId, actor);
         await this.ctx.manager.query('SELECT id FROM sites WHERE id=$1 FOR UPDATE', [siteId]);
         const previous = await this.ctx.manager.query<Array<{
             overrides: Record<string, unknown>;
         }>>('SELECT overrides FROM site_rules WHERE site_id=$1 FOR UPDATE', [siteId]);
-        await this.rules.updateSiteOverrides(siteId, { ...(previous[0]?.overrides ?? {}), reportRecipients: [...new Set(recipients)] }, actor.sub);
-        return { siteId, recipients: [...new Set(recipients)] };
+        const normalize = (values: string[]) => [...new Set(values.map(v => v.trim().toLowerCase()))];
+        const patch: Record<string, unknown> = { reportRecipients: normalize(recipients) };
+        if (options) {
+            const mapping = {onlyBelowThreshold:'reportOnlyBelowThreshold',threshold:'complianceThreshold',hour:'reportDigestHour',
+                dailyEnabled:'reportDailyEnabled',weeklyEnabled:'reportWeeklyEnabled',monthlyEnabled:'reportMonthlyEnabled',
+                dailyRecipients:'reportDailyRecipients',weeklyRecipients:'reportWeeklyRecipients',monthlyRecipients:'reportMonthlyRecipients'} as const;
+            for (const [field, rule] of Object.entries(mapping)) {
+                const value = options[field as keyof typeof mapping];
+                if (value !== undefined) patch[rule] = Array.isArray(value) ? normalize(value) : value;
+            }
+            const effective = {...await this.rules.effective({siteId}), ...patch};
+            for (const frequency of ['Daily','Weekly','Monthly'] as const) {
+                const list = effective[`report${frequency}Recipients`] as string[];
+                if (effective[`report${frequency}Enabled`] && !list.length && !recipients.length)
+                    throw new BadRequestException('Cada resumen activo necesita destinatarios propios o una lista común.');
+            }
+        }
+        const saved = await this.rules.updateSiteOverrides(siteId, { ...(previous[0]?.overrides ?? {}), ...patch }, actor.sub);
+        return this.mailSettings(siteId, saved.effective);
     }
     async guards(actor: Actor) {
         return this.ctx.manager.query(`SELECT u.id,u.given_name AS "givenName",u.family_name AS "familyName",u.is_active AS "isActive",(g.user_id IS NOT NULL) AS "hasRut"

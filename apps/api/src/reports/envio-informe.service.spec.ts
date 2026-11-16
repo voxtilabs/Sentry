@@ -680,3 +680,20 @@ describe('EnvioInformeService', () => {
     });
   });
 });
+
+
+describe('modo de ahorro: solo bajo el umbral', () => {
+  it.each([75,100])('no envía ni genera PDF con %i%% (mínimo 75)', async (pct) => {
+    const {service,mail,informe} = armar({reglas:{reportOnlyBelowThreshold:true,complianceThreshold:75},
+      ronda:[{site_id:SITIO,status:'completada',compliance_pct:pct,guard_flow_completed:true}],modelo:modeloCon(pct)});
+    expect((await service.despachar(TENANT,PATRULLA)).omitido).toBe('sobre_umbral');
+    expect(mail.enqueue).not.toHaveBeenCalled();expect(informe.buildModel).not.toHaveBeenCalled();
+  });
+  it('envía una sola alerta a cada administrador y correo configurado bajo 75%, también con envío habitual apagado', async () => {
+    const {service,mail} = armar({reglas:{reportOnlyBelowThreshold:true,autoSendReportOnClose:false,complianceThreshold:75,reportRecipients:['operaciones@empresa.cl']},
+      ronda:[{site_id:SITIO,status:'incompleta',compliance_pct:74,guard_flow_completed:true}],modelo:modeloCon(74)});
+    const result = await service.despachar(TENANT,PATRULLA);
+    expect(result).toMatchObject({informes:0,alertas:2});expect(mail.enqueue).toHaveBeenCalledTimes(2);
+    for (const call of mail.enqueue.mock.calls) expect(call[0].template).toEqual(INFORME_BAJO_UMBRAL);
+  });
+});

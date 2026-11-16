@@ -206,6 +206,17 @@ export const patrolRulesSchema = z.object({
    * informes de TODAS las empresas. Ver PATROL_RULE_CATALOG.reportRecipients.
    */
   reportRecipients: z.array(z.string().email()).max(10).default([]),
+  /** En este modo, una sola alerta por destinatario y solo bajo el umbral. */
+  reportOnlyBelowThreshold: z.boolean().default(false),
+  reportDailyEnabled: z.boolean().default(false),
+  reportWeeklyEnabled: z.boolean().default(false),
+  reportMonthlyEnabled: z.boolean().default(false),
+  /** Una lista vacía hereda reportRecipients; nunca los de otra empresa. */
+  reportDailyRecipients: z.array(z.string().email()).max(10).default([]),
+  reportWeeklyRecipients: z.array(z.string().email()).max(10).default([]),
+  reportMonthlyRecipients: z.array(z.string().email()).max(10).default([]),
+  reportDigestHour: z.number().int().min(0).max(23).default(8),
+
 
   /** Dias que se conserva la evidencia fotografica. */
   visitorRetentionDays: z.number().int().min(1).max(90).default(30),
@@ -835,6 +846,21 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     scopes: ['tenant', 'site'],
     group: 'avisos',
   },
+  reportOnlyBelowThreshold: {
+    key: 'reportOnlyBelowThreshold', label: 'Correo de ronda solo bajo el mínimo',
+    description: 'Envía una sola alerta con el informe a administradores y destinatarios configurados cuando el cumplimiento es estrictamente menor al umbral. Las demás rondas siguen disponibles en la web.',
+    type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportOnlyBelowThreshold, scopes: HASTA_RECINTO, group: 'avisos',
+  },
+  reportDigestHour: {
+    key: 'reportDigestHour', label: 'Hora de los resúmenes', description: 'Hora local del recinto desde la que se envía el último período completo: día anterior, semana de lunes a domingo anterior o mes anterior. Un solo envío por período y destinatario.',
+    type: 'integer', unit: null, min: 0, max: 23, default: DEFAULT_PATROL_RULES.reportDigestHour, scopes: HASTA_RECINTO, group: 'avisos',
+  },
+  reportDailyEnabled: {key: 'reportDailyEnabled', label: 'Resumen diario por correo', description: 'Activa el envío del último período completo, sin fotos ni datos personales de guardias.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportDailyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
+  reportDailyRecipients: {key: 'reportDailyRecipients', label: 'Destinatarios del resumen diario', description: 'Lista propia para esta frecuencia. Vacía: usa la lista común del recinto. Solo estos correos reciben el resumen.', type: 'email-list', unit: null, maxItems: 10, default: DEFAULT_PATROL_RULES.reportDailyRecipients, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportWeeklyEnabled: {key: 'reportWeeklyEnabled', label: 'Resumen semanal por correo', description: 'Activa el envío del último período completo, sin fotos ni datos personales de guardias.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportWeeklyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
+  reportWeeklyRecipients: {key: 'reportWeeklyRecipients', label: 'Destinatarios del resumen semanal', description: 'Lista propia para esta frecuencia. Vacía: usa la lista común del recinto. Solo estos correos reciben el resumen.', type: 'email-list', unit: null, maxItems: 10, default: DEFAULT_PATROL_RULES.reportWeeklyRecipients, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportMonthlyEnabled: {key: 'reportMonthlyEnabled', label: 'Resumen mensual por correo', description: 'Activa el envío del último período completo, sin fotos ni datos personales de guardias.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportMonthlyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
+  reportMonthlyRecipients: {key: 'reportMonthlyRecipients', label: 'Destinatarios del resumen mensual', description: 'Lista propia para esta frecuencia. Vacía: usa la lista común del recinto. Solo estos correos reciben el resumen.', type: 'email-list', unit: null, maxItems: 10, default: DEFAULT_PATROL_RULES.reportMonthlyRecipients, scopes: ['tenant', 'site'], group: 'avisos'},
   visitorRetentionDays: {
     key: 'visitorRetentionDays',
     label: 'Retención del registro de visitas',

@@ -22,7 +22,7 @@ import { formatearFechaHora } from './pdf-primitivas';
 
 /** Informe normal: cierre de ronda, con o sin adjunto. */
 export const INFORME_AL_CIERRE: MailTemplate = {
-  subject: 'Informe de ronda — {{recinto}}: {{ruta}} ({{cumplimiento}}%)',
+  subject: 'SentryCore · {{recinto}} · Informe de ronda: {{ruta}} ({{cumplimiento}}%)',
   text:
     'La ronda "{{ruta}}" del recinto {{recinto}} ({{sucursal}}) quedó cerrada.\n\n' +
     'Cumplimiento: {{cumplimiento}}% — {{escaneados}} de {{esperados}} puntos marcados ' +
@@ -46,7 +46,7 @@ export const INFORME_AL_CIERRE: MailTemplate = {
  * administrador se entere de la ronda mala sin tener que entrar a buscarla.
  */
 export const INFORME_BAJO_UMBRAL: MailTemplate = {
-  subject: 'Cumplimiento bajo el mínimo — {{recinto}}: {{ruta}} ({{cumplimiento}}%)',
+  subject: 'SentryCore · {{recinto}} · Cumplimiento bajo el mínimo ({{cumplimiento}}%)',
   text:
     'La ronda "{{ruta}}" del recinto {{recinto}} ({{sucursal}}) cerró con {{cumplimiento}}% ' +
     'de cumplimiento, bajo el mínimo de {{umbral}}% que definiste.\n\n' +
@@ -56,7 +56,7 @@ export const INFORME_BAJO_UMBRAL: MailTemplate = {
     'Cierre: {{cierre}}\n' +
     'Novedades registradas: {{novedades}}\n\n' +
     '{{adjunto}}\n\n' +
-    'Recibes este aviso porque administras la empresa. El informe lista punto por ' +
+    'Recibes este aviso según la configuración de correos del recinto. El informe lista punto por ' +
     'punto cuáles quedaron sin marcar y a qué hora se marcó cada uno.\n' +
     'Las horas están en la hora del recinto.\n' +
     '{{pie}}',

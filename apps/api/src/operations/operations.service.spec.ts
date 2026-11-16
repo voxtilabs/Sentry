@@ -15,8 +15,8 @@ describe('operations scope and minimization',()=>{
   await expect(service.setRecipients('site',['allowed@example.test'],actor)).rejects.toBeInstanceOf(ForbiddenException);expect(rules.updateSiteOverrides).not.toHaveBeenCalled();
  });
  it('conserva reglas ajenas al actualizar correos y elimina duplicados',async()=>{
-  const query=jest.fn().mockResolvedValueOnce([{id:'site'}]).mockResolvedValueOnce([{id:'site'}]).mockResolvedValueOnce([{overrides:{photoMinCount:1,reportRecipients:['old@example.test']}}]);
-  const rules={updateSiteOverrides:jest.fn().mockResolvedValue({})};
+  const query=jest.fn().mockResolvedValueOnce([{id:'site'}]).mockResolvedValueOnce([{id:'site'}]).mockResolvedValueOnce([{overrides:{photoMinCount:1,reportRecipients:['old@example.test']}}]).mockResolvedValue([{id:'site'}]);
+  const rules={updateSiteOverrides:jest.fn().mockResolvedValue({effective:{reportRecipients:['new@example.test']}}),effective:jest.fn().mockResolvedValue({reportRecipients:['new@example.test']})};
   const service=new OperationsService({manager:{query}} as unknown as TenantContextService,rules as unknown as RulesService);
   await service.setRecipients('site',['new@example.test','new@example.test'],{sub:'admin',role:'ADMIN'});
   expect(rules.updateSiteOverrides).toHaveBeenCalledWith('site',{photoMinCount:1,reportRecipients:['new@example.test']},'admin');
