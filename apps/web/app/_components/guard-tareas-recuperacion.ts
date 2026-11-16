@@ -7,6 +7,7 @@ import { cargarEstadoTareas, modificarEstadoTareas, recuperarCapturasTareas, reh
   type ItemTarea, type EstadoTareas } from './guard-tareas-modelo';
 import { listarPendientes } from './guard-photo-store';
 import { mapaEscaneosRecuperados } from './guard-scan-recovery';
+import { enviarTareasAlTerminar } from './guard-round-finish';
 
 /** También se ejecuta cuando el servidor ya no ofrece la ronda recién cerrada. */
 export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key' | 'getItem'>): EstadoTareas[] {
@@ -18,7 +19,7 @@ export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key
       const estado = JSON.parse(storage.getItem(key) ?? 'null') as EstadoTareas | null;
       if (!estado || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(estado.patrolId) || !Array.isArray(estado.cola)) continue;
       if (estado.cola.some((r) => r.estado === 'pendiente') ||
-        Object.values(estado.borradores ?? {}).some((b) => b.fotos?.length)) estados.push(estado);
+        Object.values(estado.borradores ?? {}).some((b) => b.fotos?.some(f=>!f.photoId))) estados.push(estado);
     } catch { /* Un registro corrupto no descarta el resto de la evidencia. */ }
   }
   return estados;
@@ -33,14 +34,16 @@ export async function recuperarTareasGuardadas(apiUrl: string, estados: readonly
     const r = await pedirApi(apiUrl, `/checklists/patrols/${encodeURIComponent(estado.patrolId)}/template?includeScanIds=true`);
     if (r.status === 403 || r.status === 404) { descartadas.add(estado.patrolId); continue; }
     if (!r.ok) continue;
-    const body = await r.json() as { template?: { items: ItemTarea[] };
+    const body = await r.json() as { patrolStatus?:string; template?: { items: ItemTarea[] };
       syncScans?: Array<{ clientScanId: string; scanId: string; checkpointId: string }> };
     if (body.template?.items) {
       const pendientes = await listarPendientes();
       await modificarEstadoTareas(estado.patrolId, (actual) =>
         recuperarCapturasTareas(actual, body.template!.items, body.syncScans ?? [], pendientes));
     }
-    await sincronizarTareasGuardadas(apiUrl, estado.patrolId,
+    if(body.patrolStatus&&['completada','incompleta','vencida'].includes(body.patrolStatus)) {
+      await enviarTareasAlTerminar(apiUrl,estado.patrolId,{permitirIncompletas:true});
+    } else await sincronizarTareasGuardadas(apiUrl, estado.patrolId,
       mapaEscaneosRecuperados(body.syncScans ?? []));
   }
 }
@@ -56,8 +59,10 @@ export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: str
         const durables = await rehidratarTareasDurables();
         const estados = new Map(durables.map((e) => [e.patrolId, cargarEstadoTareas(e.patrolId)]));
         for (const estado of tareasGuardadasConTrabajo(window.localStorage)) estados.set(estado.patrolId, estado);
+        const fotosDeRondas=new Set((await listarPendientes()).filter(f=>f.destino==='escaneo'&&f.patrolId).map(f=>f.patrolId!));
+        for(const id of fotosDeRondas)if(!estados.has(id))estados.set(id,cargarEstadoTareas(id));
         await recuperarTareasGuardadas(apiUrl, [...estados.values()].filter((e) => e.cola.length ||
-          Object.values(e.borradores ?? {}).some((b) => b.fotos.length)), activePatrolId, descartadas);
+          Object.values(e.borradores ?? {}).some((b) => b.fotos.some(f=>!f.photoId))||fotosDeRondas.has(e.patrolId)), activePatrolId, descartadas);
       }
       catch { /* Se conserva la cola completa y se reintenta al reconectar. */ }
       finally { corriendo = false; }

@@ -1,5 +1,5 @@
 import { pedirApi, sincronizar } from './guard-outbox';
-import { listarPendientes, fijarServerId } from './guard-photo-store';
+import { listarPendientes, fijarServerId, borrarFoto } from './guard-photo-store';
 import { subirFotoPersistida } from './guard-evidence-upload';
 import { cargarEstadoRonda } from './guard-shift-state';
 import { cargarEstadoTareas, modificarEstadoTareas } from './guard-tareas-modelo';
@@ -8,7 +8,8 @@ import { conSubidasAcotadas } from './guard-upload-pool';
 import { recuperarIdsParaEvidencia } from './guard-scan-recovery';
 
 /** Persiste la intención antes de la red; un reinicio conserva el reintento. */
-export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string): Promise<void> {
+export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string,
+  opciones: { permitirIncompletas?: boolean } = {}): Promise<void> {
   await modificarEstadoTareas(patrolId, (estado) => ({ ...estado, envioSolicitado: true }));
   await sincronizar(apiUrl);
   const ronda = cargarEstadoRonda(patrolId);
@@ -32,9 +33,28 @@ export async function enviarTareasAlTerminar(apiUrl: string, patrolId: string): 
   });
   await sincronizarTareasGuardadas(apiUrl, patrolId, registros);
   const tareas = cargarEstadoTareas(patrolId);
-  if (tareas.cola.length || Object.values(tareas.borradores ?? {}).some((b) => b.fotos.length)) {
+  if (tareas.cola.length || Object.values(tareas.borradores ?? {}).some((b) =>
+    opciones.permitirIncompletas ? b.fotos.some(f => !f.photoId) : b.fotos.length)) {
     throw new Error('Tus fotos y respuestas siguen guardadas. Conéctate y vuelve a terminar la ronda para completar el envío.');
   }
+  if(opciones.permitirIncompletas)await conSubidasAcotadas(
+    Object.values(tareas.borradores??{}).flatMap(b=>b.fotos).filter(f=>f.photoId),
+    f=>borrarFoto(f.clientPhotoId));
+}
+
+/** Cierre explícito: no exige inventar evidencia ni espera su subida para volver al inicio. */
+export async function cerrarRondaManualmente(apiUrl: string, patrolId: string,
+  navegar: (path: string) => void, opciones: { reason?: string; freeRoam?: boolean } = {},
+  pedir: typeof pedirApi = pedirApi): Promise<void> {
+  await modificarEstadoTareas(patrolId, estado => ({...estado,envioSolicitado:true}));
+  const reason=opciones.reason?.trim();
+  const response=await pedir(apiUrl,`/guard/patrols/${patrolId}/${opciones.freeRoam?'free-roam/finish':'finish-early'}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reason?{reason}:{})});
+  if(!response.ok){
+    const body=await response.json().catch(()=>null) as {message?:string}|null;
+    throw Error(body?.message??'No pudimos terminar la ronda. Tu trabajo sigue guardado; vuelve a intentarlo.');
+  }
+  navegar('/app/guardia');
 }
 
 

@@ -1394,10 +1394,11 @@ export class GuardService {
      */
     await this.tenantContext.manager.query(
       `UPDATE patrols
-          SET status = 'completada', closed_at = now(), compliance_pct = 0
+          SET status = 'completada', closed_at = now(), compliance_pct = 0, guard_flow_completed = true
         WHERE id = $1 AND status = 'en_curso'`,
       [patrolId],
     );
+    await this.envioInforme.alCerrarRonda(patrolId);
     return { id: patrolId, status: 'completada' as const };
   }
 
@@ -1492,15 +1493,23 @@ export class GuardService {
    */
   async finishPatrolEarly(guardId: string, patrolId: string, motivo?: string) {
     const filas = await this.tenantContext.manager.query<
-      Array<{ id: string; status: string; site_id: string; expected_checkpoint_ids: string[] }>
+      Array<{ id: string; status: string; site_id: string; expected_checkpoint_ids: string[]; guard_flow_completed: boolean; compliance_pct: number | string | null }>
     >(
-      `SELECT id, status, site_id, expected_checkpoint_ids
-         FROM patrols WHERE id = $1 AND guard_id = $2`,
+      `SELECT id, status, site_id, expected_checkpoint_ids, guard_flow_completed, compliance_pct
+         FROM patrols WHERE id = $1 AND guard_id = $2 FOR UPDATE`,
       [patrolId, guardId],
     );
     const ronda = filas[0];
     if (!ronda) throw new NotFoundException('La ronda no existe o no es tuya');
-    if (ronda.status !== 'en_curso') {
+    if (['completada','incompleta','vencida'].includes(ronda.status)) {
+      if (!ronda.guard_flow_completed) {
+        await this.tenantContext.manager.query('UPDATE patrols SET guard_flow_completed=true WHERE id=$1 AND guard_id=$2',[patrolId,guardId]);
+        if(this.tenantContext.tenantId)await this.patrolReport?.invalidarCache(this.tenantContext.tenantId,patrolId);
+        await this.envioInforme.alCerrarRonda(patrolId);
+      }
+      return {id:patrolId,status:ronda.status,compliancePct:ronda.compliance_pct==null?null:Number(ronda.compliance_pct)};
+    }
+    if (!['en_curso','pausada'].includes(ronda.status)) {
       throw new ConflictException('Esta ronda ya está cerrada');
     }
 
@@ -1523,8 +1532,8 @@ export class GuardService {
     await this.tenantContext.manager.query(
       `UPDATE patrols
           SET status = CASE WHEN $2 >= 100 THEN 'completada' ELSE 'incompleta' END,
-              closed_at = now(), compliance_pct = $2
-        WHERE id = $1 AND status = 'en_curso'`,
+              closed_at = now(), compliance_pct = $2, guard_flow_completed = true
+        WHERE id = $1 AND status IN ('en_curso','pausada')`,
       [patrolId, cumplimiento.pct],
     );
 
@@ -1549,6 +1558,8 @@ export class GuardService {
       );
     }
 
+    if(this.tenantContext.tenantId)await this.patrolReport?.invalidarCache(this.tenantContext.tenantId,patrolId);
+    await this.envioInforme.alCerrarRonda(patrolId);
     return {
       id: patrolId,
       status: cumplimiento.pct >= 100 ? ('completada' as const) : ('incompleta' as const),
