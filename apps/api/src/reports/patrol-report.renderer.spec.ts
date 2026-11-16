@@ -231,6 +231,23 @@ const esPdf = (pdf: Buffer) => pdf.subarray(0, 5).toString('latin1') === '%PDF-'
 const unido = (corrida: Corrida) => corrida.textos.join('\n');
 
 describe('dibujarCuerpo · portada', () => {
+  it('una voluntaria muestra ejecución real sin presentar el límite técnico como turno', async () => {
+    const ronda = {...RONDA,is_voluntary:true,scheduled_end_at:new Date('2026-07-31T10:00:00-04:00')};
+    const modelo=armar({ronda,scans:[escaneo('cp-1','2026-07-30T21:58:00-04:00')]});
+    const texto=unido(await cuerpo(modelo,{bitacora:true}));
+    expect(texto).toContain('Voluntaria');
+    expect(texto).toContain('sin horario programado');
+    expect(texto).not.toMatch(/ventana (?:programada|horaria)|fuera de turno|marca\(s\) fuera del turno/i);
+    expect(texto).not.toContain('10:00');
+    expect(texto).toContain('22:05');
+    expect(texto).toContain('05:40');
+  });
+  it('una programada conserva su ventana real en portada y bitácora',async()=>{
+    const texto=unido(await cuerpo(armar(),{bitacora:true}));
+    expect(texto).toMatch(/Ventana horaria/i);
+    expect(texto).toContain('Ventana programada 22:00');
+    expect(texto).toContain('06:00');
+  });
   it('genera un PDF válido con la identificación de la ronda', async () => {
     const corrida = await cuerpo(
       armar({ scans: PUNTOS.map((p) => escaneo(p.id, '2026-07-30T23:00:00-04:00')) }),

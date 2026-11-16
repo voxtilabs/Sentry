@@ -57,13 +57,15 @@ export function SiteManagement({
   const [csv, setCsv] = useState<CsvResult | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
-  const selected = sites.find((site) => site.id === selectedId) ?? null;
+  const [showInactive, setShowInactive] = useState(false);
+  const visibleSites = useMemo(() => sites.filter(site => showInactive || site.isActive), [sites, showInactive]);
+  const selected = visibleSites.find((site) => site.id === selectedId) ?? null;
   const branches = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es');
-    return groupByBranch(sites.filter(site => !query ||
+    return groupByBranch(visibleSites.filter(site => !query ||
       `${site.name} ${site.branchName} ${site.address}`.toLocaleLowerCase('es').includes(query)));
-  }, [sites, search]);
-  const located = sites.filter(site => site.latitude !== null && site.longitude !== null);
+  }, [visibleSites, search]);
+  const located = visibleSites.filter(site => site.latitude !== null && site.longitude !== null);
 
   async function createSite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -264,8 +266,8 @@ export function SiteManagement({
       </div>
 
       <section className="stat-grid" aria-label="Resumen de recintos">
-        <article className="stat-card"><span>Recintos</span><strong>{sites.length}</strong><small>{sites.filter(site => site.isActive).length} {sites.filter(site => site.isActive).length === 1 ? 'activo' : 'activos'}</small></article>
-        <article className="stat-card"><span>Puntos de control</span><strong>{sites.reduce((sum, site) => sum + site.checkpointCount, 0)}</strong><small>En tus recintos</small></article>
+        <article className="stat-card"><span>{showInactive ? 'Recintos' : 'Recintos activos'}</span><strong>{visibleSites.length}</strong><small>{sites.filter(site => site.isActive).length} {sites.filter(site => site.isActive).length === 1 ? 'activo' : 'activos'}</small></article>
+        <article className="stat-card"><span>Puntos de control</span><strong>{visibleSites.reduce((sum, site) => sum + site.checkpointCount, 0)}</strong><small>En los recintos mostrados</small></article>
         <article className="stat-card"><span>Con ubicación</span><strong>{located.length}</strong><small>En el mapa</small></article>
       </section>
 
@@ -296,6 +298,8 @@ export function SiteManagement({
           <input type="search" value={search} placeholder="Nombre, sucursal o dirección"
             onChange={event => setSearch(event.target.value)} />
         </label>
+        <label className="form-note"><input type="checkbox" checked={showInactive} onChange={event => setShowInactive(event.target.checked)} /> Mostrar recintos inactivos ({sites.filter(site => !site.isActive).length})</label>
+        {sites.some(site => !site.isActive) && <p className="form-note">Los recintos inactivos conservan sus informes históricos.</p>}
         <div className="branch-list">
           {branches.map(([branch, branchSites]) => (
             <section className="branch-group" key={branch}>
@@ -316,10 +320,10 @@ export function SiteManagement({
               ))}
             </section>
           ))}
-          {!branches.length ? <p className="dashboard-empty">{search ? 'No encontramos recintos con esa búsqueda.' : 'Crea tu primer recinto para organizar sus puntos de control.'}</p> : null}
+          {!branches.length ? <p className="dashboard-empty">{search ? 'No encontramos recintos con esa búsqueda.' : sites.length > 0 && !showInactive ? 'No hay recintos activos. Marca «Mostrar recintos inactivos» para consultar el historial.' : 'Crea tu primer recinto para organizar sus puntos de control.'}</p> : null}
         </div>
       </section>
-      <SiteLocationMap sites={sites} tileUrl={mapTileUrl} attribution={mapAttribution} />
+      <SiteLocationMap sites={visibleSites} tileUrl={mapTileUrl} attribution={mapAttribution} />
       </div>
 
       {selected ? (
