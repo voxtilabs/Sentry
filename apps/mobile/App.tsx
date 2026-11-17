@@ -2,13 +2,13 @@ import { stopReference } from './src/geo/reference-native';
 import { crearConsultaPublica, VistaConsultaPublica } from './src/visits/public-vehicle';
 import { crearCamaraOcr, VistaCamaraOcr } from './src/visits/ocr-camera';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
   Linking,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -190,9 +190,11 @@ export default function App() {
   }, [portal.origin]);
 
   return (
-    <ErrorBoundary apiUrl={portal.origin}>
-      <AppShell portal={portal} />
-    </ErrorBoundary>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <ErrorBoundary apiUrl={portal.origin}>
+        <AppShell portal={portal} />
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 
@@ -378,6 +380,8 @@ function AppShell({ portal }: { portal: URL }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Keep absolute camera overlays inside the usable window as well. */}
+      <View style={styles.content}>
       <StatusBar style="dark" />
       <WebView
         key={generacionWebView}
@@ -543,11 +547,15 @@ function AppShell({ portal }: { portal: URL }) {
           ) : null}
         </View>
       ) : null}
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#f8fafc',

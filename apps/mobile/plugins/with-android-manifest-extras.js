@@ -91,6 +91,12 @@ const withAndroidManifestExtras = (config) =>
   withAndroidManifest(config, (resultado) => {
     const manifiesto = resultado.modResults.manifest;
 
+    const actividad = manifiesto.application?.[0]?.activity?.find(
+      (entry) => entry?.$?.['android:name']?.endsWith('.MainActivity'),
+    );
+    if (!actividad) throw new Error('No se encontró MainActivity para habilitar ventanas adaptables');
+    actividad.$['android:resizeableActivity'] = 'true';
+
     // Se necesita para el trabajo del guardia, pero no para instalar la app.
     agregarUsesFeature(manifiesto, 'android.hardware.nfc', false);
     // Idem: el ADMIN o el SUPERVISOR pueden usar un equipo sin camara trasera.

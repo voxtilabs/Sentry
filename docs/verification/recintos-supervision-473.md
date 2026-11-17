@@ -52,3 +52,14 @@ npm run build
 ```
 
 La interfaz del guardia y sus consentimientos no se alteran en esta entrega.
+
+## Despliegue
+
+Publicado en staging/servidor mediante PR #475. Trece verificaciones HTTP
+contra la API desplegada confirmaron tres empresas y cuatro recintos para
+las cuentas autorizadas, cambio de sesión con cookies HttpOnly/Secure,
+conservación de la segunda sesión y denegación a anónimos/guardias. Las
+sesiones técnicas se revocaron individualmente al terminar; sin envíos de
+correo ni escrituras de datos de rondas. PostgreSQL y Redis conservaron
+identificador y hora de inicio de sus contenedores; una ronda activa
+permaneció activa durante la actualización de API/web.
