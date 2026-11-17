@@ -29,10 +29,16 @@ const { withAndroidManifest } = require('expo/config-plugins');
 /** @param {any} manifiesto @param {string} nombre @param {boolean} requerido */
 function agregarUsesFeature(manifiesto, nombre, requerido) {
   const lista = manifiesto['uses-feature'] ?? [];
-  const yaEsta = lista.some((f) => f?.$?.['android:name'] === nombre);
-  if (!yaEsta) {
-    lista.push({ $: { 'android:name': nombre, 'android:required': String(requerido) } });
+  let declaracion = lista.find((f) => f?.$?.['android:name'] === nombre);
+  if (!declaracion) {
+    declaracion = { $: { 'android:name': nombre } };
+    lista.push(declaracion);
   }
+  declaracion.$['android:required'] = String(requerido);
+  // required is OR-merged by Android: a library's true would otherwise win.
+  const reemplazos = new Set((declaracion.$['tools:replace'] ?? '').split(',').map(x => x.trim()).filter(Boolean));
+  reemplazos.add('android:required');
+  declaracion.$['tools:replace'] = [...reemplazos].join(',');
   manifiesto['uses-feature'] = lista;
 }
 
@@ -106,6 +112,9 @@ const withAndroidManifestExtras = (config) =>
     // GPS: sin el no hay evidencia de posicion, pero tampoco filtra la
     // instalacion — el servidor marca la anomalia y no rechaza el escaneo.
     agregarUsesFeature(manifiesto, 'android.hardware.location.gps', false);
+    // Play also infers hardware from library activities and permissions.
+    agregarUsesFeature(manifiesto, 'android.hardware.screen.portrait', false);
+    agregarUsesFeature(manifiesto, 'android.hardware.wifi', false);
 
     callarElArranqueAutomaticoDeTareas(manifiesto);
 

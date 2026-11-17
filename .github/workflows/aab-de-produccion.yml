@@ -150,6 +150,9 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew :app:bundleRelease --no-daemon --console=plain
 
+      - name: Verificar hardware opcional en el manifiesto combinado
+        run: node scripts/verify-hardware.cjs android/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+
       # Comprobar la firma ANTES de publicar el artefacto: un AAB firmado con la
       # llave de depuracion se ve igual de bien hasta que Play lo rechaza, y
       # para entonces ya se perdio el viaje.
