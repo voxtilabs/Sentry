@@ -7,7 +7,7 @@ import { startLivePolling } from './live-polling';
 import { RecorridoPatrulla } from './recorrido-patrulla';
 
 interface LivePatrol {
-  id: string; siteName: string; routeName: string; guardName: string;
+  id: string; siteId: string; siteName: string; routeName: string; guardName: string;
   status: 'pendiente' | 'en_curso'; scheduledStartAt: string; scheduledEndAt: string;
   startedAt: string | null; expectedCheckpoints: number; scannedCheckpoints: number;
   progressPct: number; lastCheckpointName: string | null; lastScanAt: string | null;
@@ -20,7 +20,9 @@ export function LivePatrolBoard({
   apiUrl,
   tileUrl,
   attribution,
+  siteId,
 }: {
+  siteId?: string;
   apiUrl: string;
   tileUrl: string | null;
   attribution: string;
@@ -44,18 +46,19 @@ export function LivePatrolBoard({
     return()=>{polling.stop();document.removeEventListener('visibilitychange',refresh);window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
   },[apiUrl]);
 
-  const positions = useMemo<LivePosition[]>(() => (data?.patrols ?? []).flatMap((patrol) =>
+  const patrols=useMemo(()=>(data?.patrols??[]).filter(p=>!siteId||p.siteId===siteId),[data,siteId]);
+  const positions = useMemo<LivePosition[]>(() => patrols.flatMap((patrol) =>
     patrol.position ? [{ patrolId: patrol.id, guardName: patrol.guardName, siteName: patrol.siteName, ...patrol.position }] : [],
-  ), [data]);
+  ), [patrols]);
 
   return <section className="management-card management-wide live-board" id="monitoreo">
-    <div className="card-heading"><div><span className="eyebrow">Actualización cada 5 segundos</span><h2>Rondas en vivo</h2></div><span className="status-pill">{data?.patrols.filter((p) => p.status === 'en_curso').length ?? 0} en curso</span></div>
+    <div className="card-heading"><div><span className="eyebrow">Actualización cada 5 segundos</span><h2>Rondas en vivo</h2></div><span className="status-pill">{patrols.filter((p) => p.status === 'en_curso').length} en curso</span></div>
     {error && <p className="live-error" role="alert">{error}</p>}
     {tileUrl && positions.length > 0 ? <LiveGuardMap positions={positions} tileUrl={tileUrl} attribution={attribution} /> : (
       <p className="live-map-empty">{tileUrl ? 'Aún no hay posiciones GPS para mostrar.' : 'El proveedor de mapas no está configurado. Las rondas siguen actualizándose.'}</p>
     )}
     <div className="live-grid">
-      {(data?.patrols ?? []).map((patrol) => <article className="live-patrol" key={patrol.id}>
+      {patrols.map((patrol) => <article className="live-patrol" key={patrol.id}>
         <header><div><strong>{patrol.routeName}</strong><span>{patrol.siteName}</span></div><b className={patrol.status}>{patrol.status === 'en_curso' ? 'En curso' : 'Pendiente'}</b></header>
         <p>{patrol.guardName}</p>
         <div className="live-progress" aria-label={`${patrol.progressPct}% completado`}><span style={{ width: `${patrol.progressPct}%` }} /></div>
@@ -95,7 +98,7 @@ export function LivePatrolBoard({
         {recorridoAbierto === patrol.id && <RecorridoPatrulla live apiUrl={apiUrl} patrolId={patrol.id} tileUrl={tileUrl} attribution={attribution} />}
       </article>)}
     </div>
-    {data && !data.patrols.length && <div className="dashboard-empty"><strong>No hay rondas activas</strong><span>Las rondas pendientes o en curso aparecerán aquí automáticamente.</span></div>}
+    {data && !patrols.length && <div className="dashboard-empty"><strong>No hay rondas activas</strong><span>Las rondas pendientes o en curso aparecerán aquí automáticamente.</span></div>}
     <p className="live-refreshed" aria-live="polite">{data ? `Última actualización: ${clock(data.refreshedAt)}` : 'Conectando…'}</p>
   </section>;
 }

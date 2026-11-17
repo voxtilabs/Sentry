@@ -151,6 +151,19 @@ function releaseLock(): void {
   if (readStorage(LOCK_KEY)?.startsWith(`${tabId}:`)) writeStorage(LOCK_KEY, '');
 }
 
+/** Serialize an explicit staff company change with silent refresh in every tab. */
+export async function withSessionChange<T>(operation:()=>Promise<T>):Promise<T> {
+  const deadline=Date.now()+LOCK_MS*2;
+  while(true) {
+    if(inFlight) await inFlight.catch(()=>null);
+    if(await acquireLock()) break;
+    if(readStorage(LOCK_KEY)===null) return operation();
+    if(Date.now()>deadline) throw new Error('La sesión está renovándose. Intenta cambiar de empresa nuevamente.');
+    await delay(100);
+  }
+  try {return await operation();} finally {releaseLock();}
+}
+
 /**
  * Garantiza una sesión fresca antes de llamar a la API. Todas las llamadas
  * concurrentes comparten el mismo refresco en vuelo.

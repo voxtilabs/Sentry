@@ -28,6 +28,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
       items: [
         { view: 'personas', icon: '♙', label: 'Personas y acceso' },
         { view: 'recintos', icon: '▦', label: 'Recintos' },
+        { view: 'supervision', icon: '♙', label: 'Accesos de supervisión' },
       ],
     },
     {
@@ -51,6 +52,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
     {
       label: 'Operación',
       items: [
+        { view: 'recintos', icon: '▦', label: 'Todos mis recintos' },
         { view: 'planificacion', icon: '⌁', label: 'Planificación' },
         // #309. Comodidad de navegacion, NO control de acceso: quien autoriza es
         // el servidor (`checkpoints:manage` + supervisor_sites). Si esta entrada
@@ -78,6 +80,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
       label: 'Plataforma',
       items: [
         { view: 'resumen', icon: '⌂', label: 'Empresas y licencias' },
+        { view: 'supervision', icon: '♙', label: 'Accesos de supervisión' },
         { view: 'sesiones', icon: '◉', label: 'Sesiones' },
       ],
     },
@@ -92,6 +95,7 @@ export function resolvePanelView(role: PanelRole, requested: string | undefined)
 export function panelViewCopy(role: PanelRole, view: string): { title: string; subtitle: string } {
   const copy: Record<PanelRole, Record<string, { title: string; subtitle: string }>> = {
     ADMIN: {
+      supervision: {title:'Accesos de supervisión',subtitle:'Asigna los recintos de tus empresas a cada supervisor.'},
       resumen: { title: 'Resumen de la empresa', subtitle: 'Lo que requiere atención en la operación actual.' },
       visitas: { title: 'Registro de visitas', subtitle: 'Ingresos y salidas de los recintos autorizados.' },
       informes: { title: 'Informes de operación', subtitle: 'Cumplimiento, tendencias y evidencia de las rondas.' },
@@ -106,6 +110,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },
     },
     SUPERVISOR: {
+      recintos: {title:'Todos mis recintos',subtitle:'Accede a puntos, seguimiento e informes de tus empresas asignadas.'},
       correos: {title:'Correos e informes',subtitle:'Configura alertas y resúmenes de tus recintos asignados.'},
       personas: {title:'Guardias de mis recintos',subtitle:'Crea guardias y completa la identificación opcional del personal asignado.'},
       resumen: { title: 'Mis recintos', subtitle: 'Estado actual de los recintos que tienes asignados.' },
@@ -119,6 +124,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },
     },
     SUPERADMIN: {
+      supervision: {title:'Accesos de supervisión',subtitle:'Administra las asignaciones de supervisores por empresa y recinto.'},
       resumen: { title: 'Administración de la plataforma', subtitle: 'Empresas, licencias y acceso a la plataforma.' },
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },
     },

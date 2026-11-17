@@ -1483,3 +1483,14 @@ a.stats-boton { display: inline-flex; align-items: center; }
 
 .operations-summary .report-name-option { display: flex; flex-direction: row; align-items: center; gap: .6rem; min-height: 44px; }
 .operations-summary .report-name-option input[type="checkbox"] { width: 1.15rem; min-height: 0; height: 1.15rem; padding: 0; }
+.staff-company-switcher { min-width: 0; width: min(24rem,100%); }
+.staff-company-switcher label { display: grid; gap: .2rem; font-size: .7rem; color: var(--muted); }
+.staff-company-switcher select { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: .45rem .65rem; color: var(--ink); font: inherit; font-size: .9rem; }
+.staff-company-sites { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: .8rem; }
+.staff-site-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; padding: .9rem 0; border-bottom: 1px solid var(--line); }
+.staff-site-row > div:first-child { display: grid; gap: .2rem; }
+.staff-site-row small { color: var(--muted); }
+.supervision-access select { width: 100%; min-height: 44px; padding: .65rem; border: 1px solid var(--line); border-radius: 5px; }
+.supervision-company { border: 1px solid var(--line); border-radius: 5px; margin: 1rem 0; padding: 1rem; }
+.staff-site-check { display: flex; gap: .7rem; align-items: center; min-height: 44px; }
+.staff-site-check input[type='checkbox'] { width: 1.15rem; height: 1.15rem; }

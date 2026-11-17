@@ -289,6 +289,44 @@ export class AuthService {
     return this.createSession(selected, device);
   }
 
+  /** These functions receive only the actor from the verified session, never a body user ID. */
+  private async actorQuery<T>(user: AuthenticatedUser, query: string, params: unknown[] = []): Promise<T> {
+    return this.dataSource.transaction(async manager => {
+      await manager.query("SELECT set_config('app.user_id',$1,true),set_config('app.tenant_id',$2,true),set_config('app.support_access_id','',true)", [user.sub,user.tenant_id ?? '']);
+      return manager.query(query, params) as Promise<T>;
+    });
+  }
+  async staffCompanies(user: AuthenticatedUser) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPERVISOR') throw new ForbiddenException('Acceso de administración o supervisión requerido.');
+    const rows = await this.actorQuery<Array<{tenant_id:string;tenant_name:string;tenant_slug:string;role_key:'ADMIN'|'SUPERVISOR';sites:Array<{id:string;name:string;branchName:string}>}>>(user,'SELECT * FROM staff_company_portfolio()');
+    return {currentTenantId:user.tenant_id,companies:rows.map(row=>({tenantId:row.tenant_id,tenantName:row.tenant_name,tenantSlug:row.tenant_slug,role:row.role_key,sites:row.sites}))};
+  }
+  async switchCompany(user: AuthenticatedUser, tenantId: string, device: string) {
+    const portfolio = await this.staffCompanies(user);
+    const company = portfolio.companies.find(c=>c.tenantId===tenantId);
+    if (!company) throw new ForbiddenException('Esta empresa no está disponible para tu cuenta.');
+    const next = await this.createSession({user_id:user.sub,tenant_id:company.tenantId,role_key:company.role},device);
+    // End only this browser's previous family; other devices and users stay connected.
+    await this.revokeFamily(user.sid);
+    return next;
+  }
+  async supervisionDirectory(user: AuthenticatedUser) {
+    if(user.role!=='ADMIN' && user.role!=='SUPERADMIN') throw new ForbiddenException('Solo administración puede gestionar las asignaciones.');
+    const [row] = await this.actorQuery<Array<{directory:unknown}>>(user,'SELECT supervision_access_directory() AS directory');
+    return row?.directory;
+  }
+  async setSupervisionAccess(user: AuthenticatedUser, input: {tenantId:string;supervisorId:string;siteIds:string[]}) {
+    if(user.role!=='ADMIN' && user.role!=='SUPERADMIN') throw new ForbiddenException('Solo administración puede gestionar las asignaciones.');
+    try {await this.actorQuery(user,'SELECT set_supervision_access($1,$2,$3::uuid[])',[input.tenantId,input.supervisorId,input.siteIds]);}
+    catch(error) {
+      const code=(error as {driverError?:{code?:string}}).driverError?.code;
+      if(code==='42501') throw new ForbiddenException('No puedes asignar este supervisor o esta empresa.');
+      if(code==='22023') throw new BadRequestException('Revisa los recintos y el rol existente de esta cuenta.');
+      throw error;
+    }
+    return this.supervisionDirectory(user);
+  }
+
   async nfcLogin(
     input: NfcLoginDto,
     sourceIp = 'unknown',
@@ -966,7 +1004,7 @@ export class AuthService {
   }
 
   private async createSession(
-    identity: AuthIdentityRow,
+    identity: Pick<AuthIdentityRow, 'user_id'|'tenant_id'|'role_key'>,
     device: string,
   ): Promise<AuthenticatedSession> {
     // Conecta de forma diferida para que readiness pueda informar Redis caído sin

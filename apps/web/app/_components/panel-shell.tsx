@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { IconChevronRight, IconCircleCheck, IconUserCircle } from '@tabler/icons-react';
 
+import { CompanySwitcher } from './staff-companies';
 import { Brand } from './brand';
 import type { MarcaDelShell } from './dashboard-shell';
 import { HelpButton } from './help-button';
@@ -37,7 +38,7 @@ export function PanelShell({ role, title, subtitle, children, marca, activeView 
     <section className={styles.main}>
       <header className={styles.utility}>
         <PanelMenu role={role} activeView={activeView} name={name} />
-        <div className={styles.context}><strong>{name}</strong><span>{roleNames[role]}</span></div>
+        <div className={styles.context}>{role==='SUPERADMIN'?<strong>{name}</strong>:<CompanySwitcher/>}<span>{roleNames[role]}</span></div>
         <div className={styles.actions}>
           <span className={styles.session}><IconCircleCheck size={17} stroke={1.7} aria-hidden="true" /> Sesión activa</span>
           <HelpButton />
