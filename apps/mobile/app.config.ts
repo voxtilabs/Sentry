@@ -104,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.3.3',
+  version: '0.3.4',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',
@@ -116,6 +116,7 @@ const config: ExpoConfig = {
     // Modulo nativo: no funciona en Expo Go. Cualquier cambio exige regenerar
     // el proyecto y distribuir un development build nuevo.
     'react-native-nfc-manager',
+    './plugins/with-nfc-reader-safety',
     ['expo-sqlite', { useSQLCipher: true }],
     'expo-secure-store',
     'expo-background-task',
