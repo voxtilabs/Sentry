@@ -216,6 +216,13 @@ export const patrolRulesSchema = z.object({
   reportWeeklyRecipients: z.array(z.string().email()).max(10).default([]),
   reportMonthlyRecipients: z.array(z.string().email()).max(10).default([]),
   reportDigestHour: z.number().int().min(0).max(23).default(8),
+  reportDailyIncludePhotos: z.boolean().default(false),
+  reportDailyIncludeGuardNames: z.boolean().default(false),
+  reportWeeklyIncludePhotos: z.boolean().default(false),
+  reportWeeklyIncludeGuardNames: z.boolean().default(false),
+  reportMonthlyIncludePhotos: z.boolean().default(false),
+  reportMonthlyIncludeGuardNames: z.boolean().default(false),
+
 
 
   /** Dias que se conserva la evidencia fotografica. */
@@ -855,12 +862,18 @@ export const PATROL_RULE_CATALOG: RuleCatalog = {
     key: 'reportDigestHour', label: 'Hora de los resúmenes', description: 'Hora local del recinto desde la que se envía el último período completo: día anterior, semana de lunes a domingo anterior o mes anterior. Un solo envío por período y destinatario.',
     type: 'integer', unit: null, min: 0, max: 23, default: DEFAULT_PATROL_RULES.reportDigestHour, scopes: HASTA_RECINTO, group: 'avisos',
   },
-  reportDailyEnabled: {key: 'reportDailyEnabled', label: 'Resumen diario por correo', description: 'Activa el envío del último período completo, sin fotos ni datos personales de guardias.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportDailyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
+  reportDailyEnabled: {key: 'reportDailyEnabled', label: 'Resumen diario por correo', description: 'Activa el envío del último período completo, con el contenido opcional elegido para esta frecuencia.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportDailyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
   reportDailyRecipients: {key: 'reportDailyRecipients', label: 'Destinatarios del resumen diario', description: 'Lista propia para esta frecuencia. Vacía: usa la lista común del recinto. Solo estos correos reciben el resumen.', type: 'email-list', unit: null, maxItems: 10, default: DEFAULT_PATROL_RULES.reportDailyRecipients, scopes: ['tenant', 'site'], group: 'avisos'},
-  reportWeeklyEnabled: {key: 'reportWeeklyEnabled', label: 'Resumen semanal por correo', description: 'Activa el envío del último período completo, sin fotos ni datos personales de guardias.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportWeeklyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
+  reportWeeklyEnabled: {key: 'reportWeeklyEnabled', label: 'Resumen semanal por correo', description: 'Activa el envío del último período completo, con el contenido opcional elegido para esta frecuencia.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportWeeklyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
   reportWeeklyRecipients: {key: 'reportWeeklyRecipients', label: 'Destinatarios del resumen semanal', description: 'Lista propia para esta frecuencia. Vacía: usa la lista común del recinto. Solo estos correos reciben el resumen.', type: 'email-list', unit: null, maxItems: 10, default: DEFAULT_PATROL_RULES.reportWeeklyRecipients, scopes: ['tenant', 'site'], group: 'avisos'},
-  reportMonthlyEnabled: {key: 'reportMonthlyEnabled', label: 'Resumen mensual por correo', description: 'Activa el envío del último período completo, sin fotos ni datos personales de guardias.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportMonthlyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
+  reportMonthlyEnabled: {key: 'reportMonthlyEnabled', label: 'Resumen mensual por correo', description: 'Activa el envío del último período completo, con el contenido opcional elegido para esta frecuencia.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportMonthlyEnabled, scopes: HASTA_RECINTO, group: 'avisos'},
   reportMonthlyRecipients: {key: 'reportMonthlyRecipients', label: 'Destinatarios del resumen mensual', description: 'Lista propia para esta frecuencia. Vacía: usa la lista común del recinto. Solo estos correos reciben el resumen.', type: 'email-list', unit: null, maxItems: 10, default: DEFAULT_PATROL_RULES.reportMonthlyRecipients, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportDailyIncludePhotos: {key: 'reportDailyIncludePhotos', label: 'Incluir fotos en resumen diario', description: 'Adjunta el detalle del período con fotos comprimidas. Si no cabe, el correo conserva el resumen e indica consultar el panel.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportDailyIncludePhotos, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportDailyIncludeGuardNames: {key: 'reportDailyIncludeGuardNames', label: 'Incluir nombres de guardias en resumen diario', description: 'Incluye nombre y apellido del guardia en el detalle adjunto del período. No incluye RUT ni datos de contacto.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportDailyIncludeGuardNames, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportWeeklyIncludePhotos: {key: 'reportWeeklyIncludePhotos', label: 'Incluir fotos en resumen semanal', description: 'Adjunta el detalle del período con fotos comprimidas. Si no cabe, el correo conserva el resumen e indica consultar el panel.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportWeeklyIncludePhotos, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportWeeklyIncludeGuardNames: {key: 'reportWeeklyIncludeGuardNames', label: 'Incluir nombres de guardias en resumen semanal', description: 'Incluye nombre y apellido del guardia en el detalle adjunto del período. No incluye RUT ni datos de contacto.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportWeeklyIncludeGuardNames, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportMonthlyIncludePhotos: {key: 'reportMonthlyIncludePhotos', label: 'Incluir fotos en resumen mensual', description: 'Adjunta el detalle del período con fotos comprimidas. Si no cabe, el correo conserva el resumen e indica consultar el panel.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportMonthlyIncludePhotos, scopes: ['tenant', 'site'], group: 'avisos'},
+  reportMonthlyIncludeGuardNames: {key: 'reportMonthlyIncludeGuardNames', label: 'Incluir nombres de guardias en resumen mensual', description: 'Incluye nombre y apellido del guardia en el detalle adjunto del período. No incluye RUT ni datos de contacto.', type: 'boolean', unit: null, default: DEFAULT_PATROL_RULES.reportMonthlyIncludeGuardNames, scopes: ['tenant', 'site'], group: 'avisos'},
   visitorRetentionDays: {
     key: 'visitorRetentionDays',
     label: 'Retención del registro de visitas',

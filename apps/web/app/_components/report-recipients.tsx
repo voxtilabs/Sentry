@@ -7,6 +7,9 @@ type Frequency = 'daily' | 'weekly' | 'monthly';
 export interface MailSettings {
   recipients: string[]; onlyBelowThreshold: boolean; threshold: number; hour: number;
   dailyEnabled: boolean; weeklyEnabled: boolean; monthlyEnabled: boolean;
+  dailyIncludePhotos: boolean; dailyIncludeGuardNames: boolean;
+  weeklyIncludePhotos: boolean; weeklyIncludeGuardNames: boolean;
+  monthlyIncludePhotos: boolean; monthlyIncludeGuardNames: boolean;
   dailyRecipients: string[]; weeklyRecipients: string[]; monthlyRecipients: string[];
 }
 const FREQUENCIES: {key:Frequency;label:string;period:string}[] = [
@@ -74,10 +77,13 @@ export function ReportRecipients({apiUrl}:{apiUrl:string}) {
       <div className="mail-settings-section"><h3>Resúmenes programados</h3>
         <label>Hora local de envío<select aria-label="Hora local de envío" value={settings.hour} onChange={e=>patch({hour:Number(e.target.value)})} disabled={saving}>{Array.from({length:24},(_,hour)=><option key={hour} value={hour}>{String(hour).padStart(2,'0')}:00</option>)}</select></label>
         <p className="form-note">Se procesa el último período completo desde la hora elegida, con un margen de hasta 15 minutos. Al activar una frecuencia, puede enviarse el último período cerrado. Cada destinatario recibe un correo por empresa, frecuencia, zona horaria y período.</p>
-        <p className="form-note">Incluyen cifras y tendencias por recinto, sin fotos, nombres de guardias, RUT ni recorridos GPS.</p>
+        <p className="form-note">Elige el contenido de cada frecuencia. Sin marcar las casillas se envían solo cifras; el detalle opcional viaja en PDF. Los nombres incluyen nombre y apellido del guardia.</p>
         {FREQUENCIES.map(({key,label,period})=><fieldset key={key} disabled={saving} className="mail-frequency">
           <legend>{label}</legend><p className="form-note">{period}</p>
           <label className="mail-toggle"><input type="checkbox" checked={settings[`${key}Enabled`]} onChange={e=>patch({[`${key}Enabled`]:e.target.checked})}/>Activar resumen {label.toLowerCase()}</label>
+          <label className="mail-toggle"><input type="checkbox" checked={settings[`${key}IncludePhotos`] ?? false} onChange={e=>patch({[`${key}IncludePhotos`]:e.target.checked})}/>Incluir fotos en el PDF</label>
+          <label className="mail-toggle"><input type="checkbox" checked={settings[`${key}IncludeGuardNames`] ?? false} onChange={e=>patch({[`${key}IncludeGuardNames`]:e.target.checked})}/>Incluir nombre y apellido de los guardias</label>
+          <p className="form-note">Las fotos se comprimen. Si el anexo supera el límite de envío, el correo conserva el resumen e indica consultar el panel con una cuenta autorizada.</p>
           <label className="mail-toggle"><input type="checkbox" checked={!custom[key]} onChange={e=>{const common=e.target.checked;setCustom(c=>({...c,[key]:!common}));if(common)patch({[`${key}Recipients`]:[]});}}/>Usar lista común</label>
           {custom[key]?<EmailList label={`Correo para resumen ${label.toLowerCase()}`} values={settings[`${key}Recipients`]} onChange={values=>patch({[`${key}Recipients`]:values})} disabled={saving}/>:<p className="form-note">{settings.recipients.length} destinatarios de la lista común.</p>}
         </fieldset>)}

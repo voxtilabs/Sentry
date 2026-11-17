@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { MailQueueService } from '../mail/mail-queue.service';
 import { RulesService } from '../rules/rules.service';
+import { DigestAttachmentsService, type DigestDetail, type DigestPdfCache } from './digest-attachments.service';
 import type { PatrolRules } from '@sentrycore/shared';
 
 export const DIGEST_FREQUENCIES = ['daily', 'weekly', 'monthly'] as const;
@@ -14,10 +15,10 @@ interface Site {id: string; name: string; branch_name: string; timezone: string}
 export interface DigestPeriod {start_at: Date; end_at: Date; label: string; due: boolean}
 export interface DigestStats {total: number; closed: number; below: number; unknown: number; average: number | null; active: number}
 interface Bucket {label: string; total: number; average: number | null}
-export interface DigestSite {name: string; threshold: number; stats: DigestStats; buckets: Bucket[]}
+export interface DigestSite {detail?: DigestDetail; name: string; threshold: number; stats: DigestStats; buckets: Bucket[]}
 interface Group {frequency: DigestFrequency; timezone: string; period: DigestPeriod; email: string; ready: boolean; sites: DigestSite[]}
 
-/** Aggregates only: no guard names, IDs, RUT, GPS, answers, or photographs in email. */
+/** The body stays compact; per-site PDF attachments contain only explicitly enabled detail. */
 export function digestText(frequency: DigestFrequency, period: string, sites: DigestSite[]): string {
   const total = sites.reduce((n,s) => n+s.stats.total,0);
   const closed = sites.reduce((n,s) => n+s.stats.closed,0);
@@ -33,13 +34,13 @@ export function digestText(frequency: DigestFrequency, period: string, sites: Di
     ]),
     'Las rondas se agrupan por su inicio programado, en la hora local del recinto. El mínimo es el configurado al generar este resumen. En el mensual, las semanas de los extremos incluyen solo los días del mes.',
     'Datos disponibles al generar el correo; las sincronizaciones posteriores se reflejan en el panel.',
-    'Este correo resume el período; no contiene fotos ni información personal de guardias. Los informes completos siguen disponibles en el panel de SentryCore con acceso autorizado.',
+    'El cuerpo del correo resume el período. Los adjuntos opcionales incluyen únicamente las fotos y nombres habilitados en cada recinto. Los informes completos siguen disponibles en el panel con acceso autorizado.',
   ].join('\n');
 }
 
 @Injectable()
 export class ReportDigestService {
-  constructor(private readonly ctx: TenantContextService, private readonly rules: RulesService, private readonly mail: MailQueueService) {}
+  constructor(private readonly ctx: TenantContextService, private readonly rules: RulesService, private readonly mail: MailQueueService, private readonly details: DigestAttachmentsService) {}
 
   async period(frequency: DigestFrequency, timezone: string, hour: number, now: Date): Promise<DigestPeriod> {
     const [p] = await this.ctx.manager.query<DigestPeriod[]>(`WITH boundary AS (
@@ -72,10 +73,11 @@ export class ReportDigestService {
           let group = groups.get(key);
           if (!group) {group = {frequency,timezone:site.timezone,period,email,ready:true,sites:[]}; groups.set(key,group);}
           group.ready = group.ready && period.due;
-          group.sites.push({name:`${site.name} (${site.branch_name})`,threshold:rules.complianceThreshold,stats,buckets});
+          group.sites.push({detail:{siteId:site.id,name:site.name,photos:rules[`report${suffix}IncludePhotos`],guardNames:rules[`report${suffix}IncludeGuardNames`],maxBytes:rules.reportMailMaxAttachmentMB*1024*1024},name:`${site.name} (${site.branch_name})`,threshold:rules.complianceThreshold,stats,buckets});
         }
       }
     }
+    const pdfCache: DigestPdfCache = new Map();
     let queued = 0;
     for (const group of groups.values()) {
       if (!group.ready) continue;
@@ -84,10 +86,15 @@ export class ReportDigestService {
         ON CONFLICT DO NOTHING RETURNING tenant_id`, [group.frequency,group.timezone,group.period.start_at,group.period.end_at,group.email]);
       if (!rows.length) continue;
       const key = createHash('sha256').update(JSON.stringify([tenantId,group.frequency,group.timezone,group.period.start_at,group.email])).digest('hex');
+      const options = group.sites.flatMap(s=>s.detail?[s.detail]:[]);
+      const annex = options.some(s=>s.photos||s.guardNames)
+        ? await this.details.prepare(options,group.period.start_at,group.period.end_at,pdfCache)
+        : {attachments:[],notes:[]};
       const result = await this.mail.enqueue({to:group.email,tenantId,
         template:{subject:'SentryCore · {{recintos}} · Resumen {{frecuencia}} · {{periodo}}',text:'{{contenido}}'},
         variables:{recintos:group.sites.map(s=>s.name).join(', ').slice(0,200),frecuencia:LABEL[group.frequency],periodo:group.period.label,
-          contenido:digestText(group.frequency,group.period.label,group.sites)},
+          contenido:[digestText(group.frequency,group.period.label,group.sites), ...annex.notes].join('\n\n')},
+        ...(annex.attachments.length ? {attachments:annex.attachments} : {}),
       },{idempotencyKey:`report-digest:${key}`});
       if (result.estado === 'encolado') queued++;
     }

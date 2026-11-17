@@ -4,6 +4,7 @@ import { patrolRulesSchema } from '@sentrycore/shared';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import type { MailQueueService } from '../mail/mail-queue.service';
 import type { RulesService } from '../rules/rules.service';
+import type { DigestAttachmentsService } from './digest-attachments.service';
 import { ReportDigestService } from './report-digest.service';
 import { OperationsService } from '../operations/operations.service';
 import { AuditService } from '../audit/audit.service';
@@ -21,7 +22,7 @@ database('report digests with real PostgreSQL / restricted RLS role',()=>{
   await q.query("SELECT set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true)",[tenant,admin]);ctx=new TenantContextService();});
  afterEach(async()=>{await q.rollbackTransaction();await q.release();});
  it('uses local calendar boundaries across DST, year changes and month lengths',async()=>{
-  const service=new ReportDigestService({manager:q.manager} as TenantContextService,{} as RulesService,{} as MailQueueService);
+  const service=new ReportDigestService({manager:q.manager} as TenantContextService,{} as RulesService,{} as MailQueueService,{} as DigestAttachmentsService);
   const dst=await service.period('daily','America/Santiago',8,new Date('2026-09-07T12:00:00Z'));
   expect(dst.due).toBe(true);expect(dst.start_at.toISOString()).toBe('2026-09-06T04:00:00.000Z');
   expect(dst.end_at.getTime()-dst.start_at.getTime()).toBe(23*3600_000);
@@ -41,7 +42,7 @@ database('report digests with real PostgreSQL / restricted RLS role',()=>{
    reportMonthlyRecipients:['cliente@example.cl'],complianceThreshold:75,reportDigestHour:siteId===second?9:8}: {})};
   const mail={enqueue:jest.fn().mockResolvedValue({estado:'encolado',jobId:'test'})};
   await ctx.run(q,tenant,async()=>{
-   const service=new ReportDigestService(ctx,rules as unknown as RulesService,mail as unknown as MailQueueService);
+   const service=new ReportDigestService(ctx,rules as unknown as RulesService,mail as unknown as MailQueueService,{} as DigestAttachmentsService);
    expect(await service.dispatch(tenant,new Date('2040-01-17T11:00Z'))).toEqual({queued:2});
    expect(await service.dispatch(tenant,new Date('2040-01-17T12:00Z'))).toEqual({queued:1});
    expect(mail.enqueue).toHaveBeenCalledTimes(3);
@@ -68,8 +69,8 @@ database('report digests with real PostgreSQL / restricted RLS role',()=>{
    await expect(ops.recipients(other,actor)).rejects.toBeInstanceOf(ForbiddenException);
    await expect(ops.recipients(randomUUID(),actor)).rejects.toBeInstanceOf(NotFoundException);
    const before=await rules.effective({siteId:site.id});
-   const saved=await ops.setRecipients(site.id,['global@example.cl'],actor,{recipients:['global@example.cl'],onlyBelowThreshold:true,threshold:75,monthlyEnabled:true,monthlyRecipients:['cliente@example.cl']});
-   expect(saved).toMatchObject({threshold:75,onlyBelowThreshold:true,monthlyRecipients:['cliente@example.cl'],monthlyEnabled:true});
+   const saved=await ops.setRecipients(site.id,['global@example.cl'],actor,{recipients:['global@example.cl'],onlyBelowThreshold:true,threshold:75,monthlyEnabled:true,monthlyRecipients:['cliente@example.cl'],monthlyIncludePhotos:true,monthlyIncludeGuardNames:false});
+   expect(saved).toMatchObject({threshold:75,onlyBelowThreshold:true,monthlyRecipients:['cliente@example.cl'],monthlyEnabled:true,monthlyIncludePhotos:true,monthlyIncludeGuardNames:false});
    expect((await rules.effective({siteId:site.id})).taskPhotoMaxCount).toBe(before.taskPhotoMaxCount);
   });
  });

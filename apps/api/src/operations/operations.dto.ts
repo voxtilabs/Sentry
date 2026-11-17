@@ -19,6 +19,12 @@ export class MailSettingsDto extends RecipientsDto {
   @IsOptional() @IsBoolean() dailyEnabled?: boolean;
   @IsOptional() @IsBoolean() weeklyEnabled?: boolean;
   @IsOptional() @IsBoolean() monthlyEnabled?: boolean;
+  @IsOptional() @IsBoolean() dailyIncludePhotos?: boolean;
+  @IsOptional() @IsBoolean() dailyIncludeGuardNames?: boolean;
+  @IsOptional() @IsBoolean() weeklyIncludePhotos?: boolean;
+  @IsOptional() @IsBoolean() weeklyIncludeGuardNames?: boolean;
+  @IsOptional() @IsBoolean() monthlyIncludePhotos?: boolean;
+  @IsOptional() @IsBoolean() monthlyIncludeGuardNames?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsEmail({}, {each:true}) dailyRecipients?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsEmail({}, {each:true}) weeklyRecipients?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsEmail({}, {each:true}) monthlyRecipients?: string[];
