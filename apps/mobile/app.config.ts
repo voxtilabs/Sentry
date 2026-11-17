@@ -105,7 +105,8 @@ const config: ExpoConfig = {
    * "versionCode ya usado" al subir a Play.
    */
   version: '0.3.4',
-  orientation: 'portrait',
+  // Let Android handle rotation, split screen and tablet/foldable windows.
+  orientation: 'default',
   userInterfaceStyle: 'light',
   scheme: 'sentrycore',
   primaryColor: MARCA,
