@@ -12,6 +12,7 @@ import { EnvioInformeProcessor } from './envio-informe.processor';
 import { EnvioInformeService } from './envio-informe.service';
 import { DIGEST_QUEUE, ReportDigestProcessor, ReportDigestSchedule } from './report-digest.processor';
 import { ReportDigestService } from './report-digest.service';
+import { DigestAttachmentsService } from './digest-attachments.service';
 import { ReportsModule } from './reports.module';
 
 /**
@@ -65,7 +66,7 @@ import { ReportsModule } from './reports.module';
   // cola despues descarta. Una sola lista, la de la cola.
   providers: [
     EnvioInformeService,
-    ReportDigestService, ReportDigestSchedule, ReportDigestProcessor,
+    ReportDigestService, ReportDigestSchedule, ReportDigestProcessor, DigestAttachmentsService,
     EnvioInformeProcessor,
     BarridoEnvioService,
     BarridoEnvioProcessor,

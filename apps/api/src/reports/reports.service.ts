@@ -72,6 +72,14 @@ export interface SiteSummaryReport {
   readonly to: Date;
 }
 
+/** Expected limits let scheduled email keep its compact summary. */
+export class SummaryPhotoLimitError extends BadRequestException {
+  constructor() { super('Para incluir fotos, elige un período con hasta 500 imágenes. El resumen sin fotos incluye todo el período.'); }
+}
+export class SummaryPdfSizeError extends Error {
+  constructor() { super('El detalle supera el presupuesto del adjunto.'); }
+}
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -93,6 +101,8 @@ export class ReportsService {
     to?: string,
     requester: Pick<AuthenticatedUser, 'sub' | 'role'> | null = null,
     includePhotos = false,
+    includeGuardNames = true,
+    maxPdfBytes?: number,
   ): Promise<SiteSummaryReport> {
     let hasta = to ? new Date(to) : new Date();
     let desde = from ? new Date(from) : new Date(hasta.getTime() - 30 * 24 * 3_600_000);
@@ -128,6 +138,8 @@ export class ReportsService {
     if(includePhotos && !(await this.features?.isEnabled('photoAppendix')))throw new ForbiddenException('El anexo fotográfico no está habilitado para esta empresa.');
 
 
+    // Select no guard names at all when their disclosure is disabled.
+    const guardNameSql = includeGuardNames ? "(u.given_name || ' ' || u.family_name)" : "''::text";
     const rondas = await this.tenantContext.manager.query<RondaPeriodoRow[]>(
       `
         SELECT
@@ -137,7 +149,7 @@ export class ReportsService {
           p.closed_at,
           p.compliance_pct,
           r.name AS route_name,
-          (u.given_name || ' ' || u.family_name) AS guard_name
+          ${guardNameSql} AS guard_name
         FROM patrols p
         JOIN routes r ON r.tenant_id = p.tenant_id AND r.id = p.route_id
         JOIN users u ON u.id = p.guard_id
@@ -184,10 +196,10 @@ export class ReportsService {
       [siteId, desde, hasta],
     );
 
-    const fotos=includePhotos ? await this.tenantContext.manager.query<Array<{id:string;storage_path:string;mime_type:string;checkpoint_name:string;scheduled_start_at:Date;guard_name:string}>>(`SELECT ph.id,ph.storage_path,ph.mime_type,c.name AS checkpoint_name,p.scheduled_start_at,trim(u.given_name||' '||u.family_name) AS guard_name
+    const fotos=includePhotos ? await this.tenantContext.manager.query<Array<{id:string;storage_path:string;mime_type:string;checkpoint_name:string;scheduled_start_at:Date;guard_name:string}>>(`SELECT ph.id,ph.storage_path,ph.mime_type,c.name AS checkpoint_name,p.scheduled_start_at,trim(${guardNameSql}) AS guard_name
       FROM scan_photos ph JOIN patrols p ON p.id=ph.patrol_id JOIN checkpoints c ON c.id=ph.checkpoint_id JOIN users u ON u.id=p.guard_id
       WHERE p.site_id=$1 AND p.scheduled_start_at >= $2 AND p.scheduled_start_at < $3 ORDER BY p.scheduled_start_at,ph.created_at,ph.id LIMIT 501`,[siteId,desde,hasta]) : [];
-    if(fotos.length>500)throw new BadRequestException('Para incluir fotos, elige un período con hasta 500 imágenes. El resumen sin fotos incluye todo el período.');
+    if(fotos.length>500)throw new SummaryPhotoLimitError();
     const reglas = await this.rules.effective({siteId});
     // La marca del tenant manda sobre el nombre legal, igual que en el informe
     // de ronda: los dos documentos los ve el mismo cliente final.
@@ -208,21 +220,23 @@ export class ReportsService {
         desde,
         hasta,
         reglas.complianceThreshold,
+        includeGuardNames,
       );
       if(includePhotos && !fotos.length){doc.addPage();dibujarTituloSeccion(doc,'Anexo fotográfico');doc.text('Las rondas de este período no tienen fotografías registradas.');}
       for(const [index,foto] of fotos.entries()){
+        if (doc.destroyed) throw new SummaryPdfSizeError();
         const slot=index%2;if(slot===0){doc.addPage();dibujarTituloSeccion(doc,'Anexo fotográfico del período');}
         const x=doc.page.margins.left,y=slot===0?105:435,width=anchoUtil(doc);
         const lectura=await leerEvidencia(this.config.getOrThrow<string>('EVIDENCE_PATH'),foto.storage_path,foto.mime_type,{maxBytes:reglas.photoMaxSizeMB*1024*1024});
         if(lectura.ok){
-          const image=await fotoParaPdf(lectura.contenido,presupuestoFotoPdf(reglas.reportMailMaxAttachmentMB*1024*1024,fotos.length));
+          const image=await fotoParaPdf(lectura.contenido,presupuestoFotoPdf(maxPdfBytes ?? reglas.reportMailMaxAttachmentMB*1024*1024,fotos.length));
           try{doc.image(image,x,y,{fit:[width,240],align:'center',valign:'center'});}catch{doc.fontSize(10).text('Imagen ilegible.',x,y);}
         } else doc.fontSize(10).text(MOTIVO_TEXTO[lectura.motivo],x,y);
         doc.font('Helvetica-Bold').fontSize(9).fillColor(PALETA.tinta).text(recortar(foto.checkpoint_name,80),x,y+246,{width});
-        doc.font('Helvetica').fontSize(8).text(`${formatearFechaHora(foto.scheduled_start_at,sitio.timezone)} · ${foto.guard_name}`,x,y+262,{width});
+        doc.font('Helvetica').fontSize(8).text(`${formatearFechaHora(foto.scheduled_start_at,sitio.timezone)}${includeGuardNames ? ` · ${foto.guard_name}` : ''}`,x,y+262,{width});
         if(slot===1||index===fotos.length-1)dibujarPie(doc,sitio.timezone,marca.mailFooter);
       }
-    });
+    }, maxPdfBytes);
 
     return {
       pdf,
@@ -254,11 +268,16 @@ export class ReportsService {
    * se arma en memoria sin problema. El informe de ronda, que si puede traer
    * decenas de fotos, va por streaming — ver patrol-report.renderer.ts.
    */
-  private renderizar(dibujar: (doc: PDFKit.PDFDocument) => void | Promise<void>): Promise<Buffer> {
+  private renderizar(dibujar: (doc: PDFKit.PDFDocument) => void | Promise<void>, maxBytes?: number): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
       const partes: Buffer[] = [];
-      doc.on('data', (parte: Buffer) => partes.push(parte));
+      let bytes = 0;
+      doc.on('data', (parte: Buffer) => {
+        bytes += parte.length;
+        if (maxBytes !== undefined && bytes > maxBytes) {doc.destroy(new SummaryPdfSizeError()); return;}
+        partes.push(parte);
+      });
       doc.on('end', () => resolve(Buffer.concat(partes)));
       doc.on('error', (error: Error) => reject(error));
       try {
@@ -286,6 +305,7 @@ export class ReportsService {
     desde: Date,
     hasta: Date,
     umbral: number,
+    includeGuardNames = true,
   ): void {
     const tz = sitio.timezone;
     // El logo va en null: resolverlo es asincrono (disco o data URI) y este
@@ -343,8 +363,8 @@ export class ReportsService {
         doc,
         [
           { titulo: 'Fecha', ancho: 100 },
-          { titulo: 'Ruta', ancho: 140 },
-          { titulo: 'Guardia', ancho: 125 },
+          { titulo: 'Ruta', ancho: includeGuardNames ? 140 : 265 },
+          ...(includeGuardNames ? [{ titulo: 'Guardia', ancho: 125 }] : []),
           { titulo: 'Estado', ancho: 80 },
           { titulo: 'Cumplimiento', ancho: 70, alinear: 'right' },
         ],
@@ -354,7 +374,7 @@ export class ReportsService {
           return [
             { texto: formatearFechaHora(ronda.scheduled_start_at, tz) },
             { texto: recortar(ronda.route_name, 32) },
-            { texto: recortar(ronda.guard_name, 28) },
+            ...(includeGuardNames ? [{ texto: recortar(ronda.guard_name, 28) }] : []),
             { texto: ESTADOS_RONDA[ronda.status] ?? ronda.status },
             pct === null
               ? { texto: '—', color: PALETA.gris }

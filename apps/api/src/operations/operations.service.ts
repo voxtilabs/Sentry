@@ -45,6 +45,9 @@ export class OperationsService {
     private mailSettings(siteId: string, rules: PatrolRules) { return { siteId, recipients: rules.reportRecipients, onlyBelowThreshold: rules.reportOnlyBelowThreshold,
             threshold: rules.complianceThreshold, hour: rules.reportDigestHour,
             dailyEnabled: rules.reportDailyEnabled, weeklyEnabled: rules.reportWeeklyEnabled, monthlyEnabled: rules.reportMonthlyEnabled,
+            dailyIncludePhotos: rules.reportDailyIncludePhotos, dailyIncludeGuardNames: rules.reportDailyIncludeGuardNames,
+            weeklyIncludePhotos: rules.reportWeeklyIncludePhotos, weeklyIncludeGuardNames: rules.reportWeeklyIncludeGuardNames,
+            monthlyIncludePhotos: rules.reportMonthlyIncludePhotos, monthlyIncludeGuardNames: rules.reportMonthlyIncludeGuardNames,
             dailyRecipients: rules.reportDailyRecipients, weeklyRecipients: rules.reportWeeklyRecipients, monthlyRecipients: rules.reportMonthlyRecipients }; }
     async setRecipients(siteId: string, recipients: string[], actor: Actor, options?: MailSettingsDto) {
         await this.site(siteId, actor);
@@ -57,6 +60,9 @@ export class OperationsService {
         if (options) {
             const mapping = {onlyBelowThreshold:'reportOnlyBelowThreshold',threshold:'complianceThreshold',hour:'reportDigestHour',
                 dailyEnabled:'reportDailyEnabled',weeklyEnabled:'reportWeeklyEnabled',monthlyEnabled:'reportMonthlyEnabled',
+                dailyIncludePhotos:'reportDailyIncludePhotos',dailyIncludeGuardNames:'reportDailyIncludeGuardNames',
+                weeklyIncludePhotos:'reportWeeklyIncludePhotos',weeklyIncludeGuardNames:'reportWeeklyIncludeGuardNames',
+                monthlyIncludePhotos:'reportMonthlyIncludePhotos',monthlyIncludeGuardNames:'reportMonthlyIncludeGuardNames',
                 dailyRecipients:'reportDailyRecipients',weeklyRecipients:'reportWeeklyRecipients',monthlyRecipients:'reportMonthlyRecipients'} as const;
             for (const [field, rule] of Object.entries(mapping)) {
                 const value = options[field as keyof typeof mapping];

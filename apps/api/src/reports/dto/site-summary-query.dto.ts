@@ -1,6 +1,7 @@
 import { IsISO8601, IsOptional, IsIn } from 'class-validator';
 
 export class SiteSummaryQueryDto {
+  @IsOptional() @IsIn(['true','false']) guardNames?: 'true'|'false';
   @IsOptional() @IsIn(['true','false']) photos?: 'true'|'false';
 
   /** Inicio del periodo (ISO 8601). Sin valor: 30 dias antes de `to`. */

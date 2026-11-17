@@ -79,6 +79,7 @@ export class ReportsController {
       query.to,
       request.user,
       query.photos === 'true',
+      query.guardNames !== 'false',
     );
     this.responderPdf(response, informe.filename, informe.pdf);
   }

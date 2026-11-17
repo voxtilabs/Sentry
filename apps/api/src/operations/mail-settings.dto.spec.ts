@@ -7,9 +7,9 @@ const validate=(input:unknown)=>validateSync(plainToInstance(MailSettingsDto,inp
 describe('mail settings boundary',()=>{
  it('accepts the web payload with independent monthly recipients',()=>{
   expect(validate({recipients:['ops@example.cl'],onlyBelowThreshold:true,threshold:75,hour:8,
-   dailyEnabled:false,weeklyEnabled:false,monthlyEnabled:true,dailyRecipients:[],weeklyRecipients:[],monthlyRecipients:['cliente@example.cl']})).toEqual([]);
+   dailyEnabled:false,weeklyEnabled:false,monthlyEnabled:true,dailyRecipients:[],weeklyRecipients:[],monthlyRecipients:['cliente@example.cl'],monthlyIncludePhotos:true,monthlyIncludeGuardNames:false})).toEqual([]);
  });
- it.each([{threshold:101},{hour:24},{monthlyEnabled:'true'},{monthlyRecipients:['invalid']},{monthlyRecipients:Array(11).fill('a@example.cl')},{gpsTrackingEnabled:false},{siteId:'untrusted'}])('rejects invalid settings and unrelated business rules: %o',input=>{
+ it.each([{threshold:101},{hour:24},{monthlyEnabled:'true'},{dailyIncludePhotos:'true'},{monthlyIncludeGuardNames:1},{monthlyIncludeRut:true},{monthlyRecipients:['invalid']},{monthlyRecipients:Array(11).fill('a@example.cl')},{gpsTrackingEnabled:false},{siteId:'untrusted'}])('rejects invalid settings and unrelated business rules: %o',input=>{
   expect(validate({recipients:[],...input}).length).toBeGreaterThan(0);
  });
  it('forbids platform-wide recipient lists and checkpoint mail scheduling',()=>{

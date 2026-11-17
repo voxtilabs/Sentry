@@ -1480,3 +1480,6 @@ a.stats-boton { display: inline-flex; align-items: center; }
 .mail-settings .form-note { margin: .55rem 0 .8rem; text-align: left; font-size: .8rem; color: var(--muted, #596579); }
 .mail-settings .mail-toggle { align-items: center; min-height: 44px; }
 .mail-settings .mail-toggle input[type="checkbox"] { min-height: 0; padding: 0; max-width: 1.15rem; margin: 0; }
+
+.operations-summary .report-name-option { display: flex; flex-direction: row; align-items: center; gap: .6rem; min-height: 44px; }
+.operations-summary .report-name-option input[type="checkbox"] { width: 1.15rem; min-height: 0; height: 1.15rem; padding: 0; }
