@@ -78,13 +78,15 @@ export function PuntosSupervisor({
   apiUrl,
   mapTileUrl,
   mapAttribution,
+  initialSiteId,
 }: {
   apiUrl: string;
+  initialSiteId?: string;
   mapTileUrl: string | null;
   mapAttribution: string;
 }) {
   const [recintos, setRecintos] = useState<RecintoAsignado[]>([]);
-  const [seleccionado, setSeleccionado] = useState<string | null>(null);
+  const [seleccionado, setSeleccionado] = useState<string | null>(initialSiteId??null);
   const [puntos, setPuntos] = useState<Punto[]>([]);
   const [etiquetas, setEtiquetas] = useState<Record<string, Etiqueta[]>>({});
   const [guardias, setGuardias] = useState<GuardiaDelRecinto[]>([]);

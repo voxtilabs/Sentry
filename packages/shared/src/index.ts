@@ -12,3 +12,5 @@ export * from './branding';
 export * from './domain';
 
 export * from './visits';
+
+export * from './staff-access';

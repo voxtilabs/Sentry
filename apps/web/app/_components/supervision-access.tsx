@@ -1,0 +1,18 @@
+'use client';
+import {useEffect,useState} from 'react';
+import type {SupervisionDirectory} from '@sentrycore/shared';
+import {operationRequest,operationError} from './operations-client';
+
+export function SupervisionAccess({apiUrl}:{apiUrl:string}){
+ const [data,setData]=useState<SupervisionDirectory|null>(null),[person,setPerson]=useState(''),[selected,setSelected]=useState<Record<string,string[]>>({}),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ useEffect(()=>{const c=new AbortController();void operationRequest<SupervisionDirectory>(`${apiUrl}/auth/supervision-access`,'GET',undefined,c.signal).then(setData).catch(e=>{if(!c.signal.aborted)setMessage(operationError(e));});return()=>c.abort();},[apiUrl]);
+ useEffect(()=>{const supervisor=data?.supervisors.find(s=>s.id===person);setSelected(Object.fromEntries((supervisor?.memberships??[]).map(m=>[m.tenantId,m.siteIds])));},[person,data]);
+ function toggle(companyId:string,siteId:string,enabled:boolean){setMessage('');setSelected(current=>({...current,[companyId]:enabled?[...new Set([...(current[companyId]??[]),siteId])]:(current[companyId]??[]).filter(id=>id!==siteId)}));}
+ async function save(){if(!data)return;setBusy(true);setMessage('');try{let next=data;const original=data.supervisors.find(s=>s.id===person);
+  for(const company of data.companies){const before=[...(original?.memberships.find(m=>m.tenantId===company.id)?.siteIds??[])].sort(),after=[...(selected[company.id]??[])].sort();if(JSON.stringify(before)!==JSON.stringify(after))next=await operationRequest<SupervisionDirectory>(`${apiUrl}/auth/supervision-access`,'PUT',{tenantId:company.id,supervisorId:person,siteIds:after});}
+  setData(next);setMessage('Accesos actualizados. El supervisor verá los recintos seleccionados de cada empresa.');}catch(e){setMessage(operationError(e));}finally{setBusy(false);}}
+ return <section className="management-card management-wide supervision-access"><div className="card-heading"><h2>Accesos de supervisión</h2></div><p className="section-explanation">Selecciona un supervisor existente y marca los recintos que podrá supervisar. Guardar sin recintos seleccionados retira su acceso a los recintos de esa empresa. No elimina historial ni cierra sesiones de otras personas.</p>
+ {data?<><label>Supervisor<select aria-label="Supervisor" value={person} onChange={e=>{setPerson(e.target.value);setMessage('');}} disabled={busy}><option value="">Selecciona un supervisor</option>{data.supervisors.map(s=><option key={s.id} value={s.id}>{s.name}{s.email?` · ${s.email}`:''}</option>)}</select></label>{!data.supervisors.length&&<p>Crea primero el usuario con rol Supervisor desde Personas y acceso de la empresa.</p>}
+ {person&&data.companies.map(company=><fieldset key={company.id} disabled={busy} className="supervision-company"><legend>{company.name}</legend><div className="row-actions"><button type="button" className="text-button" onClick={()=>setSelected(s=>({...s,[company.id]:company.sites.map(site=>site.id)}))}>Marcar todos</button><button type="button" className="text-button" onClick={()=>setSelected(s=>({...s,[company.id]:[]}))}>Quitar todos</button></div>{company.sites.map(site=><label className="staff-site-check" key={site.id}><input type="checkbox" checked={(selected[company.id]??[]).includes(site.id)} onChange={e=>toggle(company.id,site.id,e.target.checked)}/>{site.name}</label>)}</fieldset>)}{person&&<button type="button" disabled={busy} className="primary-button" onClick={()=>void save()}>{busy?'Guardando…':'Guardar accesos seleccionados'}</button>}</>:!message&&<p role="status">Consultando empresas y supervisores…</p>}
+ {message&&<p role="status" className="management-message">{message}</p>}</section>;
+}

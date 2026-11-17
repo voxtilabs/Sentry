@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
+  Put,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -18,6 +20,7 @@ import type { Request, Response } from 'express';
 
 import { SkipTenantContext } from '../database/tenant-context/skip-tenant-context.decorator';
 import type { AuthenticatedUser } from './auth.guard';
+import { SwitchCompanyDto, SupervisionAccessDto } from './dto/staff-access.dto';
 import { AuthService } from './auth.service';
 import { HandoffService, type HandoffTicket } from './handoff.service';
 import { CompleteAuthActionDto } from './dto/complete-auth-action.dto';
@@ -69,6 +72,20 @@ export class AuthController {
       user: result.user,
     };
   }
+
+  @Get('companies') @Header('Cache-Control','no-store') @Permissions('account:sessions:manage')
+  companies(@Req() request: Request & {user:AuthenticatedUser}) {return this.auth.staffCompanies(request.user);}
+
+  @Post('switch-company') @HttpCode(HttpStatus.OK) @Permissions('account:sessions:manage')
+  async switchCompany(@Body() input:SwitchCompanyDto,@Req() request:Request & {user:AuthenticatedUser},@Res({passthrough:true}) response:Response) {
+    const session=await this.auth.switchCompany(request.user,input.tenantId,request.get('user-agent')??'Dispositivo desconocido');
+    setSessionCookies(response,session);clearCompanyCookie(response);
+    return {expiresIn:session.expiresIn,user:session.user};
+  }
+  @Get('supervision-access') @Header('Cache-Control','no-store') @Permissions('account:sessions:manage')
+  supervisionDirectory(@Req() request:Request & {user:AuthenticatedUser}) {return this.auth.supervisionDirectory(request.user);}
+  @Put('supervision-access') @Permissions('account:sessions:manage')
+  setSupervisionAccess(@Body() input:SupervisionAccessDto,@Req() request:Request & {user:AuthenticatedUser}) {return this.auth.setSupervisionAccess(request.user,input);}
 
   @Post('nfc-login')
   @HttpCode(HttpStatus.OK)

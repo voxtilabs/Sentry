@@ -60,6 +60,12 @@ describe('arquitectura de vistas del panel (#289)', () => {
     expect(resolvePanelView('SUPERVISOR', 'terreno')).toBe('terreno');
     expect(panelViewCopy('SUPERVISOR', 'terreno').title).toBe('Puntos y etiquetas');
     expect(resolvePanelView('ADMIN', 'terreno')).toBe('resumen');
-    expect(resolvePanelView('SUPERVISOR', 'recintos')).toBe('resumen');
+    expect(resolvePanelView('SUPERVISOR', 'recintos')).toBe('recintos');
+    expect(panelViewCopy('SUPERVISOR', 'recintos').title).toBe('Todos mis recintos');
+  });
+
+  it.each(['ADMIN', 'SUPERADMIN'] as const)('%s puede gestionar los accesos de supervisión', (role) => {
+    expect(resolvePanelView(role, 'supervision')).toBe('supervision');
+    expect(resolvePanelView('SUPERVISOR', 'supervision')).toBe('resumen');
   });
 });
