@@ -19,7 +19,7 @@
  *  - "Rechazar" y "Retirar mi consentimiento" existen siempre y estan a la vista.
  *    Un consentimiento que no se puede retirar no es consentimiento.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { EVENTO_CONSENTIMIENTO_ACEPTADO } from './guard-permiso-ubicacion';
 
@@ -208,7 +208,7 @@ export function ConsentimientoAviso({
       </p>
 
       <p className="form-note">
-        Versión {aviso.policy.version} · publicada el {formatearFecha(aviso.policy.publishedAt)} ·{' '}
+        Versión {aviso.policy.version} · publicada el <FechaDelAviso valor={aviso.policy.publishedAt} /> ·{' '}
         <a href={aviso.policy.privacyPolicyUrl} target="_blank" rel="noreferrer noopener">
           Política de privacidad
         </a>
@@ -226,7 +226,7 @@ export function ConsentimientoAviso({
 
       {vigente && aviso.acceptance.grantedAt ? (
         <p className="form-note">
-          Aceptaste este aviso el {formatearFecha(aviso.acceptance.grantedAt)}.
+          Aceptaste este aviso el <FechaDelAviso valor={aviso.acceptance.grantedAt} />.
         </p>
       ) : null}
 
@@ -282,10 +282,16 @@ function equipoAproximado(): string {
   return 'Equipo sin identificar';
 }
 
-function formatearFecha(valor: string) {
-  return new Intl.DateTimeFormat('es-CL', { dateStyle: 'long', timeStyle: 'short' }).format(
-    new Date(valor),
-  );
+function FechaDelAviso({ valor }: { valor: string }) {
+  const [local, setLocal] = useState<{ valor: string; texto: string } | null>(null);
+  useEffect(() => {
+    setLocal({ valor, texto: new Intl.DateTimeFormat('es-CL', {
+      dateStyle: 'long', timeStyle: 'short',
+    }).format(new Date(valor)) });
+  }, [valor]);
+  // Server and first client render must agree even when their zones/ICU differ.
+  const inicial = new Date(valor).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  return <time dateTime={valor}>{local?.valor === valor ? local.texto : inicial}</time>;
 }
 
 export async function mensajeDeError(respuesta: Response): Promise<string> {
