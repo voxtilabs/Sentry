@@ -2,6 +2,7 @@ import type { StaffCompany } from '@sentrycore/shared';
 import { operationRequest } from './operations-client';
 import { rememberSessionLifetime, withSessionChange } from './use-session-refresh';
 import { guardarCodigoEmpresa } from '../_lib/codigo-empresa';
+import { staffViewQuery } from './panel-navigation';
 
 export const STAFF_COMPANY_CHANGE_KEY='sentrycore.staff.company';
 
@@ -16,6 +17,5 @@ export async function openStaffCompany(apiUrl:string,company:StaffCompany,curren
   });
  }
  const targetView=company.role==='ADMIN' && view==='terreno'?'recintos':view;
- const q=new URLSearchParams({vista:targetView});if(siteId)q.set('siteId',siteId);
- window.location.assign(`/app/${company.role.toLowerCase()}?${q}`);
+ window.location.assign(`/app/${company.role.toLowerCase()}${staffViewQuery(targetView,siteId)}`);
 }

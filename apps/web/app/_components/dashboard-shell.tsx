@@ -28,6 +28,7 @@ export function DashboardShell({
   streamlined = false,
   marca,
   activeView = 'resumen',
+  siteId,
 }: {
   role: string;
   title: string;
@@ -36,9 +37,10 @@ export function DashboardShell({
   streamlined?: boolean;
   marca?: MarcaDelShell;
   activeView?: string;
+  siteId?: string;
 }) {
   if (role === 'ADMIN' || role === 'SUPERVISOR' || role === 'SUPERADMIN') {
-    return <PanelShell role={role} title={title} subtitle={subtitle} marca={marca} activeView={activeView}>
+    return <PanelShell role={role} title={title} subtitle={subtitle} marca={marca} activeView={activeView} siteId={siteId}>
       {children}
     </PanelShell>;
   }

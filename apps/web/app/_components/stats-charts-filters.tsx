@@ -48,12 +48,14 @@ export function StatsChartsFilters({
   sucursales,
   hoy,
   vista,
+  siteId,
 }: {
   valores: ValoresFiltro;
   recintos: Array<{ id: string; nombre: string; sucursal: string }>;
   sucursales: string[];
   hoy: string;
   vista?: string;
+  siteId?: string;
 }) {
   const router = useRouter();
   const [pendiente, iniciarTransicion] = useTransition();
@@ -103,8 +105,11 @@ export function StatsChartsFilters({
     if (vista) parametros.set('vista', vista);
     parametros.set('desde', borrador.desde);
     parametros.set('hasta', borrador.hasta);
-    if (borrador.recinto) parametros.set('recinto', borrador.recinto);
-    if (borrador.sucursal) parametros.set('sucursal', borrador.sucursal);
+    if (siteId) parametros.set('siteId', siteId);
+    else {
+      if (borrador.recinto) parametros.set('recinto', borrador.recinto);
+      if (borrador.sucursal) parametros.set('sucursal', borrador.sucursal);
+    }
     parametros.set('agrupacion', borrador.agrupacion);
     setError(null);
     iniciarTransicion(() => router.push(`?${parametros.toString()}`, { scroll: false }));
@@ -120,7 +125,10 @@ export function StatsChartsFilters({
     };
     setBorrador(inicial);
     setError(null);
-    iniciarTransicion(() => router.push(vista ? `?vista=${encodeURIComponent(vista)}` : '?', { scroll: false }));
+    const parametros = new URLSearchParams();
+    if (vista) parametros.set('vista', vista);
+    if (siteId) parametros.set('siteId', siteId);
+    iniciarTransicion(() => router.push(`?${parametros}`, { scroll: false }));
   }
 
   return (
@@ -161,7 +169,7 @@ export function StatsChartsFilters({
           />
         </label>
 
-        <label>
+        {!siteId && <label>
           <span>Sucursal</span>
           <select
             value={borrador.sucursal}
@@ -174,9 +182,9 @@ export function StatsChartsFilters({
               </option>
             ))}
           </select>
-        </label>
+        </label>}
 
-        <label>
+        {!siteId && <label>
           <span>Recinto</span>
           <select
             value={borrador.recinto}
@@ -191,7 +199,7 @@ export function StatsChartsFilters({
                 </option>
               ))}
           </select>
-        </label>
+        </label>}
 
         <label>
           <span>Agrupar por</span>

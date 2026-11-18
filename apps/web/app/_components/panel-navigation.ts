@@ -1,5 +1,22 @@
 export type PanelRole = 'ADMIN' | 'SUPERVISOR' | 'SUPERADMIN';
 
+const SITE_VIEWS = new Set(['recintos', 'terreno', 'monitoreo', 'informes', 'correos']);
+
+export function supervisorSiteView(view: string): string {
+  return SITE_VIEWS.has(view) ? view : 'recintos';
+}
+
+export function staffViewQuery(view: string, siteId?: string): string {
+  const params = new URLSearchParams({ vista: view });
+  if (siteId) params.set('siteId', siteId);
+  return `?${params}`;
+}
+
+export function panelLink(role: PanelRole, view: string, siteId?: string): string {
+  // The directory is the explicit way back to the list of all assigned sites.
+  return staffViewQuery(view, role === 'SUPERVISOR' && view !== 'recintos' && SITE_VIEWS.has(view) ? siteId : undefined);
+}
+
 export interface PanelNavigationItem {
   view: string;
   icon: string;

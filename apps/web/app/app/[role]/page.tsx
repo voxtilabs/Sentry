@@ -192,6 +192,7 @@ export default async function RoleDashboard({
   const isSupervisor = role === 'supervisor';
   const panelRole: PanelRole = isSupervisor ? 'SUPERVISOR' : 'ADMIN';
   const view = resolvePanelView(panelRole, firstParameter(query.vista));
+  const siteId = firstParameter(query.siteId);
   const copy = panelViewCopy(panelRole, view);
   const needsOverview = view === 'resumen' || (!isSupervisor && ['envios'].includes(view));
   const needsSites = !isSupervisor && ['personas', 'recintos', 'envios'].includes(view);
@@ -256,7 +257,7 @@ export default async function RoleDashboard({
   } else if (view === 'supervision') {
     panel=<SupervisionAccess apiUrl={publicApiUrl()}/>;
   } else if (isSupervisor && view === 'recintos') {
-    panel=<StaffSites apiUrl={publicApiUrl()}/>;
+    panel=<StaffSites apiUrl={publicApiUrl()} siteId={siteId}/>;
   } else if (isSupervisor && view === 'planificacion') {
     panel = (
       <div className="panel-view" data-view="planificacion">
@@ -279,7 +280,7 @@ export default async function RoleDashboard({
     panel = (
       <div className="panel-view" data-view="terreno">
         <PuntosSupervisor
-          initialSiteId={firstParameter(query.siteId)}
+          initialSiteId={siteId}
           apiUrl={publicApiUrl()}
           mapTileUrl={process.env.MAP_TILE_URL ?? null}
           mapAttribution={process.env.MAP_ATTRIBUTION ?? '© OpenStreetMap contributors'}
@@ -290,7 +291,7 @@ export default async function RoleDashboard({
     panel = (
       <div className="panel-view" data-view="monitoreo">
         <LivePatrolBoard
-          siteId={firstParameter(query.siteId)}
+          siteId={siteId}
           apiUrl={publicApiUrl()}
           tileUrl={process.env.MAP_TILE_URL ?? null}
           attribution={process.env.MAP_ATTRIBUTION ?? ''}
@@ -302,14 +303,18 @@ export default async function RoleDashboard({
   } else if (view === 'informes') {
     panel = (
       <div className="panel-view" data-view="informes">
-        <ReportsWorkspace apiUrl={publicApiUrl()} initialSiteId={firstParameter(query.siteId)}/>
-        <details className="management-card"><summary>Estadísticas y tendencias del período</summary><StatsCharts role={panelRole} searchParams={query} />{isSupervisor && <SupervisorPanel searchParams={query} showReports={false} />}</details>
+        <ReportsWorkspace apiUrl={publicApiUrl()} initialSiteId={siteId} scopeInHeader={isSupervisor} />
+        <details className="management-card">
+          <summary>Estadísticas y tendencias del período</summary>
+          <StatsCharts role={panelRole} searchParams={query} />
+          {isSupervisor && <SupervisorPanel searchParams={query} showReports={false} />}
+        </details>
       </div>
     );
   } else if (isSupervisor && view === 'personas') {
     panel=<div className="panel-view"><GuardPersonnel canCreate apiUrl={publicApiUrl()}/></div>;
   } else if (view === 'correos') {
-    panel=<div className="panel-view"><ReportRecipients apiUrl={publicApiUrl()}/></div>;
+    panel=<div className="panel-view"><ReportRecipients apiUrl={publicApiUrl()} initialSiteId={isSupervisor ? siteId : undefined}/></div>;
   } else if (!isSupervisor && view === 'personas') {
     panel = (
       <div className="panel-view" data-view="personas">
@@ -382,6 +387,7 @@ export default async function RoleDashboard({
       subtitle={copy.subtitle}
       marca={marca}
       activeView={view}
+      siteId={isSupervisor ? siteId : undefined}
     >
       {/* El SUPERVISOR tambien opera desde la app y tambien se le registra el
           recorrido, asi que le corresponde el mismo aviso previo que al guardia.
