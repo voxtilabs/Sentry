@@ -105,8 +105,9 @@ export async function SupervisorPanel({
 
   const hoy = hoyUtc();
   const rango = resolverRangoPanel(texto('desde'), texto('hasta'), hoy);
-  const recintoPedido = texto('recinto') ?? '';
-  const sucursalPedida = texto('sucursal') ?? '';
+  const siteId = texto('siteId');
+  const recintoPedido = siteId ?? texto('recinto') ?? '';
+  const sucursalPedida = siteId ? '' : texto('sucursal') ?? '';
 
   const comunes = () => {
     const busqueda = new URLSearchParams({ from: rango.desde, to: rango.hasta });

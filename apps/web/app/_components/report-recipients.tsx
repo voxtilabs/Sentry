@@ -33,11 +33,11 @@ function EmailList({label,values,onChange,disabled}:{label:string;values:string[
     {!values.length&&<p className="form-note">Lista vacía.</p>}{error&&<p role="alert">{error}</p>}
   </div>;
 }
-export function ReportRecipients({apiUrl}:{apiUrl:string}) {
-  const [sites,setSites]=useState<OperationSite[]>([]),[site,setSite]=useState('');
+export function ReportRecipients({apiUrl,initialSiteId}:{apiUrl:string;initialSiteId?:string}) {
+  const [sites,setSites]=useState<OperationSite[]>([]),[site,setSite]=useState(initialSiteId??'');
   const [settings,setSettings]=useState<MailSettings|null>(null),[custom,setCustom]=useState<Record<Frequency,boolean>>({daily:false,weekly:false,monthly:false});
   const [message,setMessage]=useState(''),[loading,setLoading]=useState(false),[saving,setSaving]=useState(false);
-  useEffect(()=>{const c=new AbortController();void operationRequest<OperationSite[]>(`${apiUrl}/operations/sites`,'GET',undefined,c.signal).then(s=>{setSites(s);if(s.length===1)setSite(s[0]!.id);}).catch(e=>{if(!c.signal.aborted)setMessage(operationError(e));});return()=>c.abort();},[apiUrl]);
+  useEffect(()=>{const c=new AbortController();void operationRequest<OperationSite[]>(`${apiUrl}/operations/sites`,'GET',undefined,c.signal).then(s=>{setSites(s);if(!initialSiteId&&s.length===1)setSite(s[0]!.id);}).catch(e=>{if(!c.signal.aborted)setMessage(operationError(e));});return()=>c.abort();},[apiUrl,initialSiteId]);
   useEffect(()=>{
     setMessage('');setSettings(null);if(!site)return;
     const c=new AbortController();setLoading(true);
@@ -64,7 +64,7 @@ export function ReportRecipients({apiUrl}:{apiUrl:string}) {
   return <section className="management-card management-wide operations-contacts">
     <div className="card-heading"><h2>Correos e informes</h2></div>
     <p className="section-explanation">Elige cuándo avisar y quién recibe cada resumen. La lista común se puede usar en todas las frecuencias; un cliente puede recibir solo el mensual con su propia lista.</p>
-    <label>Recinto<select aria-label="Recinto" value={site} onChange={e=>setSite(e.target.value)} disabled={saving}><option value="">Selecciona un recinto</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name} · {s.branchName}</option>)}</select></label>
+    {!initialSiteId && <label>Recinto<select aria-label="Recinto" value={site} onChange={e=>setSite(e.target.value)} disabled={saving}><option value="">Selecciona un recinto</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name} · {s.branchName}</option>)}</select></label>}
     {settings&&<div className="mail-settings" key={site}>
       <fieldset disabled={saving} className="mail-settings-section"><legend>Avisos al terminar una ronda</legend>
         <label className="mail-toggle"><input type="checkbox" checked={settings.onlyBelowThreshold} onChange={e=>patch({onlyBelowThreshold:e.target.checked})}/>Enviar solo si el cumplimiento baja del mínimo</label>

@@ -165,8 +165,9 @@ export async function StatsCharts({
 
   const hoy = hoyUtc();
   const rango = resolverRangoPanel(texto('desde'), texto('hasta'), hoy);
-  const recintoPedido = texto('recinto') ?? '';
-  const sucursalPedida = texto('sucursal') ?? '';
+  const siteId = role === 'SUPERVISOR' ? texto('siteId') : undefined;
+  const recintoPedido = siteId ?? texto('recinto') ?? '';
+  const sucursalPedida = siteId ? '' : texto('sucursal') ?? '';
   const agrupacionPedida = texto('agrupacion');
   const agrupacion: Granularidad =
     agrupacionPedida === 'dia' || agrupacionPedida === 'semana' || agrupacionPedida === 'mes'
@@ -249,6 +250,7 @@ export async function StatsCharts({
         sucursales={opcionesDeSucursal(recintos)}
         hoy={hoy}
         vista={texto('vista')}
+        siteId={siteId}
       />
 
       {/* --------------------------------------------------------- */}

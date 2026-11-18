@@ -357,7 +357,7 @@ export function PuntosSupervisor({
         <div className="card-heading">
           <div><span className="eyebrow">Recinto</span><h3>Dónde estás trabajando</h3></div>
         </div>
-        <label>
+        {initialSiteId ? <p>{recinto?.name ?? 'Recinto no disponible'}</p> : <label>
           Recinto
           <select
             value={seleccionado ?? ''}
@@ -369,7 +369,7 @@ export function PuntosSupervisor({
               </option>
             ))}
           </select>
-        </label>
+        </label>}
         <p className="form-note">
           Solo aparecen los recintos que tienes asignados. Los recintos, sus horarios y la
           exigencia de foto los administra el administrador de la empresa.

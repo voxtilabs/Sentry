@@ -7,7 +7,7 @@ import {
   IconMail, IconMapPin, IconMenu2, IconPalette, IconRoute, IconScale, IconUsers, IconX,
 } from '@tabler/icons-react';
 
-import { PANEL_NAVIGATION, type PanelRole } from './panel-navigation';
+import { PANEL_NAVIGATION, panelLink, type PanelRole } from './panel-navigation';
 import styles from './panel-shell.module.css';
 
 const icons = {
@@ -19,8 +19,8 @@ const icons = {
   consentimiento: IconMapPin,
 };
 
-export function PanelLinks({ role, activeView, onNavigate }: {
-  role: PanelRole; activeView: string; onNavigate?: () => void;
+export function PanelLinks({ role, activeView, siteId, onNavigate }: {
+  role: PanelRole; activeView: string; siteId?: string; onNavigate?: () => void;
 }) {
   return <nav aria-label="Navegación principal" className={styles.navigation}>
     {PANEL_NAVIGATION[role].map(group => <div className={styles.navGroup} key={group.label}>
@@ -28,7 +28,7 @@ export function PanelLinks({ role, activeView, onNavigate }: {
       {group.items.map(item => {
         const Icon = role === 'SUPERADMIN' && item.view === 'resumen'
           ? IconBuildingCommunity : icons[item.view as keyof typeof icons] ?? IconDashboard;
-        return <a key={item.view} href={`?vista=${item.view}`}
+        return <a key={item.view} href={panelLink(role, item.view, siteId)}
           aria-current={item.view === activeView ? 'page' : undefined}
           className={styles.navLink} onClick={onNavigate}>
           <Icon size={19} stroke={1.6} aria-hidden="true" />
@@ -40,8 +40,8 @@ export function PanelLinks({ role, activeView, onNavigate }: {
 }
 
 /** Native dialog supplies focus trapping, Escape and focus return on mobile. */
-export function PanelMenu({ role, activeView, name }: {
-  role: PanelRole; activeView: string; name: string;
+export function PanelMenu({ role, activeView, siteId, name }: {
+  role: PanelRole; activeView: string; siteId?: string; name: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -72,7 +72,7 @@ export function PanelMenu({ role, activeView, name }: {
           <IconX size={23} stroke={1.7} aria-hidden="true" />
         </button>
       </div>
-      <PanelLinks role={role} activeView={activeView} onNavigate={() => dialog.current?.close()} />
+      <PanelLinks role={role} activeView={activeView} siteId={siteId} onNavigate={() => dialog.current?.close()} />
     </dialog>
   </>;
 }

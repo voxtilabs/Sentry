@@ -16,9 +16,9 @@ const roleNames: Record<PanelRole, string> = {
 };
 
 /** Administrative surface only. Guard markup and styles stay in DashboardShell. */
-export function PanelShell({ role, title, subtitle, children, marca, activeView }: {
+export function PanelShell({ role, title, subtitle, children, marca, activeView, siteId }: {
   role: PanelRole; title: string; subtitle: string; children: ReactNode;
-  marca?: MarcaDelShell; activeView: string;
+  marca?: MarcaDelShell; activeView: string; siteId?: string;
 }) {
   const group = PANEL_NAVIGATION[role].find(g => g.items.some(item => item.view === activeView));
   const item = group?.items.find(link => link.view === activeView);
@@ -29,7 +29,7 @@ export function PanelShell({ role, title, subtitle, children, marca, activeView 
     <a className={styles.skipLink} href="#panel-main-content">Ir al contenido</a>
     <aside className={styles.sidebar} aria-label="Panel administrativo">
       <Brand nombre={marca?.commercialName} logoUri={marca?.logoUri} />
-      <PanelLinks role={role} activeView={activeView} />
+      <PanelLinks role={role} activeView={activeView} siteId={siteId} />
       <div className={styles.account}>
         <IconUserCircle size={27} stroke={1.5} aria-hidden="true" />
         <div><strong>{name}</strong><span>{roleNames[role]}</span></div>
@@ -37,8 +37,11 @@ export function PanelShell({ role, title, subtitle, children, marca, activeView 
     </aside>
     <section className={styles.main}>
       <header className={styles.utility}>
-        <PanelMenu role={role} activeView={activeView} name={name} />
-        <div className={styles.context}>{role==='SUPERADMIN'?<strong>{name}</strong>:<CompanySwitcher/>}<span>{roleNames[role]}</span></div>
+        <PanelMenu role={role} activeView={activeView} siteId={siteId} name={name} />
+        <div className={styles.context}>
+          {role === 'SUPERADMIN' ? <strong>{name}</strong> : <CompanySwitcher role={role} activeView={activeView} siteId={siteId} />}
+          <span>{roleNames[role]}</span>
+        </div>
         <div className={styles.actions}>
           <span className={styles.session}><IconCircleCheck size={17} stroke={1.7} aria-hidden="true" /> Sesión activa</span>
           <HelpButton />
