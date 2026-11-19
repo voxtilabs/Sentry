@@ -71,7 +71,7 @@ export function CompanySwitcher({ role, activeView, siteId }: {
     {data && (supervisor ? (
       <label>Recinto
         <select aria-label="Cambiar recinto" value={selectedSite?.id ?? ''} onChange={event => void change(event.target.value)} disabled={busy}>
-          <option value="">{siteView === 'recintos' ? 'Todos mis recintos' : `Recintos de ${currentCompany?.tenantName ?? 'la empresa'}`}</option>
+          <option value="">{siteView === 'recintos' ? 'Todos mis recintos' : `Todos los recintos de ${currentCompany?.tenantName ?? 'esta empresa'}`}</option>
           {data.companies.filter(company => company.sites.length > 0).map(company => (
             <optgroup key={company.tenantId} label={company.tenantName}>
               {company.sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}

@@ -166,8 +166,8 @@ export async function StatsCharts({
   const hoy = hoyUtc();
   const rango = resolverRangoPanel(texto('desde'), texto('hasta'), hoy);
   const siteId = role === 'SUPERVISOR' ? texto('siteId') : undefined;
-  const recintoPedido = siteId ?? texto('recinto') ?? '';
-  const sucursalPedida = siteId ? '' : texto('sucursal') ?? '';
+  const recintoPedido = role === 'SUPERVISOR' ? siteId ?? '' : texto('recinto') ?? '';
+  const sucursalPedida = role === 'SUPERVISOR' ? '' : texto('sucursal') ?? '';
   const agrupacionPedida = texto('agrupacion');
   const agrupacion: Granularidad =
     agrupacionPedida === 'dia' || agrupacionPedida === 'semana' || agrupacionPedida === 'mes'
@@ -251,6 +251,7 @@ export async function StatsCharts({
         hoy={hoy}
         vista={texto('vista')}
         siteId={siteId}
+        scopeInHeader={role === 'SUPERVISOR'}
       />
 
       {/* --------------------------------------------------------- */}

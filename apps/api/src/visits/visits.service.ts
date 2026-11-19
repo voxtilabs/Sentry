@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { TenantContextService } from '../database/tenant-context/tenant-context.service';
 import { RulesService } from '../rules/rules.service';
 import { normalizarPatente, normalizarRun } from './identity';
-import type { ExitVisitDto, RegisterVisitDto, VehicleLookupDto, PublicVehicleCheckDto } from './visits.dto';
+import type { ExitVisitDto, FindVisitExitDto, RegisterVisitDto, VehicleLookupDto, PublicVehicleCheckDto } from './visits.dto';
 import { emptyVehicleCheck, type VehicleCheckResult } from './vehicle-registry.service';
 import { VehicleLookupJobs, VehicleLookupProcessor } from './vehicle-lookup.jobs';
 
@@ -41,10 +41,19 @@ export class VisitsService {
   }
 
   async list(siteId: string, actorId: string, role: Role) {
-    await this.ensureSite(siteId, actorId, role);
-    const rules = await this.rules.effective();
+    const { sites, retentionDays } = await this.sites(actorId, role);
+    if (!sites.some((site) => site.id === siteId)) throw new ForbiddenException('No tienes acceso a este recinto');
+    return this.listVisible([siteId], retentionDays);
+  }
+
+  async listAll(actorId: string, role: Role) {
+    const { sites, retentionDays } = await this.sites(actorId, role);
+    return sites.length ? this.listVisible(sites.map((site) => site.id), retentionDays) : [];
+  }
+
+  private listVisible(siteIds: string[], retentionDays: number) {
     return this.context.manager.query(
-      `SELECT v.id,v.client_visit_id AS "clientVisitId",v.given_names AS "givenNames",
+      `SELECT v.id,v.site_id AS "siteId",v.client_visit_id AS "clientVisitId",v.given_names AS "givenNames",
        v.family_names AS "familyNames",v.run,v.entered_at_device AS "enteredAt",
        v.entered_at_server AS "receivedAt",v.exited_at_device AS "exitedAt",v.plate,
        v.vehicle_make AS "vehicleMake",v.vehicle_model AS "vehicleModel",v.vehicle_color AS "vehicleColor",
@@ -53,8 +62,23 @@ export class VisitsService {
        LEFT JOIN visitor_vehicle_checks done ON done.tenant_id=c.tenant_id
          AND done.id=NULLIF(c.result->>'lookupResultId','')::uuid
          AND done.guard_id=c.guard_id AND done.site_id=c.site_id AND done.plate=c.plate
-       WHERE v.site_id=$1 AND v.created_at >= now()-make_interval(days=>$2)
-       ORDER BY v.entered_at_device DESC,v.id DESC LIMIT 100`, [siteId, rules.visitorRetentionDays]);
+       WHERE v.tenant_id=app_tenant_id() AND v.site_id=ANY($1::uuid[])
+         AND v.created_at >= now()-make_interval(days=>$2)
+       ORDER BY v.entered_at_device DESC,v.id DESC LIMIT 100`, [siteIds, retentionDays]);
+  }
+
+  async findExit(actorId: string, input: FindVisitExitDto) {
+    const run = normalizarRun(input.run);
+    if (!run) throw new BadRequestException('Revisa el RUN y su dígito verificador');
+    const { sites, retentionDays } = await this.sites(actorId, 'GUARDIA');
+    if (!sites.some((site) => site.id === input.siteId)) throw new ForbiddenException('No tienes acceso a este recinto');
+    return this.context.manager.query(
+      `SELECT id,site_id AS "siteId",client_visit_id AS "clientVisitId",given_names AS "givenNames",
+       family_names AS "familyNames",run,origin_company AS "originCompany",destination,plate,
+       entered_at_device AS "enteredAt",exited_at_device AS "exitedAt"
+       FROM visitor_sessions WHERE tenant_id=app_tenant_id() AND site_id=$1 AND run=$2
+       AND exited_at_device IS NULL AND created_at>=now()-make_interval(days=>$3)
+       ORDER BY entered_at_device DESC,id DESC LIMIT 10`, [input.siteId, run, retentionDays]);
   }
 
   async register(actorId: string, input: RegisterVisitDto) {

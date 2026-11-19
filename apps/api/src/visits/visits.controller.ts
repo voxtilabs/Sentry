@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { AuthenticatedUser } from '../auth/auth.guard';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
-import { ExitVisitDto, RegisterVisitDto, VehicleLookupDto, PublicVehicleCheckDto } from './visits.dto';
+import { ExitVisitDto, FindVisitExitDto, RegisterVisitDto, VehicleLookupDto, PublicVehicleCheckDto } from './visits.dto';
 import { VisitsService } from './visits.service';
 
 type UserRequest = Request & { user: AuthenticatedUser };
@@ -20,6 +20,8 @@ export class VisitsGuardController {
   register(@Body() input: RegisterVisitDto,@Req() req: UserRequest) { return this.visits.register(req.user.sub,input); }
   @Post('exit') @Permissions('visitors:register')
   exit(@Body() input: ExitVisitDto,@Req() req: UserRequest) { return this.visits.exit(req.user.sub,input); }
+  @Post('find-exit') @HttpCode(200) @Header('Cache-Control','no-store') @Permissions('visitors:register')
+  findExit(@Body() input: FindVisitExitDto,@Req() req:UserRequest) { return this.visits.findExit(req.user.sub,input); }
   @Post('public-check') @Permissions('visitors:register')
   publicCheck(@Body() input: PublicVehicleCheckDto,@Req() req: UserRequest) { return this.visits.recordPublicCheck(req.user.sub,input); }
   @Post('vehicle') @Permissions('visitors:register')
@@ -32,6 +34,8 @@ export class VisitsGuardController {
 @TenantScope()
 export class VisitsManagementController {
   constructor(private readonly visits: VisitsService) {}
+  @Get() @Header('Cache-Control','no-store') @Permissions('visitors:read')
+  listAll(@Req() req: UserRequest) { return this.visits.listAll(req.user.sub,req.user.role); }
   @Get('context') @Permissions('visitors:read')
   context(@Req() req: UserRequest) { return this.visits.sites(req.user.sub,req.user.role); }
   @Get('sites/:siteId') @Permissions('visitors:read')

@@ -49,6 +49,7 @@ export function StatsChartsFilters({
   hoy,
   vista,
   siteId,
+  scopeInHeader = false,
 }: {
   valores: ValoresFiltro;
   recintos: Array<{ id: string; nombre: string; sucursal: string }>;
@@ -56,6 +57,7 @@ export function StatsChartsFilters({
   hoy: string;
   vista?: string;
   siteId?: string;
+  scopeInHeader?: boolean;
 }) {
   const router = useRouter();
   const [pendiente, iniciarTransicion] = useTransition();
@@ -169,7 +171,7 @@ export function StatsChartsFilters({
           />
         </label>
 
-        {!siteId && <label>
+        {!scopeInHeader && !siteId && <label>
           <span>Sucursal</span>
           <select
             value={borrador.sucursal}
@@ -184,7 +186,7 @@ export function StatsChartsFilters({
           </select>
         </label>}
 
-        {!siteId && <label>
+        {!scopeInHeader && !siteId && <label>
           <span>Recinto</span>
           <select
             value={borrador.recinto}

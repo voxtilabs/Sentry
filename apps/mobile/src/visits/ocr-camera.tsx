@@ -51,7 +51,7 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
     if(!state.active) return;
     const listener=BackHandler.addEventListener('hardwareBackPress',()=>{camera.cancel();return true;});
     return()=>listener.remove();
-  },[state.active,camera]);
+  },[state,camera]);
   if(!state.active) return null;
   const capture=async()=>{
     if(busy || !ready) return;
@@ -70,12 +70,15 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
     finally { if(uri) await ocr.discard(uri).catch(()=>undefined);setBusy(false); }
   };
   return <View style={styles.layer}>
-    <CameraView ref={view} style={styles.preview} facing="back" onCameraReady={()=>setReady(true)} />
+    <CameraView ref={view} style={styles.preview} facing="back" onCameraReady={()=>setReady(true)}
+      onMountError={()=>setError('No se pudo abrir la cámara. Vuelve a intentarlo o ingresa la patente manualmente.')} />
     <View style={styles.footer}>
       <Text style={styles.title}>{state.kind==='identity'?'Leer nombre y RUN del carnet':'Leer patente del vehículo'}</Text>
       <Text style={styles.text}>{state.kind==='identity'?'Apunta al frente del carnet. Revisa los datos antes de registrar. La imagen se elimina después de leerla.':'Encuadra la patente de cerca y con buena luz. Confirma la lectura antes de consultar.'}</Text>
       {error?<Text style={styles.error} accessibilityRole="alert">{error}</Text>:null}
       <Pressable disabled={!ready||busy} style={styles.button} onPress={()=>void capture()}><Text style={styles.buttonText}>{busy?'Leyendo…':'Capturar y leer'}</Text></Pressable>
+      {state.kind==='plate' && error ? <Pressable disabled={busy} style={styles.button}
+        onPress={()=>camera.resolve(state.request,{kind:'plate',plates:[]})}><Text style={styles.buttonText}>Ingresar patente manualmente</Text></Pressable> : null}
       <Pressable style={styles.button} onPress={camera.cancel}><Text style={styles.buttonText}>Cancelar</Text></Pressable>
     </View>
   </View>;

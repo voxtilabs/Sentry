@@ -2,6 +2,7 @@ import { PROTOCOLO_MAJOR } from '../bridge/protocol';
 import mobilePackage from '../../package.json';
 import { borrarCaidas, encolarCaida, leerCaidas } from './cola-de-caidas';
 import { recortar, sanitizarTexto } from './scrubber';
+import { androidExitReport, type AndroidExit } from './android-exit';
 
 export interface ReportCrashPayload {
   errorName: string;
@@ -22,6 +23,7 @@ export interface StorageAdapter {
 }
 
 const STORAGE_CLEAN_EXIT = 'sentrycore.clean_exit.v1';
+const STORAGE_ANDROID_EXIT = 'sentrycore.android_exit.time.v1';
 
 /**
  * La ruta REAL del servidor. `CrashReportsController` vive en el controlador
@@ -329,10 +331,21 @@ export async function reportarCaida(
  * 'Error', asi que en el panel la caida nativa se veia como un JSON pegado y
  * no como lo que es.
  */
-export async function registrarArranqueYVerificarCierre(apiUrl?: string): Promise<void> {
+export async function registrarArranqueYVerificarCierre(
+  apiUrl?: string,
+  leerSalidaAndroid?: () => Promise<AndroidExit | null>,
+): Promise<void> {
   try {
     const ultimoEstado = await storageActivo.getItemAsync(STORAGE_CLEAN_EXIT);
-    if (ultimoEstado === 'false') {
+    const salida = await leerSalidaAndroid?.().catch(() => null);
+    if (salida) {
+      const ultimaHora = Number(await storageActivo.getItemAsync(STORAGE_ANDROID_EXIT)) || 0;
+      const reporte = androidExitReport(salida, ultimaHora, ultimoEstado === 'false');
+      if (reporte) {
+        await despachar({ ...datosDelTelefono(), ...reporte }, apiUrl);
+        await storageActivo.setItemAsync(STORAGE_ANDROID_EXIT, String(salida.timeMs));
+      }
+    } else if (ultimoEstado === 'false') {
       await despachar(
         {
           errorName: 'NativeCrash',

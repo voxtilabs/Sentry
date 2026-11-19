@@ -22,8 +22,9 @@ interface VehicleCheck {
     make:string|null;model:string|null;color:string|null};
 }
 interface Visit {
-  id:string;clientVisitId:string;givenNames:string;familyNames:string;run:string;
+  id:string;siteId?:string;clientVisitId:string;givenNames:string;familyNames:string;run:string;
   enteredAt:string;exitedAt:string|null;plate:string|null;vehicleCheck?:VehicleCheck;
+  destination?:string|null;originCompany?:string|null;
 }
 type PendingSync = {kind:'visit';clientVisitId:string}|{kind:'exit';visitId:string};
 
@@ -156,7 +157,12 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         if(result.run) setRun(result.run);
         setNotice('Revisa y completa los datos leídos antes de continuar.');
       } else {
-        setCandidates(result.plates??[]);setPlate(result.plates?.[0]??'');setCheck(undefined);
+        const plates = result.plates ?? [];
+        setCandidates(plates);
+        if (plates.length > 0) {
+          setPlate(plates[0] ?? '');
+          setCheck(undefined);
+        }
       }
     } catch(e) {setError(e instanceof Error?e.message:'No se pudo completar la lectura');}
     finally {setBusy(false);}
@@ -200,12 +206,12 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
     finally {setBusy(false);}
   }
 
-  async function exit(visit:Visit) {
-    if(!context)return;
+  async function exit(visit:Visit):Promise<boolean> {
+    if(!context)return false;
     setBusy(true);setError('');
     const body={visitId:visit.id,expectedActorId:context.actorId,expectedTenantId:context.tenantId,exitedAt:new Date().toISOString()};
     try {
-      try {await json(`${apiUrl}/visits/guard/exit`,post(body));await load();setNotice('Salida registrada.');}
+      try {await json(`${apiUrl}/visits/guard/exit`,post(body));setNotice('Salida registrada.');}
       catch(e) {
         const status=(e as {status?:number}).status;
         if(status&&status<500)throw e;
@@ -215,7 +221,9 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         setPendingSync({kind:'exit',visitId:visit.id});
         setNotice('Salida guardada en la cola cifrada. Pendiente de sincronizar.');
       }
-    } catch(e) {setError(e instanceof Error?e.message:'No se pudo registrar la salida');}
+      setVisits(rows=>rows.map(row=>row.id===visit.id?{...row,exitedAt:body.exitedAt}:row));
+      return true;
+    } catch(e) {setError(e instanceof Error?e.message:'No se pudo registrar la salida');return false;}
     finally {setBusy(false);}
   }
 
@@ -232,6 +240,8 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         <option value="">Selecciona un recinto</option>{context.sites.map(s=><option key={s.id} value={s.id}>{s.branchName?`${s.branchName} · `:''}{s.name}</option>)}
       </select></label>
       {!bridge.conexion.enLinea?<p role="status">Sin conexión. Los registros se guardarán cifrados en este teléfono.</p>:null}
+      {step==='identity'&&siteId?<ExitVisitSearch key={siteId} apiUrl={apiUrl} siteId={siteId} localVisits={visits}
+        offline={!bridge.conexion.enLinea} busy={busy} onExit={exit}/>:null}
       {step==='identity'?<form ref={formRef} onSubmit={next}>
         <details><summary>Aviso para la visita</summary><p>{context.notice}</p><p>Plazo de conservación: {context.retentionDays} días.</p></details>
         <label className="visits-checkbox"><input type="checkbox" checked={informed} onChange={e=>setInformed(e.target.checked)} required/>He informado a la visita sobre el uso de sus datos para el control de acceso.</label>
@@ -245,12 +255,16 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         <button className="primary-button" disabled={busy||!siteId} type="submit">Continuar</button>
       </form>:null}
       {step==='vehicle-question'?<div className="visits-step"><h3>¿VIENE EN VEHÍCULO?</h3><p>{givenNames} {familyNames} · {run}</p>
-        <button className="primary-button" disabled={busy} onClick={()=>{setStep('vehicle');void read('plate');}}>Sí, leer patente</button>
+        <button className="primary-button" disabled={busy} onClick={()=>{setStep('vehicle');if(bridge.soportaVisitas)void read('plate');}}>Sí, leer patente</button>
         <button className="secondary-button" disabled={busy} onClick={()=>void save(false)}>No, registrar visita</button>
         <button className="text-button" disabled={busy} onClick={()=>setStep('identity')}>Corregir datos</button></div>:null}
       {step==='vehicle'?<div className="visits-step"><h3>Ficha del vehículo {plate?`· ${plate}`:''}</h3>
-        <button className="secondary-button" disabled={busy||lookingUp} onClick={()=>void read('plate')}>Repetir escaneo de patente</button>
-        <details><summary>Corregir patente leída</summary><label>Patente<input autoComplete="off" required maxLength={10} value={plate} onChange={e=>{setPlate(e.target.value.toUpperCase());setCheck(undefined);}}/></label></details>
+        <button className="secondary-button" disabled={busy||!bridge.soportaVisitas} onClick={()=>void read('plate')}>{busy?'Leyendo patente…':plate?'Volver a leer con la cámara':'Leer patente con la cámara'}</button>
+        <label>Patente
+          <input autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={10} value={plate}
+            onChange={e=>{setPlate(e.target.value.toUpperCase());setCheck(undefined);}} placeholder="Ingresa la patente si la cámara no la lee" />
+        </label>
+        {error ? <p className="visits-error" role="alert">{error}</p> : null}
         {candidates.length>1?<label>Patentes reconocidas<select value={plate} onChange={e=>{setPlate(e.target.value);setCheck(undefined);}}>{candidates.map(p=><option key={p}>{p}</option>)}</select></label>:null}
         {lookingUp?<p role="status">Consultando antecedentes del vehículo…</p>:null}
         {check?<VehicleResult check={check}/>:!lookingUp?<p>{normalizarPatente(plate)?'Antecedentes no disponibles. La patente puede registrarse igualmente.':'Escanea la patente para obtener la ficha del vehículo.'}</p>:null}
@@ -259,11 +273,60 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
       </div>:null}
       {step==='done'?<>{check?<VehicleResult check={check}/>:null}<button className="primary-button" onClick={reset}>Registrar otra visita</button></>:null}
       {notice?<p className="visits-notice" role="status">{notice}</p>:null}
-      {error?<p className="visits-error" role="alert">{error}</p>:null}
+      {error&&step!=='vehicle'?<p className="visits-error" role="alert">{error}</p>:null}
       <div className="visits-heading"><h3>Últimas visitas del recinto</h3><button type="button" className="text-button" disabled={busy||!bridge.conexion.enLinea} onClick={()=>void load().catch(()=>setError('No se pudo actualizar el listado'))}>Actualizar</button></div>
       <VisitList visits={visits} exit={visit=>void exit(visit)} disabled={busy}/>
     </>:<p role="alert">No se pudo cargar el registro. Vuelve a abrirlo cuando tengas conexión.</p>}
   </section>;
+}
+
+function ExitVisitSearch({apiUrl,siteId,localVisits,offline,busy,onExit}:{
+  apiUrl:string;siteId:string;localVisits:Visit[];offline:boolean;busy:boolean;onExit:(visit:Visit)=>Promise<boolean>;
+}) {
+  const [run,setRun]=useState('');
+  const [result,setResult]=useState<{run:string;rows:Visit[];error?:string}>();
+  const [exitError,setExitError]=useState('');
+  const normalized=normalizarRun(run);
+  const current=result?.run===normalized?result:undefined;
+  const local=normalized?localVisits.filter(visit=>visit.run===normalized&&!visit.exitedAt):[];
+  const rows=current&&!current.error?current.rows:local;
+
+  useEffect(()=>{
+    if(!normalized||offline)return;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>{
+      void json<Visit[]>(`${apiUrl}/visits/guard/find-exit`,{
+        ...post({siteId,run:normalized}),cache:'no-store',signal:controller.signal,
+      }).then(rows=>{
+        if(!controller.signal.aborted)setResult({run:normalized,rows});
+      }).catch(()=>{
+        if(!controller.signal.aborted)setResult({run:normalized,rows:[],error:'No se pudo consultar el ingreso. Revisa la conexión e intenta otra vez.'});
+      });
+    },220);
+    return ()=>{clearTimeout(timer);controller.abort();};
+  },[apiUrl,normalized,offline,siteId]);
+
+  return <details className="visits-exit-search">
+    <summary>Registrar salida por RUN</summary>
+    <label>RUN de la visita<input autoComplete="off" autoCapitalize="characters" spellCheck={false}
+      maxLength={12} disabled={busy} value={run} placeholder="12345678-5"
+      onChange={event=>{setRun(event.target.value.toUpperCase());setExitError('');}} /></label>
+    {normalized&&!current&&!offline&&rows.length===0?<p role="status">Buscando ingreso…</p>:null}
+    {current?.error||exitError?<p role="alert">{exitError||current?.error}</p>:null}
+    {normalized&&rows.length===0&&current&&!current.error?<p role="status">No hay un ingreso abierto para este RUN en el recinto.</p>:null}
+    {normalized&&rows.length===0&&offline?<p role="status">El ingreso no está en el listado cargado. Conéctate para buscar en el registro completo.</p>:null}
+    {rows.length>1?<p>Hay más de un ingreso abierto. Confirma el que corresponde.</p>:null}
+    {rows.map(visit=><article key={visit.id}>
+      <strong>{visit.givenNames} {visit.familyNames}</strong>
+      <p>Ingreso: {time(visit.enteredAt)}{visit.plate?` · Patente: ${visit.plate}`:''}</p>
+      {visit.originCompany?<p>Empresa: {visit.originCompany}</p>:null}
+      {visit.destination?<p>Destino: {visit.destination}</p>:null}
+      <button type="button" className="primary-button" disabled={busy} onClick={()=>void onExit(visit).then(ok=>{
+        if(ok){setRun('');setResult(undefined);setExitError('');}
+        else setExitError('No se pudo registrar esta salida. Vuelve a intentarlo.');
+      })}>Confirmar salida</button>
+    </article>)}
+  </details>;
 }
 
 export function VehicleResult({check}:{check:VehicleCheck}) {
@@ -288,25 +351,63 @@ export function VehicleResult({check}:{check:VehicleCheck}) {
   </div>;
 }
 
-function VisitList({visits,exit,disabled}:{visits:Visit[];exit?:(visit:Visit)=>void;disabled?:boolean}) {
+function VisitList({visits,exit,disabled,siteNames}:{visits:Visit[];exit?:(visit:Visit)=>void;disabled?:boolean;siteNames?:ReadonlyMap<string,string>}) {
   return visits.length?<ul className="visits-list">{visits.map(visit=><li key={visit.id}>
     <strong>{visit.givenNames} {visit.familyNames}</strong><span>{visit.run}{visit.plate?` · ${visit.plate}`:''}</span>
+    {visit.siteId&&siteNames?.get(visit.siteId)?<span>{siteNames.get(visit.siteId)}</span>:null}
     <span>Ingreso: {time(visit.enteredAt)}</span><span>{visit.exitedAt?`Salida: ${time(visit.exitedAt)}`:'En el recinto'}</span>
     {visit.vehicleCheck?<details><summary>Informe del vehículo{visit.vehicleCheck.lookupPending?' · En consulta':''}</summary><VehicleResult check={visit.vehicleCheck}/></details>:null}
     {exit&&!visit.exitedAt?<button className="secondary-button" disabled={disabled} onClick={()=>exit(visit)}>Registrar salida</button>:null}
   </li>)}</ul>:<p>No hay visitas sincronizadas para mostrar.</p>;
 }
 
-export function VisitsManagement({apiUrl}:{apiUrl:string}) {
+export function VisitsManagement({apiUrl,initialSiteId,scopeInHeader=false}:{
+  apiUrl:string;initialSiteId?:string|undefined;scopeInHeader?:boolean;
+}) {
   const [context,setContext]=useState<VisitsContext>();
-  const [siteId,setSiteId]=useState('');
-  const [visits,setVisits]=useState<Visit[]>([]);
-  const [error,setError]=useState('');
-  useEffect(()=>{void json<VisitsContext>(`${apiUrl}/visits/management/context`).then(c=>{setContext(c);setSiteId(c.sites[0]?.id??'');}).catch(()=>setError('No se pudo cargar el registro de visitas'));},[apiUrl]);
-  useEffect(()=>{if(!siteId)return;setVisits([]);void json<Visit[]>(`${apiUrl}/visits/management/sites/${siteId}`).then(setVisits).catch(()=>setError('No se pudieron cargar las visitas del recinto'));},[apiUrl,siteId]);
-  return <section className="visits-panel"><h2>Registro de visitas</h2>
-    <label>Recinto<select value={siteId} onChange={e=>setSiteId(e.target.value)}>{context?.sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-    {context?<p>Conservación de datos: {context.retentionDays} días. Se muestran los últimos 100 registros del recinto.</p>:null}
-    {error?<p role="alert">{error}</p>:null}<VisitList visits={visits}/>
+  const [localSite,setLocalSite]=useState(initialSiteId??'');
+  const [contextError,setContextError]=useState(false);
+  const [result,setResult]=useState<{url:string;visits:Visit[];error?:string}>();
+  const siteId=scopeInHeader ? initialSiteId??'' : localSite;
+  const site=context?.sites.find(item=>item.id===siteId);
+  const unavailable=Boolean(context && siteId && !site);
+  const base=`${apiUrl}/visits/management`;
+  const url=siteId ? `${base}/sites/${encodeURIComponent(siteId)}` : base;
+  const current=result?.url===url ? result : undefined;
+  const siteNames=new Map(context?.sites.map(item=>[item.id,item.name]));
+
+  useEffect(()=>{
+    const controller=new AbortController();
+    void json<VisitsContext>(`${base}/context`,{signal:controller.signal})
+      .then(value=>{if(!controller.signal.aborted)setContext(value);})
+      .catch(()=>{if(!controller.signal.aborted)setContextError(true);});
+    return ()=>controller.abort();
+  },[base]);
+  useEffect(()=>{
+    if(!context?.sites.length || unavailable)return;
+    const controller=new AbortController();
+    void json<Visit[]>(url,{signal:controller.signal})
+      .then(visits=>{if(!controller.signal.aborted)setResult({url,visits});})
+      .catch(()=>{if(!controller.signal.aborted)setResult({url,visits:[],error:'No se pudieron cargar las visitas de esta selección.'});});
+    return ()=>controller.abort();
+  },[context,url,unavailable]);
+
+  return <section className="management-card visits-panel visits-management" aria-labelledby="visits-management-title">
+    <div className="card-heading"><h2 id="visits-management-title">Visitas recientes</h2></div>
+    {!scopeInHeader&&context?.sites.length?<label>Recinto
+      <select value={siteId} onChange={e=>setLocalSite(e.target.value)}>
+        <option value="">Todos los recintos de esta empresa</option>
+        {context.sites.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
+    </label>:null}
+    {context?.sites.length&&!unavailable?<p className="section-explanation">
+      {site ? `Recinto: ${site.name}.` : 'Todos los recintos autorizados de esta empresa.'} Se muestran hasta 100 visitas, de la más reciente a la más antigua.
+    </p>:null}
+    {contextError?<p role="alert">No se pudo cargar el registro de visitas.</p>:null}
+    {unavailable?<p role="alert">El recinto seleccionado ya no está disponible. Elige otro en el selector de recintos.</p>:null}
+    {context?.sites.length===0?<p>No tienes recintos habilitados para consultar visitas.</p>:null}
+    {!context&&!contextError || Boolean(context?.sites.length&&!unavailable&&!current)?<p role="status">Cargando visitas…</p>:null}
+    {!unavailable&&current?.error?<p role="alert">{current.error}</p>:null}
+    {!unavailable&&current&&!current.error?<VisitList visits={current.visits} siteNames={siteNames}/>:null}
   </section>;
 }
