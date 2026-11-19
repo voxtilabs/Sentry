@@ -61,7 +61,7 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
       const picture=await view.current?.takePictureAsync({quality:1,exif:false});
       uri=picture?.uri;
       if(!uri) throw new Error('No se pudo tomar la imagen');
-      const lines=await ocr.readAndDelete(uri);
+      const lines=await ocr.readAndDelete(uri,state.kind==='plate');
       const result=state.kind==='identity' ? extraerIdentidad(lines) : extraerPatentes(lines);
       if(state.kind==='identity' && !result.run && !result.givenNames && !result.familyNames) throw new Error('No se reconocieron los datos. Acerca la cámara y evita reflejos.');
       if(state.kind==='plate' && !result.plates?.length) throw new Error('No se reconoció una patente. Acerca la cámara o escríbela manualmente.');
@@ -70,11 +70,14 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
     finally { if(uri) await ocr.discard(uri).catch(()=>undefined);setBusy(false); }
   };
   return <View style={styles.layer}>
-    <CameraView ref={view} style={styles.preview} facing="back" onCameraReady={()=>setReady(true)}
-      onMountError={()=>setError('No se pudo abrir la cámara. Vuelve a intentarlo o ingresa la patente manualmente.')} />
+    <View style={styles.preview}>
+      <CameraView ref={view} style={StyleSheet.absoluteFill} facing="back" onCameraReady={()=>setReady(true)}
+        onMountError={()=>setError('No se pudo abrir la cámara. Vuelve a intentarlo o ingresa la patente manualmente.')} />
+      {state.kind==='plate' ? <View pointerEvents="none" style={styles.plateGuide} /> : null}
+    </View>
     <View style={styles.footer}>
       <Text style={styles.title}>{state.kind==='identity'?'Leer nombre y RUN del carnet':'Leer patente del vehículo'}</Text>
-      <Text style={styles.text}>{state.kind==='identity'?'Apunta al frente del carnet. Revisa los datos antes de registrar. La imagen se elimina después de leerla.':'Encuadra la patente de cerca y con buena luz. Confirma la lectura antes de consultar.'}</Text>
+      <Text style={styles.text}>{state.kind==='identity'?'Apunta al frente del carnet. Revisa los datos antes de registrar. La imagen se elimina después de leerla.':'Centra la patente dentro del recuadro y llénalo de lado a lado. Revisa la lectura antes de consultar.'}</Text>
       {error?<Text style={styles.error} accessibilityRole="alert">{error}</Text>:null}
       <Pressable disabled={!ready||busy} style={styles.button} onPress={()=>void capture()}><Text style={styles.buttonText}>{busy?'Leyendo…':'Capturar y leer'}</Text></Pressable>
       {state.kind==='plate' && error ? <Pressable disabled={busy} style={styles.button}
@@ -83,4 +86,4 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
     </View>
   </View>;
 }
-const styles=StyleSheet.create({layer:{position:'absolute',inset:0,backgroundColor:'#000'},preview:{flex:1},footer:{padding:24,gap:12,backgroundColor:'#111827'},title:{fontSize:20,color:'#fff',fontWeight:'700'},text:{fontSize:16,color:'#fff'},error:{fontSize:16,color:'#fca5a5'},button:{minHeight:48,backgroundColor:'#fff',padding:12,borderRadius:8,alignItems:'center'},buttonText:{fontSize:17,color:'#111827',fontWeight:'600'}});
+const styles=StyleSheet.create({layer:{position:'absolute',inset:0,backgroundColor:'#000'},preview:{flex:1},plateGuide:{position:'absolute',left:'8%',right:'8%',top:'36%',bottom:'36%',borderWidth:2,borderColor:'#fff',borderRadius:14},footer:{padding:24,gap:12,backgroundColor:'#111827'},title:{fontSize:20,color:'#fff',fontWeight:'700'},text:{fontSize:16,color:'#fff'},error:{fontSize:16,color:'#fca5a5'},button:{minHeight:48,backgroundColor:'#fff',padding:12,borderRadius:8,alignItems:'center'},buttonText:{fontSize:17,color:'#111827',fontWeight:'600'}});

@@ -20,6 +20,8 @@ test('lee placas chilenas con distintivo, puntos y fragmentos separados por ML K
   assert.deepEqual(extraerPatentes(['J K', 'R T', '5 2', 'CHILE']),{kind:'plate',plates:['JKRT52']});
   assert.deepEqual(extraerPatentes(['JK · RT', '52', 'CHILE']),{kind:'plate',plates:['JKRT52']});
   assert.deepEqual(extraerPatentes(['CHILE','2026','DOCUMENTO','12345678']),{kind:'plate',plates:[]});
+  assert.deepEqual(extraerPatentes(['NOV 12','JK','RTO52','CHILE']),{kind:'plate',plates:['JKRT52','RTO52']});
+  assert.deepEqual(extraerPatentes(['NOV12','JK · RT O 52','CHILE']),{kind:'plate',plates:['JKRT52']});
 });
 test('el puente rechaza texto OCR completo y campos de número de documento',()=>{
   const valid=armarSobre('ocr.scan.result',{kind:'identity',run:'12345678-5'});
