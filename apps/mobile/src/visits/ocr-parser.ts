@@ -25,10 +25,25 @@ export function extraerIdentidad(lines: readonly string[]): ResultadoOcrPayload 
 }
 
 export function extraerPatentes(lines: readonly string[]): ResultadoOcrPayload {
+  // ML Kit can transcribe the printed dividers or split the plate into lines.
+  const separator = '[ .·•∙⋅●✦✧✱✿✪*|:\\-]*';
+  const format = (shape: string) => Array.from(shape, char => char === 'L' ? '[A-Z]' : '[0-9]').join(separator);
+  const patterns = ['LLLLDD', 'LLDDDD', 'LLLDDD', 'LLLDD'].map(format).join('|');
+  const complete = new RegExp(`^(?:${patterns})$`);
   const plates = new Set<string>();
-  for (const line of lines) {
-    for (const value of line.toUpperCase().matchAll(/\b(?:[A-Z]{4}[ .-]?\d{2}|[A-Z]{2}[ .-]?\d{4}|[A-Z]{3}[ .-]?\d{2,3})\b/g)) {
-      plates.add(value[0].replace(/[ .-]/g,''));
+  const normalized = lines.slice(0, 64).map(line => line.slice(0, 256).normalize('NFKC').toUpperCase().replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const append = (value: string) => plates.add(value.replace(/[^A-Z0-9]/g, ''));
+  for (const line of normalized) {
+    const candidates = new RegExp(`(?:^|[^A-Z0-9])(${patterns})(?=$|[^A-Z0-9])`, 'g');
+    for (const match of line.matchAll(candidates)) {
+      if (match[1]) append(match[1]);
+    }
+  }
+  for (let start = 0; start < normalized.length; start++) {
+    const fragments = normalized.slice(start, start + 3);
+    for (let length = 2; length <= fragments.length; length++) {
+      const candidate = fragments.slice(0, length).join(' ');
+      if (complete.test(candidate)) append(candidate);
     }
   }
   return { kind:'plate',plates:[...plates].slice(0,8) };

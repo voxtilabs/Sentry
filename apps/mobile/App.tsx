@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 import * as Network from 'expo-network';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 import { normalizarConexion } from './src/bridge/default-handlers';
 import { crearPuenteNativo, type MotivoIncompatible } from './src/bridge';
@@ -28,6 +29,7 @@ import { leerRutaOffline, type RutaOfflineGuardada } from './src/offline/route-s
 import { sincronizarCola } from './src/offline/sync-queue';
 import { registrarSincronizacionBackground } from './src/offline/sync-task';
 import { ErrorBoundary } from './src/observability/ErrorBoundary';
+import type { AndroidExit } from './src/observability/android-exit';
 import {
   configurarApiUrl,
   instalarReportadorGlobal,
@@ -163,7 +165,9 @@ export default function App() {
     try {
       configurarApiUrl(portal.origin);
       instalarReportadorGlobal(() => portal.origin);
-      void registrarArranqueYVerificarCierre(portal.origin).catch(() => undefined);
+      void registrarArranqueYVerificarCierre(portal.origin, async () => (
+        await requireOptionalNativeModule<{ previousExit(): Promise<AndroidExit | null> }>('SentryExitInfo')?.previousExit()
+      ) ?? null).catch(() => undefined);
       /*
        * Corta una traza huerfana (#231).
        *
@@ -423,8 +427,9 @@ function AppShell({ portal }: { portal: URL }) {
           cargadoInicialmente.current = true;
           setLoading(false);
         }}
-        onError={({ nativeEvent }) => {
-          // Ignorar abortos/cancelaciones de peticiones intermedias o errores tras carga inicial
+        onError={(event) => {
+          event.preventDefault();
+          const { nativeEvent } = event;
           const desc = (nativeEvent.description ?? '').toLowerCase();
           if (
             nativeEvent.code === -3 ||
@@ -433,8 +438,7 @@ function AppShell({ portal }: { portal: URL }) {
             desc.includes('err_aborted') ||
             desc.includes('net::err_aborted') ||
             desc.includes('cancel') ||
-            desc.includes('abort') ||
-            cargadoInicialmente.current
+            desc.includes('abort')
           ) {
             return;
           }

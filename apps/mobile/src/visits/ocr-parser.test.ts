@@ -15,6 +15,12 @@ test('no confunde una serie numérica con el RUN y deja completar datos ilegible
 test('patentes ambiguas se devuelven para confirmar, sin inventar sustituciones',()=>{
   assert.deepEqual(extraerPatentes(['CHILE','ABCD-12','AB 1234','ABCD12','ZZY 17']),{kind:'plate',plates:['ABCD12','AB1234','ZZY17']});
 });
+test('lee placas chilenas con distintivo, puntos y fragmentos separados por ML Kit',()=>{
+  assert.deepEqual(extraerPatentes(['JK·RT✿52','CHILE']),{kind:'plate',plates:['JKRT52']});
+  assert.deepEqual(extraerPatentes(['J K', 'R T', '5 2', 'CHILE']),{kind:'plate',plates:['JKRT52']});
+  assert.deepEqual(extraerPatentes(['JK · RT', '52', 'CHILE']),{kind:'plate',plates:['JKRT52']});
+  assert.deepEqual(extraerPatentes(['CHILE','2026','DOCUMENTO','12345678']),{kind:'plate',plates:[]});
+});
 test('el puente rechaza texto OCR completo y campos de número de documento',()=>{
   const valid=armarSobre('ocr.scan.result',{kind:'identity',run:'12345678-5'});
   assert.equal(leerMensajeShell(JSON.stringify(valid)).ok,true);
