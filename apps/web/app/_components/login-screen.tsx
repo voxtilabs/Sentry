@@ -16,6 +16,7 @@ import { leerCredenciales } from './login-form-data';
 import { rutaDelPanel } from './login-navegacion';
 import { LogoutButton } from './logout-button';
 import { HelpButton } from './help-button';
+import { rememberSessionLifetime, restoreSessionFromCookies } from './use-session-refresh';
 
 /**
  * Plazo maximo para el login. Existe porque una peticion sin respuesta dejaba
@@ -24,7 +25,11 @@ import { HelpButton } from './help-button';
  */
 const TIEMPO_MAXIMO_MS = 20_000;
 
-export function LoginScreen({ initialCompanyLogin = false }: { initialCompanyLogin?: boolean }) {
+export function LoginScreen({ initialCompanyLogin = false, restoreSession = false, restoreCompany = false }: {
+  initialCompanyLogin?: boolean;
+  restoreSession?: boolean;
+  restoreCompany?: boolean;
+}) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api';
   const [showPassword, setShowPassword] = useState(false);
   const [identity, setIdentity] = useState('');
@@ -56,6 +61,10 @@ export function LoginScreen({ initialCompanyLogin = false }: { initialCompanyLog
   const [companyMode, setCompanyMode] = useState(initialCompanyLogin);
   const [companyAccessCode, setCompanyAccessCode] = useState('');
   const cardBusy = useRef(false);
+  const [restoration, setRestoration] = useState<'checking' | 'waiting' | 'finished'>(
+    restoreSession || restoreCompany ? 'checking' : 'finished',
+  );
+  const [restorationAttempt, setRestorationAttempt] = useState(0);
   const [companyPicker, setCompanyPicker] = useState<{
     ticket: string; tenantName: string; tenantSlug: string;
     guards: Array<{ id: string; name: string }>;
@@ -66,18 +75,27 @@ export function LoginScreen({ initialCompanyLogin = false }: { initialCompanyLog
     cardBusy.current = true;
     setStatus('loading');
     try {
-      const refreshed = await fetch(`${apiUrl}/auth/company-picker`, { credentials: 'include', cache: 'no-store' });
-      const current = refreshed.ok ? await refreshed.json() as NonNullable<typeof companyPicker> : companyPicker;
+      const refreshed = await fetch(`${apiUrl}/auth/company-picker`, {
+        credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
+      });
+      if (refreshed.status === 401 || refreshed.status === 403) {
+        setCompanyPicker(null);
+        throw new Error('Vuelve a ingresar el código o acerca la tarjeta de empresa.');
+      }
+      if (!refreshed.ok) throw new Error('No se pudo actualizar la lista de guardias. Intenta nuevamente.');
+      const current = await refreshed.json() as NonNullable<typeof companyPicker>;
       const response = await fetch(`${apiUrl}/auth/company-card/select`, {
         method: 'POST', credentials: 'include', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ticket: current.ticket, guardId }),
       });
       if (!response.ok) {
-        setCompanyPicker(null);
-        throw new Error('Vuelve a ingresar el código o acerca la tarjeta de empresa para elegir tu usuario.');
+        setCompanyPicker(current);
+        throw new Error('No se pudo iniciar tu sesión. Vuelve a seleccionar tu nombre.');
       }
-      guardarCodigoEmpresa(companyPicker.tenantSlug);
+      const datos = await response.json() as { expiresIn?: number };
+      rememberSessionLifetime(datos.expiresIn ?? 0);
+      guardarCodigoEmpresa(current.tenantSlug);
       window.location.assign(rutaDelPanel('GUARDIA'));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No pudimos conectar.');
@@ -131,12 +149,58 @@ export function LoginScreen({ initialCompanyLogin = false }: { initialCompanyLog
 
   useEffect(() => {
     setCodigoEmpresa(leerCodigoEmpresa());
-    const controller = new AbortController();
-    void fetch(`${apiUrl}/auth/company-picker`, { credentials: 'include', cache: 'no-store', signal: controller.signal })
-      .then(async r => { if (r.ok) setCompanyPicker(await r.json() as NonNullable<typeof companyPicker>); })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [apiUrl]);
+  }, []);
+
+  useEffect(() => {
+    if (!restoreSession && !restoreCompany) return;
+    const actionLink = new URLSearchParams(window.location.hash.slice(1));
+    if (actionLink.has('invite') || actionLink.has('reset')) {
+      setRestoration('finished');
+      return;
+    }
+
+    let active = true;
+    let retry: number | undefined;
+    async function recover() {
+      setRestoration('checking');
+      try {
+        if (restoreSession) {
+          const role = await restoreSessionFromCookies(apiUrl);
+          if (!active) return;
+          if (role) {
+            window.location.replace(rutaDelPanel(role));
+            return;
+          }
+        }
+        if (restoreCompany) {
+          const response = await fetch(`${apiUrl}/auth/company-picker`, {
+            credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
+          });
+          if (response.ok) {
+            const picker = await response.json() as NonNullable<typeof companyPicker>;
+            if (active) setCompanyPicker(picker);
+          } else if (response.status !== 401 && response.status !== 403) {
+            throw new Error('No se pudo recuperar el acceso de empresa.');
+          }
+        }
+        if (active) setRestoration('finished');
+      } catch {
+        if (!active) return;
+        setRestoration('waiting');
+        retry = window.setTimeout(() => setRestorationAttempt(n => n + 1), 10_000);
+      }
+    }
+    const retryAfterNetworkReturns = () => {
+      if (retry !== undefined) setRestorationAttempt(n => n + 1);
+    };
+    window.addEventListener('online', retryAfterNetworkReturns);
+    void recover();
+    return () => {
+      active = false;
+      window.clearTimeout(retry);
+      window.removeEventListener('online', retryAfterNetworkReturns);
+    };
+  }, [apiUrl, restorationAttempt, restoreCompany, restoreSession]);
 
   useEffect(() => {
     function readActionLink() {
@@ -405,6 +469,16 @@ export function LoginScreen({ initialCompanyLogin = false }: { initialCompanyLog
       setStatus(navigator.onLine ? 'error' : 'offline');
     }
   }
+
+  if (restoration !== 'finished' && mode === 'login') return <main className="login-shell company-guard-picker">
+    <section className="login-panel"><div className="login-card">
+      <Brand />
+      <h2>Recuperando acceso</h2>
+      <p role="status">{restoration === 'waiting' ? 'Esperando conexión para recuperar tu empresa.' : 'Buscando tu sesión guardada…'}</p>
+      {restoration === 'waiting' && <button className="secondary-button" type="button"
+        onClick={() => setRestorationAttempt(n => n + 1)}>Reintentar</button>}
+    </div></section>
+  </main>;
 
   if (companyPicker) return <main className="login-shell company-guard-picker">
     <div className="company-picker-logout"><LogoutButton /></div>

@@ -6,16 +6,20 @@ import type { AuthIdentityRow } from './auth.types';
 
 type Guard = AuthIdentityRow & { guard_name: string };
 interface Context { tenantId: string; issuerId?: string; uid?: string; codeLookup?: string; binding: string }
-const ttl = 30 * 24 * 60 * 60;
+// Keep the browser cookie and its revocable server record on the same horizon.
+export const COMPANY_CONTEXT_TTL_SECONDS = 400 * 24 * 60 * 60;
 const key = (token: string) => `auth:company-context:${createHash('sha256').update(token).digest('hex')}`;
 const binding = (device: string) => createHash('sha256').update(device).digest('hex');
+const stableBinding = (device: string) => binding(
+  device.replace(/\b(Chrome|SentryCoreAndroid|VoxIAAndroid)\/[\w.-]+/g, '$1'),
+);
 
 /** Company continuation grants only the guard picker, never panel permissions. */
 export class CompanyContext {
   constructor(private readonly db: DataSource, private readonly redis: Redis) {}
   async issue(context: Omit<Context, 'binding'>, device: string) {
     const token = randomBytes(32).toString('base64url');
-    await this.redis.set(key(token), JSON.stringify({ ...context, binding: binding(device) }), 'EX', ttl);
+    await this.redis.set(key(token), JSON.stringify({ ...context, binding: stableBinding(device) }), 'EX', COMPANY_CONTEXT_TTL_SECONDS);
     return token;
   }
   async revoke(token?: string) { if (token) await this.redis.del(key(token)); }
@@ -24,7 +28,10 @@ export class CompanyContext {
     const raw = await this.redis.get(key(token));
     if (!raw) throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     const context = JSON.parse(raw) as Context;
-    if (context.binding !== binding(device)) throw new UnauthorizedException('Vuelve a identificar la empresa');
+    const deviceBinding = stableBinding(device);
+    if (context.binding !== deviceBinding && context.binding !== binding(device)) {
+      throw new UnauthorizedException('Vuelve a identificar la empresa');
+    }
     const guards = context.codeLookup
       ? await this.db.query<Guard[]>('SELECT * FROM authenticate_company_code($1)', [context.codeLookup])
       : context.uid
@@ -32,6 +39,14 @@ export class CompanyContext {
       : await this.tenantGuards(context.tenantId, context.issuerId!);
     const own = guards.filter(g => g.tenant_id === context.tenantId && g.role_key === 'GUARDIA');
     if (!own.length) throw new UnauthorizedException('Empresa sin guardias disponibles');
+    // Upgrade old bindings on use. Both operations require an existing key,
+    // so a logout during validation cannot revive the revoked authorization.
+    const renewed = context.binding === deviceBinding
+      ? await this.redis.expire(key(token), COMPANY_CONTEXT_TTL_SECONDS)
+      : await this.redis.set(key(token), JSON.stringify({ ...context, binding: deviceBinding }), 'EX', COMPANY_CONTEXT_TTL_SECONDS, 'XX');
+    if (!renewed) {
+      throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
+    }
     return { context, guards: own };
   }
   async tenantGuards(tenantId: string, issuerId: string, endDay = false): Promise<Guard[]> {

@@ -1,6 +1,7 @@
 import type { CookieOptions, Response } from 'express';
 
 import type { AuthenticatedSession } from './auth.types';
+import { COMPANY_CONTEXT_TTL_SECONDS } from './company-context';
 
 const ACCESS_MAX_AGE_MS = 15 * 60 * 1000;
 const REFRESH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -37,7 +38,7 @@ export function clearSessionCookies(response: Response): void {
 }
 
 export function setCompanyCookie(response: Response, token: string): void {
-  response.cookie('sentrycore_company', token, { ...sessionCookieOptions(), maxAge: REFRESH_MAX_AGE_MS });
+  response.cookie('sentrycore_company', token, { ...sessionCookieOptions(), maxAge: COMPANY_CONTEXT_TTL_SECONDS * 1000 });
 }
 
 export function clearCompanyCookie(response: Response): void {

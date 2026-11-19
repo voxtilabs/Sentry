@@ -3,31 +3,41 @@
 import { useState } from 'react';
 
 import { crearClientePuente } from '../_lib/bridge/web-client';
+import { withSessionChange } from './use-session-refresh';
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   async function logout() {
     setLoading(true);
+    setError('');
     try {
-      await fetch(
+      const response = await withSessionChange(() => fetch(
         `${process.env.NEXT_PUBLIC_API_URL ?? '/api'}/auth/logout`,
         {
           method: 'POST',
           credentials: 'include',
+          signal: AbortSignal.timeout(10_000),
         },
-      ).catch(() => undefined);
-    } finally {
+      ));
+      if (!response.ok) throw new Error();
+    } catch {
+      setError('No se pudo cerrar sesión. Revisa la conexión y vuelve a intentarlo.');
+      setLoading(false);
+      return;
+    }
+    try {
+      const puente = crearClientePuente();
       try {
-        const puente = crearClientePuente();
         const estado = await puente.conectar().catch(() => undefined);
         if (estado?.clase === 'listo' && estado.info.protocolo.minor >= 1) {
           await puente.borrarRutaOffline().catch(() => undefined);
         }
+      } finally {
         puente.desconectar();
-      } catch {
-        // Ignorar fallos de puente durante logout
       }
+    } finally {
       if (typeof window !== 'undefined') {
         window.location.replace('/');
       }
@@ -35,8 +45,11 @@ export function LogoutButton() {
   }
 
   return (
-    <button className="secondary-button" disabled={loading} onClick={logout} type="button">
-      {loading ? 'Saliendo…' : 'Cerrar sesión'}
-    </button>
+    <>
+      <button className="secondary-button" disabled={loading} onClick={logout} type="button">
+        {loading ? 'Saliendo…' : 'Cerrar sesión'}
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </>
   );
 }

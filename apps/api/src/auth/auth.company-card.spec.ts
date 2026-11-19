@@ -15,6 +15,7 @@ function setup() {
   const query = jest.fn().mockResolvedValue([GUARD]);
   const redis = { status: 'ready', get: jest.fn(async (key: string) => store.get(key) ?? null),
     set: jest.fn(async (key: string, value: string) => { store.set(key, value); return 'OK'; }),
+    expire: jest.fn(async (key: string) => Number(store.has(key))),
     eval: jest.fn(async (script: string, _count: number, key: string, value: string) => {
       if (script.includes('INCR')) return 1;
       if (store.get(key) !== value) return 0;

@@ -41,7 +41,7 @@ describe('código de empresa en la pantalla de ingreso', () => {
     expect(pantalla).toContain('/auth/company-code');
     expect(pantalla).toContain('JSON.stringify({ code: companyAccessCode })');
     expect(pantalla).toContain('/auth/company-card');
-    expect(pantalla).toContain('guardarCodigoEmpresa(companyPicker.tenantSlug)');
+    expect(pantalla).toContain('guardarCodigoEmpresa(current.tenantSlug)');
   });
 
   /*

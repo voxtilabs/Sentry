@@ -13,22 +13,16 @@ const ROLE_PATHS = {
 export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get('sentrycore_access')?.value;
   const refreshToken = request.cookies.get('sentrycore_refresh')?.value;
-
-  if (!accessToken && refreshToken) {
-    const refreshed = await refreshSession(request, refreshToken);
-    if (refreshed) return refreshed;
-  }
-  if (!accessToken) return clearSessionAndRedirect(request);
-
-  const role = await resolveSession(request, accessToken);
+  const requestedRole = request.nextUrl.pathname.split('/')[2];
+  const guardApp = peticionDeAppDelGuardia(request.headers);
+  const role = accessToken ? await resolveSession(request, accessToken) : null;
   if (role) {
-    if (role === 'GUARDIA' && !peticionDeAppDelGuardia(request.headers)) {
+    if (role === 'GUARDIA' && !guardApp) {
       return clearSessionAndRedirect(request);
     }
 
     const expectedPath = ROLE_PATHS[role];
 
-    const requestedRole = request.nextUrl.pathname.split('/')[2];
     if (requestedRole !== expectedPath) {
       return NextResponse.redirect(new URL(`/app/${expectedPath}`, request.url));
     }
@@ -36,9 +30,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // A guard's WebView can resume while another tab is already rotating the
+  // refresh cookie. Let the home screen recover it using the browser's lock.
+  if (guardApp && (requestedRole === 'guardia' || request.cookies.has('sentrycore_company'))) {
+    return redirectToHome(request);
+  }
   if (refreshToken) {
-    const refreshed = await refreshSession(request, refreshToken);
-    if (refreshed) return refreshed;
+    return refreshSession(request, refreshToken);
   }
   return clearSessionAndRedirect(request);
 }
@@ -73,8 +71,8 @@ async function resolveSession(
 
 async function refreshSession(request: NextRequest, refreshToken: string) {
   const apiUrl = process.env.API_INTERNAL_URL;
-  const webOrigin = process.env.WEB_PUBLIC_URL;
-  if (!apiUrl || !webOrigin) return null;
+  const webOrigin = process.env.WEB_ORIGIN || process.env.WEB_PUBLIC_URL;
+  if (!apiUrl || !webOrigin) return redirectToHome(request);
 
   try {
     const response = await fetch(`${apiUrl}/auth/refresh`, {
@@ -85,21 +83,27 @@ async function refreshSession(request: NextRequest, refreshToken: string) {
       },
       cache: 'no-store',
     });
-    if (!response.ok) return null;
+    if (response.status === 401) return clearSessionAndRedirect(request);
+    if (!response.ok) return redirectToHome(request);
 
+    const cookies = response.headers.get('set-cookie')?.split(/, (?=sentrycore_)/) ?? [];
+    if (!cookies.some(cookie => cookie.startsWith('sentrycore_access='))) return redirectToHome(request);
     const redirect = NextResponse.redirect(request.nextUrl);
-    const setCookie = response.headers.get('set-cookie');
-    for (const cookie of setCookie?.split(/, (?=sentrycore_)/) ?? []) {
+    for (const cookie of cookies) {
       redirect.headers.append('set-cookie', cookie);
     }
     return redirect;
   } catch {
-    return null;
+    return redirectToHome(request);
   }
 }
 
+function redirectToHome(request: NextRequest) {
+  return NextResponse.redirect(new URL('/', request.url));
+}
+
 function clearSessionAndRedirect(request: NextRequest) {
-  const response = NextResponse.redirect(new URL('/', request.url));
+  const response = redirectToHome(request);
   response.cookies.delete('sentrycore_access');
   response.cookies.delete('sentrycore_refresh');
   return response;
