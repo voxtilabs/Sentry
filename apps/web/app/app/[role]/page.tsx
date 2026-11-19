@@ -28,7 +28,6 @@ import { LivePatrolBoard } from '../../_components/live-patrol-board';
 import { ReglasConfiguracion } from '../../_components/reglas-configuracion';
 import { RouteEditor, type RouteEditorSite } from '../../_components/route-editor';
 import { StatsCharts } from '../../_components/stats-charts';
-import { SupervisorPanel } from '../../_components/supervisor-panel';
 import { SupervisorSchedule } from '../../_components/supervisor-schedule';
 import { TareasTurnoEditor } from '../../_components/tareas-turno-editor';
 import {
@@ -299,15 +298,14 @@ export default async function RoleDashboard({
       </div>
     );
   } else if (view === 'visitas') {
-    panel = <VisitsManagement apiUrl={publicApiUrl()} />;
+    panel = <VisitsManagement apiUrl={publicApiUrl()} initialSiteId={siteId} scopeInHeader={isSupervisor} />;
   } else if (view === 'informes') {
     panel = (
       <div className="panel-view" data-view="informes">
-        <ReportsWorkspace apiUrl={publicApiUrl()} initialSiteId={siteId} scopeInHeader={isSupervisor} />
+        <ReportsWorkspace key={isSupervisor ? siteId ?? 'todos' : 'empresa'} apiUrl={publicApiUrl()} initialSiteId={siteId} scopeInHeader={isSupervisor} />
         <details className="management-card">
           <summary>Estadísticas y tendencias del período</summary>
           <StatsCharts role={panelRole} searchParams={query} />
-          {isSupervisor && <SupervisorPanel searchParams={query} showReports={false} />}
         </details>
       </div>
     );

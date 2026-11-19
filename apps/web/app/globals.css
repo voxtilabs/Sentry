@@ -1375,6 +1375,9 @@ a.stats-boton { display: inline-flex; align-items: center; }
 }
 .guard-visits-button { width: 100%; max-width: 340px; margin-block: 1rem; min-height: 48px; }
 .visits-panel { width: 100%; max-width: 680px; margin-inline: auto; padding: 1rem; color: var(--text-primary, #172033); }
+.visits-management { max-width: none; }
+.visits-exit-search { margin-block: 1rem; }
+.visits-exit-search[open] summary { margin-bottom: .6rem; }
 .visits-panel form, .visits-step { display: flex; flex-direction: column; gap: 1rem; margin-block: 1rem; }
 .visits-panel label { display: flex; flex-direction: column; gap: .4rem; font-weight: 600; }
 .visits-panel input:not([type=checkbox]), .visits-panel select { width: 100%; min-width: 0; min-height: 48px; padding: .65rem; font: inherit; color: inherit; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }

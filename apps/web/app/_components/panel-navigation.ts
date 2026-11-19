@@ -1,6 +1,6 @@
 export type PanelRole = 'ADMIN' | 'SUPERVISOR' | 'SUPERADMIN';
 
-const SITE_VIEWS = new Set(['recintos', 'terreno', 'monitoreo', 'informes', 'correos']);
+const SITE_VIEWS = new Set(['recintos', 'terreno', 'monitoreo', 'visitas', 'informes', 'correos']);
 
 export function supervisorSiteView(view: string): string {
   return SITE_VIEWS.has(view) ? view : 'recintos';

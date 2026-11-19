@@ -38,6 +38,11 @@ export class ExitVisitDto {
   @IsISO8601() exitedAt!: string;
 }
 
+export class FindVisitExitDto {
+  @IsUUID() siteId!: string;
+  @Transform(trim) @IsString() @Length(8, 12) run!: string;
+}
+
 export class VehicleLookupDto {
   @IsUUID() siteId!: string;
   @IsString() @Length(5, 10) @Matches(/^[A-Za-z0-9 .-]+$/) plate!: string;

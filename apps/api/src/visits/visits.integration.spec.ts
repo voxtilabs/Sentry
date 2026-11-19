@@ -3,6 +3,9 @@ import { Client } from 'pg';
 import type { DataSource } from 'typeorm';
 import { VehicleLookupProcessor } from './vehicle-lookup.jobs';
 import { emptyVehicleCheck, type VehicleRegistryService } from './vehicle-registry.service';
+import { VisitsService } from './visits.service';
+import type { TenantContextService } from '../database/tenant-context/tenant-context.service';
+import type { RulesService } from '../rules/rules.service';
 
 const database=process.env.DATABASE_TEST_URL;
 const describeDatabase=database?describe:describe.skip;
@@ -37,6 +40,24 @@ describeDatabase('visitas con PostgreSQL real: aislamiento, privilegios e idempo
   it('el mismo identificador offline no duplica el ingreso',async()=>{
     const id=randomUUID();await insert(id);
     expect((await insert(id,'ON CONFLICT(tenant_id,guard_id,client_visit_id) DO NOTHING')).rowCount).toBe(0);
+  });
+  it('el RUN solo recupera ingresos abiertos del recinto autorizado',async()=>{
+    await db.query('RESET ROLE');
+    await db.query('INSERT INTO guard_sites(tenant_id,site_id,guard_id) VALUES($1,$2,$3)',[tenantA,site,guard]);
+    await db.query('SET LOCAL ROLE sentrycore_app');
+    const open=await insert();
+    const closed=await insert();
+    await db.query('UPDATE visitor_sessions SET exited_at_device=now(),exited_at_server=now(),exit_guard_id=$1 WHERE id=$2',[guard,closed.rows[0].id]);
+    const service=new VisitsService({
+      tenantId:tenantA,
+      manager:{query:async(sql:string,args:unknown[])=>(await db.query(sql,args)).rows},
+    } as unknown as TenantContextService,{effective:async()=>({visitorRetentionDays:30})} as RulesService,
+    {} as ConstructorParameters<typeof VisitsService>[2],{} as ConstructorParameters<typeof VisitsService>[3]);
+    expect(await service.findExit(guard,{siteId:site,run:'12.345.678-5'})).toMatchObject([{id:open.rows[0].id,run:'12345678-5',exitedAt:null}]);
+    await expect(service.findExit(guard,{siteId:randomUUID(),run:'12345678-5'})).rejects.toThrow('No tienes acceso');
+    expect(await service.listAll(guard,'GUARDIA')).toHaveLength(2);
+    await db.query("SELECT set_config('app.tenant_id',$1,true)",[tenantB]);
+    expect(await service.listAll(guard,'GUARDIA')).toEqual([]);
   });
   it('no permite editar la identidad ni borrar un ingreso',async()=>{
     await insert();

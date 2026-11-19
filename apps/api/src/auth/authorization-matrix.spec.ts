@@ -82,8 +82,8 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   publicEndpoint(FeedbackController, 'submit'),
   ...['catalog','start','detail','samples','scan','finish','cancel'].map(handler => secured(ReferenceController,handler,['routes:manage'],['SUPERVISOR'],true)),
-  ...['context','list','register','exit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
-  ...['context','list'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
+  ...['context','list','register','exit','findExit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
+  ...['context','list','listAll'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),
   publicEndpoint(AuthController, 'companyCard'),

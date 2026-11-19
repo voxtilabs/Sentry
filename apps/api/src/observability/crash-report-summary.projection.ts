@@ -27,6 +27,13 @@ export const ERROR_NAMES_PERMITIDOS = [
   'NfcBridgeError',
   'QueryFailedError',
   'java.lang.IllegalStateException',
+  'NativeCrash',
+  'AndroidJavaCrash',
+  'AndroidNativeCrash',
+  'AndroidANR',
+  'AndroidInitializationFailure',
+  'AndroidLowMemory',
+  'AndroidSystemExit',
 ] as const;
 const ERROR_NAMES_PERMITIDOS_SET = new Set<string>(ERROR_NAMES_PERMITIDOS);
 

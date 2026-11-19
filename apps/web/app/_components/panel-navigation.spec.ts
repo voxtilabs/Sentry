@@ -1,6 +1,11 @@
-import { PANEL_NAVIGATION, panelViewCopy, resolvePanelView } from './panel-navigation';
+import { PANEL_NAVIGATION, panelLink, panelViewCopy, resolvePanelView, supervisorSiteView } from './panel-navigation';
 
 describe('arquitectura de vistas del panel (#289)', () => {
+  it.each(['visitas', 'informes'])('conserva el recinto del supervisor al entrar a %s', view => {
+    expect(supervisorSiteView(view)).toBe(view);
+    expect(panelLink('SUPERVISOR', view, 'recinto-a')).toBe(`?vista=${view}&siteId=recinto-a`);
+    expect(panelLink('SUPERVISOR', view)).toBe(`?vista=${view}`);
+  });
   it.each(['ADMIN','SUPERVISOR'] as const)('%s puede abrir destinatarios desde el menú',role=>{
     expect(resolvePanelView(role,'correos')).toBe('correos');
     expect(panelViewCopy(role,'correos').title).toBe('Correos e informes');
