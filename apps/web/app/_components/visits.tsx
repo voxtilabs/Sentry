@@ -63,6 +63,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   const [destination,setDestination]=useState('');
   const [informed,setInformed]=useState(false);
   const [plate,setPlate]=useState('');
+  const [confirmedPlate,setConfirmedPlate]=useState<string>();
   const [candidates,setCandidates]=useState<readonly string[]>([]);
   const [check,setCheck]=useState<VehicleCheck>();
   const lastCheck=useRef<VehicleCheck|undefined>(undefined);
@@ -115,7 +116,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   useEffect(()=>{
     const normalized=normalizarPatente(plate);
     setLookingUp(false);
-    if(!['vehicle','done'].includes(step)||!normalized||!bridge.conexion.enLinea)return;
+    if(!['vehicle','done'].includes(step)||!normalized||confirmedPlate!==normalized||!bridge.conexion.enLinea)return;
     const previous=lastCheck.current;
     if(step==='done'&&(!previous?.lookupPending||previous.plate!==normalized))return;
     let cancelled=false;
@@ -142,7 +143,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
     }
     const timer=setTimeout(()=>{setError('');void update(step==='done'?previous?.lookupId:undefined);},350);
     return()=>{cancelled=true;clearTimeout(timer);if(poll)clearTimeout(poll);controller.abort();};
-  },[apiUrl,siteId,plate,step,bridge.conexion.enLinea]);
+  },[apiUrl,siteId,plate,confirmedPlate,step,bridge.conexion.enLinea]);
 
   async function read(kind:'identity'|'plate') {
     setError('');
@@ -160,7 +161,8 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         const plates = result.plates ?? [];
         setCandidates(plates);
         if (plates.length > 0) {
-          setPlate(plates[0] ?? '');
+          setPlate(plates.length===1?plates[0]??'':'');
+          setConfirmedPlate(undefined);
           setCheck(undefined);
         }
       }
@@ -179,7 +181,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   }
 
   async function save(vehicle:boolean) {
-    if(vehicle&&!normalizarPatente(plate)) {setError('Revisa la patente antes de registrar.');return;}
+    if(vehicle&&(!confirmedPlate||confirmedPlate!==normalizarPatente(plate))) {setError('Confirma la patente antes de registrar.');return;}
     if(!context) {setError('Carga el registro con conexión antes de guardar visitas.');return;}
     setBusy(true);setError('');
     clientId.current ||= crypto.randomUUID();enteredAt.current ||= new Date().toISOString();
@@ -229,7 +231,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
 
   function reset() {
     clientId.current='';enteredAt.current='';setGivenNames('');setFamilyNames('');setRun('');setPlate('');
-    setCheck(undefined);setCandidates([]);setOriginCompany('');setDestination('');
+    setCheck(undefined);setConfirmedPlate(undefined);setCandidates([]);setOriginCompany('');setDestination('');
     setInformed(false);setStep('identity');setNotice('');setError('');
   }
 
@@ -262,13 +264,19 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         <button className="secondary-button" disabled={busy||!bridge.soportaVisitas} onClick={()=>void read('plate')}>{busy?'Leyendo patente…':plate?'Volver a leer con la cámara':'Leer patente con la cámara'}</button>
         <label>Patente
           <input autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={10} value={plate}
-            onChange={e=>{setPlate(e.target.value.toUpperCase());setCheck(undefined);}} placeholder="Ingresa la patente si la cámara no la lee" />
+            onChange={e=>{setPlate(e.target.value.toUpperCase());setConfirmedPlate(undefined);setCheck(undefined);}} placeholder="Ingresa la patente si la cámara no la lee" />
         </label>
         {error ? <p className="visits-error" role="alert">{error}</p> : null}
-        {candidates.length>1?<label>Patentes reconocidas<select value={plate} onChange={e=>{setPlate(e.target.value);setCheck(undefined);}}>{candidates.map(p=><option key={p}>{p}</option>)}</select></label>:null}
+        {candidates.length>1?<label>Lecturas posibles<select value={candidates.includes(plate)?plate:''} onChange={e=>{
+          setPlate(e.target.value);setConfirmedPlate(undefined);setCheck(undefined);
+        }}><option value="">Elige la que aparece en el vehículo</option>{candidates.map(p=><option key={p}>{p}</option>)}</select></label>:null}
+        {!confirmedPlate&&normalizarPatente(plate)?<button className="primary-button" type="button" disabled={busy}
+          onClick={()=>{const value=normalizarPatente(plate);if(value){setError('');setConfirmedPlate(value);}}}>
+          Confirmar patente {normalizarPatente(plate)}
+        </button>:null}
         {lookingUp?<p role="status">Consultando antecedentes del vehículo…</p>:null}
-        {check?<VehicleResult check={check}/>:!lookingUp?<p>{normalizarPatente(plate)?'Antecedentes no disponibles. La patente puede registrarse igualmente.':'Escanea la patente para obtener la ficha del vehículo.'}</p>:null}
-        <button className="primary-button" disabled={busy||(lookingUp&&!check)||!normalizarPatente(plate)} onClick={()=>void save(true)}>Registrar visita con vehículo</button>
+        {check?<VehicleResult check={check}/>:!lookingUp&&confirmedPlate?<p>{bridge.conexion.enLinea?'Antecedentes no disponibles. La patente puede registrarse igualmente.':'Sin conexión. Puedes registrar la visita con la patente confirmada.'}</p>:null}
+        <button className="primary-button" disabled={busy||(lookingUp&&!check)||!confirmedPlate} onClick={()=>void save(true)}>Registrar visita con vehículo</button>
         <button className="text-button" disabled={busy} onClick={()=>setStep('vehicle-question')}>Volver a la pregunta</button>
       </div>:null}
       {step==='done'?<>{check?<VehicleResult check={check}/>:null}<button className="primary-button" onClick={reset}>Registrar otra visita</button></>:null}

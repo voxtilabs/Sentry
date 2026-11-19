@@ -12,7 +12,7 @@ import java.io.File
 class SentryOcrModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("SentryOcr")
-    AsyncFunction("readAndDelete") { uriString: String, promise: Promise ->
+    AsyncFunction("readAndDelete") { uriString: String, plateOnly: Boolean, promise: Promise ->
       val context = appContext.reactContext
       if (context == null) {
         promise.reject("OCR_UNAVAILABLE", "No se pudo iniciar la lectura local", null)
@@ -33,7 +33,19 @@ class SentryOcrModule : Module() {
           .addOnSuccessListener { result ->
             file.delete()
             // Solo memoria local del shell; el portal recibe un resultado filtrado.
-            promise.resolve(result.textBlocks.flatMap { it.lines }.map { it.text })
+            val lines = result.textBlocks.flatMap { it.lines }
+            val visibleLines = if (plateOnly) {
+              val rotated = image.rotationDegrees == 90 || image.rotationDegrees == 270
+              val width = if (rotated) image.height else image.width
+              val height = if (rotated) image.width else image.height
+              lines.filter { line ->
+                val box = line.boundingBox ?: return@filter false
+                box.exactCenterX() in width * 0.05f..width * 0.95f &&
+                  box.exactCenterY() in height * 0.22f..height * 0.78f &&
+                  box.width() >= width * 0.035f
+              }
+            } else lines
+            promise.resolve(visibleLines.map { it.text })
           }
           .addOnFailureListener {
             file.delete()
