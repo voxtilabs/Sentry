@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import type { AuthIdentityRow } from './auth.types';
 import type { MailService } from './mail.service';
 import { companyCodeLookup } from './company-code';
+import { COMPANY_CONTEXT_TTL_SECONDS } from './company-context';
 
 const GUARD = { user_id: 'guard-a', tenant_id: 'tenant-a', tenant_name: 'Empresa A',
   tenant_slug: 'empresa-a', role_key: 'GUARDIA', guard_name: 'Usuario de prueba' };
@@ -21,6 +22,7 @@ function setup() {
   });
   const redis = { status: 'ready', get: jest.fn(async (key: string) => store.get(key) ?? null),
     set: jest.fn(async (key: string, value: string) => { store.set(key, value); return 'OK'; }),
+    expire: jest.fn(async (key: string) => Number(store.has(key))),
     del: jest.fn(async (key: string) => store.delete(key)),
     eval: jest.fn(async (script: string, _count: number, key: string, value: string): Promise<number> => {
       if (script.includes('INCR')) return 1;
@@ -69,6 +71,14 @@ describe('ingreso de empresa por código y relevo', () => {
     const picker = await auth.companyCode('ABCD1234EF', 'ip-a', 'android-a');
     await expect(auth.companyPicker(picker.contextToken, 'ip-b', 'android-b')).rejects.toBeInstanceOf(UnauthorizedException);
   });
+  it('la empresa sigue vinculada cuando se actualiza el WebView o la app', async () => {
+    const { auth } = setup();
+    const picker = await auth.companyCode('ABCD1234EF', 'ip-a', 'Android; Moto Chrome/141.0 SentryCoreAndroid/0.3.5');
+    await expect(auth.companyPicker(picker.contextToken, 'ip-b', 'Android; Moto Chrome/142.0 SentryCoreAndroid/0.3.6'))
+      .resolves.toMatchObject({ tenantName: 'Empresa A' });
+    await expect(auth.companyPicker(picker.contextToken, 'ip-b', 'Android; Otro Chrome/142.0 SentryCoreAndroid/0.3.6'))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+  });
   it('aplica su propio límite sin consultar empresas ni gastar intentos de contraseña', async () => {
     const { auth, redis, query } = setup();
     redis.eval.mockResolvedValueOnce(11);
@@ -80,10 +90,19 @@ describe('ingreso de empresa por código y relevo', () => {
     const { auth, query, revoke } = setup();
     const picker = await auth.companyCode('ABCD1234EF', 'ip-a', 'android-a');
     const next = await auth.endGuardDay({ sub: 'guard-a', tenant_id: 'tenant-a', role: 'GUARDIA', sid: 'family-a' }, 'android-a', picker.contextToken);
-    expect(next).toBeTruthy();
+    expect(next).toBe(picker.contextToken);
     expect(revoke).toHaveBeenCalledWith('family-a');
     query.mockResolvedValue([]);
     await expect(auth.companyPicker(next!, 'ip-a', 'android-a')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+  it('extiende el acceso al usar la lista y no recupera un token cerrado', async () => {
+    const { auth, redis } = setup();
+    const picker = await auth.companyCode('ABCD1234EF', 'ip-a', 'android-a');
+    const contextKey = redis.set.mock.calls[0]?.[0];
+    await auth.companyPicker(picker.contextToken, 'ip-a', 'android-a');
+    expect(redis.expire).toHaveBeenLastCalledWith(contextKey, COMPANY_CONTEXT_TTL_SECONDS);
+    await auth.revokeCompanyContext(picker.contextToken);
+    await expect(auth.companyPicker(picker.contextToken, 'ip-a', 'android-a')).rejects.toBeInstanceOf(UnauthorizedException);
   });
   it('un código retirado permite terminar jornada pero exige identificar de nuevo la empresa', async () => {
     const { auth, query, revoke } = setup();

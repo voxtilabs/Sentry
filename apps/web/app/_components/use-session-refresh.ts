@@ -164,15 +164,41 @@ export async function withSessionChange<T>(operation:()=>Promise<T>):Promise<T> 
   try {return await operation();} finally {releaseLock();}
 }
 
+/** Recover a still valid session after the operating system reloads the WebView. */
+export async function restoreSessionFromCookies(apiUrl: string): Promise<string | null> {
+  return withSessionChange(async () => {
+    const options: RequestInit = { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(10_000) };
+    const session = await fetch(`${apiUrl}/auth/session`, options);
+    if (session.ok) {
+      const data = await session.json() as { user?: { role?: string } };
+      if (!data.user?.role) throw new Error('No se pudo verificar la sesión.');
+      return data.user.role;
+    }
+    if (session.status !== 401) throw new Error('No se pudo verificar la sesión.');
+
+    const refreshed = await fetch(`${apiUrl}/auth/refresh`, { ...options, method: 'POST', signal: AbortSignal.timeout(10_000) });
+    if (refreshed.status === 401) return null;
+    if (!refreshed.ok) throw new Error('No se pudo renovar la sesión.');
+    const data = await refreshed.json() as { expiresIn?: number; user?: { role?: string } };
+    if (!data.user?.role) throw new Error('No se pudo verificar la sesión renovada.');
+    rememberSessionLifetime(data.expiresIn ?? 0);
+    return data.user.role;
+  });
+}
+
 /**
  * Garantiza una sesión fresca antes de llamar a la API. Todas las llamadas
  * concurrentes comparten el mismo refresco en vuelo.
  */
 export async function ensureFreshSession(apiUrl = '/api'): Promise<boolean> {
-  const renewAt = readNumber(RENEW_AT_KEY);
-  if (renewAt !== null && Date.now() < renewAt) return true;
   try {
-    return (await sharedRefresh(apiUrl)) !== null;
+    const renewAt = readNumber(RENEW_AT_KEY);
+    if (renewAt !== null && Date.now() < renewAt) return true;
+    if (inFlight) return (await inFlight) !== null;
+    return await withSessionChange(async () => {
+      const latest = readNumber(RENEW_AT_KEY);
+      return (latest !== null && Date.now() < latest) || (await sharedRefresh(apiUrl)) !== null;
+    });
   } catch {
     return false;
   }

@@ -166,7 +166,10 @@ export class AuthController {
   @Public()
   async companyPicker(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
-    return this.auth.companyPicker(request.cookies?.sentrycore_company, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+    const token = request.cookies?.sentrycore_company;
+    const picker = await this.auth.companyPicker(token, request.ip ?? 'unknown', request.get('user-agent') ?? '');
+    if (token) setCompanyCookie(response, token);
+    return picker;
   }
 
   @Post('guard-day/end')
@@ -174,8 +177,9 @@ export class AuthController {
   @Permissions('patrols:execute')
   async endGuardDay(@Req() request: Request & { user: AuthenticatedUser },
     @Res({ passthrough: true }) response: Response) {
-    const token = await this.auth.endGuardDay(request.user, request.get('user-agent') ?? '', request.cookies?.sentrycore_company);
-    await this.auth.revokeCompanyContext(request.cookies?.sentrycore_company);
+    const previous = request.cookies?.sentrycore_company;
+    const token = await this.auth.endGuardDay(request.user, request.get('user-agent') ?? '', previous);
+    if (token !== previous) await this.auth.revokeCompanyContext(previous);
     if (token) setCompanyCookie(response, token);
     else clearCompanyCookie(response);
     clearSessionCookies(response);
@@ -189,7 +193,8 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response) {
     const result = await this.auth.selectCompanyGuard(input, request.ip ?? 'unknown', request.get('user-agent') ?? '');
     setSessionCookies(response, result);
-    return { user: result.user };
+    response.setHeader('Cache-Control', 'no-store');
+    return { user: result.user, expiresIn: result.expiresIn };
   }
 
   @Post('logout')

@@ -55,20 +55,23 @@ export default async function Home() {
   const cabeceras = await headers();
   const galleta = await cookies();
   const accessToken = galleta.get('sentrycore_access')?.value;
+  const guardApp = peticionDeAppDelGuardia(cabeceras);
 
   if (accessToken) {
     const rol = await rolDeLaSesion(
       accessToken,
       cabeceras.get('x-request-id') ?? crypto.randomUUID(),
     );
-    // El refresh NO se intenta aca: renovar es escribir cookies, y una pagina de
-    // servidor no puede. Con el access vencido cae al login, y ahi el guardia
-    // vuelve a entrar; el caso que este arreglo resuelve —sesion viva, arranque
-    // en frio— es el que se daba todo el tiempo.
-    if (rol && (rol !== 'GUARDIA' || peticionDeAppDelGuardia(cabeceras))) {
+    if (rol && (rol !== 'GUARDIA' || guardApp)) {
       redirect(`/app/${RUTA_POR_ROL[rol]}`);
     }
   }
 
-  return <LoginScreen initialCompanyLogin={peticionDeAppDelGuardia(cabeceras)} />;
+  // Next Server Components cannot update cookies. The login screen recovers
+  // the session before showing the form when the WebView still has a refresh.
+  return <LoginScreen
+    initialCompanyLogin={guardApp}
+    restoreSession={guardApp && galleta.has('sentrycore_refresh')}
+    restoreCompany={galleta.has('sentrycore_company')}
+  />;
 }

@@ -534,8 +534,7 @@ export class AuthService {
       try {
         const { context } = await contexts.guards(companyToken, device);
         if (context.tenantId === user.tenant_id) {
-          contextToken = await contexts.issue({ tenantId: context.tenantId, uid: context.uid,
-            codeLookup: context.codeLookup, issuerId: context.issuerId }, device);
+          contextToken = companyToken;
         }
       } catch (error) {
         // Un código renovado retira el selector anterior, pero permite terminar la jornada.
