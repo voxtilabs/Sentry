@@ -260,7 +260,10 @@ export class AuthService {
       });
     }
 
-    const selected = this.selectMembership(activeRows, input.tenantId, input.tenantSlug);
+    const selected = this.selectMembership(activeRows, input.tenantId, input.tenantSlug)
+      ?? (input.supervisorWeb && !input.tenantId && !input.tenantSlug
+        ? this.initialSupervisorMembership(activeRows, rows[0]?.user_id)
+        : undefined);
     this.assertTenantSlugPertenece(activeRows, input.tenantSlug, selected);
     if (!selected) {
       return {
@@ -938,6 +941,15 @@ export class AuthService {
     if (tenantId) return rows.find((row) => row.tenant_id === tenantId);
     if (tenantSlug) return rows.find((row) => row.tenant_slug === tenantSlug);
     return rows.length === 1 ? rows[0] : undefined;
+  }
+
+  private initialSupervisorMembership(rows: AuthIdentityRow[], authenticatedUserId?: string) {
+    // The initial web company is just a starting point. The panel switches
+    // between the user's authorized companies through the existing endpoint.
+    if (!rows.every(row => row.role_key === 'SUPERVISOR' && row.user_id === authenticatedUserId)) {
+      return undefined;
+    }
+    return [...rows].sort((a, b) => (a.tenant_slug ?? '').localeCompare(b.tenant_slug ?? ''))[0];
   }
 
   /**
