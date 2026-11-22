@@ -5,7 +5,7 @@ import { ReportsWorkspace } from '../../_components/reports-workspace';
 import { ReportRecipients } from '../../_components/report-recipients';
 import { GuardPersonnel } from '../../_components/guard-personnel';
 import { ReferencePatrol } from '../../_components/reference-patrol';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 
 import {
@@ -45,6 +45,9 @@ import { PuntosSupervisor } from '../../_components/puntos-supervisor';
 import { SessionManagement, type UserSession } from '../../_components/session-management';
 import { SiteManagement } from '../../_components/site-management';
 import { panelViewCopy, resolvePanelView, type PanelRole } from '../../_components/panel-navigation';
+import { CompanyGroups } from '../../_components/company-groups';
+import { PortfolioOverview } from '../../_components/portfolio-overview';
+import { peticionDeAppDelGuardia } from '../../_lib/app-del-guardia';
 
 const ROLE_CONTENT = {
   guardia: {
@@ -179,7 +182,7 @@ export default async function RoleDashboard({
         marca={marca}
         activeView={view}
       >
-        {view === 'supervision' ? <SupervisionAccess apiUrl={publicApiUrl()}/> : view === 'sesiones' ? (
+        {view === 'grupos' ? <CompanyGroups apiUrl={publicApiUrl()} /> : view === 'supervision' ? <SupervisionAccess apiUrl={publicApiUrl()}/> : view === 'sesiones' ? (
           <SessionManagement sessions={sessions} apiUrl={publicApiUrl()} />
         ) : (
           <PlatformManagement tenants={tenants} billing={billing} apiUrl={publicApiUrl()} />
@@ -192,8 +195,11 @@ export default async function RoleDashboard({
   const panelRole: PanelRole = isSupervisor ? 'SUPERVISOR' : 'ADMIN';
   const view = resolvePanelView(panelRole, firstParameter(query.vista));
   const siteId = firstParameter(query.siteId);
-  const copy = panelViewCopy(panelRole, view);
-  const needsOverview = view === 'resumen' || (!isSupervisor && ['envios'].includes(view));
+  const webOverview = view === 'resumen' && !peticionDeAppDelGuardia(await headers());
+  const copy = webOverview
+    ? { title: 'Resumen operativo', subtitle: 'Rondas, calidad de los escaneos y tareas por empresa y recinto.' }
+    : panelViewCopy(panelRole, view);
+  const needsOverview = (view === 'resumen' && !webOverview) || (!isSupervisor && view === 'envios');
   const needsSites = !isSupervisor && ['personas', 'recintos', 'envios'].includes(view);
 
   const [overview, users, sites, sessions, authPolicy, securityEvents, routeEditorSites, quota] = await Promise.all([
@@ -252,7 +258,7 @@ export default async function RoleDashboard({
 
   let panel;
   if (view === 'resumen') {
-    panel = resumen;
+    panel = webOverview ? <PortfolioOverview apiUrl={publicApiUrl()} /> : resumen;
   } else if (view === 'supervision') {
     panel=<SupervisionAccess apiUrl={publicApiUrl()}/>;
   } else if (isSupervisor && view === 'recintos') {

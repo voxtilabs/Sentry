@@ -25,7 +25,8 @@ export async function PanelShell({ role, title, subtitle, children, marca, activ
   const group = PANEL_NAVIGATION[role].find(g => g.items.some(item => item.view === activeView));
   const item = group?.items.find(link => link.view === activeView);
   const name = marca?.commercialName ?? 'SentryCore';
-  const webSupervisor = role === 'SUPERVISOR' && !peticionDeAppDelGuardia(await headers());
+  const web = !peticionDeAppDelGuardia(await headers());
+  const webSupervisor = role === 'SUPERVISOR' && web;
   return <main className={`dashboard-shell ${styles.workspace}`} data-role={role}
     style={marca?.cssVariables as CSSProperties}>
     <SesionViva />
@@ -42,7 +43,8 @@ export async function PanelShell({ role, title, subtitle, children, marca, activ
       <header className={styles.utility}>
         <PanelMenu role={role} activeView={activeView} siteId={siteId} name={name} />
         <div className={styles.context}>
-          {role === 'SUPERADMIN' ? <strong>{name}</strong> : <CompanySwitcher role={role} activeView={activeView} siteId={siteId} webSupervisor={webSupervisor} />}
+          {role === 'SUPERADMIN' || (web && activeView === 'resumen') ? <strong>{name}</strong>
+            : <CompanySwitcher role={role} activeView={activeView} siteId={siteId} webSupervisor={webSupervisor} />}
           <span>{roleNames[role]}</span>
         </div>
         <div className={styles.actions}>
