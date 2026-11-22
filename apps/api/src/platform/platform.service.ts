@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -186,5 +188,40 @@ export class PlatformService {
       await manager.query(`SELECT set_config('app.user_id', $1, true)`, [actorId]);
       return operation(manager);
     });
+  }
+
+  companyGroups(actorId: string) {
+    return this.withPlatformActor(actorId, async manager => {
+      const [row] = await manager.query<Array<{ directory: unknown }>>('SELECT platform_company_groups() AS directory');
+      return row?.directory;
+    });
+  }
+
+  async saveCompanyGroup(actorId: string, groupId: string | null, name: string, companyIds: string[]) {
+    const [row] = await this.groupChange<Array<{ id: string }>>(actorId,
+      'SELECT save_company_group($1, $2, $3) AS id', [groupId, name, companyIds]);
+    return { id: row?.id };
+  }
+
+  async assignCompanyGroupSites(actorId: string, groupId: string, supervisorId: string, allSites: boolean, siteIds: string[]) {
+    await this.groupChange(actorId, 'SELECT assign_company_group_sites($1, $2, $3, $4)', [groupId, supervisorId, allSites, siteIds]);
+    return { updated: true };
+  }
+
+  private async groupChange<T>(actorId: string, sql: string, parameters: unknown[]): Promise<T> {
+    try {
+      return await this.withPlatformActor(actorId, manager => manager.query(sql, parameters) as Promise<T>);
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        const { code, constraint } = error.driverError as { code?: string; constraint?: string };
+        if (code === '42501') throw new ForbiddenException('Se requiere acceso de superadministración.');
+        if (code === 'P0002') throw new NotFoundException('El grupo o supervisor seleccionado no está disponible.');
+        if (code === '22023') throw new BadRequestException('Revisa las empresas, recintos y roles de la selección.');
+        if (code === '23505') throw new ConflictException(constraint === 'company_groups_name_idx'
+          ? 'Ya existe un grupo con ese nombre.'
+          : 'Una de las empresas ya pertenece a otro grupo.');
+      }
+      throw error;
+    }
   }
 }

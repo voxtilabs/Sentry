@@ -42,6 +42,7 @@ import { GeoController } from '../geo/geo.controller';
 import { TrazaMetricasController } from '../geo/traza-metricas.controller';
 import { PurgaRetencionController } from '../retention/purga-retencion.controller';
 import { PlatformController } from '../platform/platform.controller';
+import { CompanyGroupsController } from '../platform/company-groups.controller';
 import { SupportAccessController } from '../platform-data/support-access.controller';
 import { SKIP_TENANT_CONTEXT } from '../database/tenant-context/skip-tenant-context.decorator';
 import { TenantDataController } from '../platform-data/tenant-data.controller';
@@ -80,6 +81,10 @@ const TENANT_ROLES = ['ADMIN', 'SUPERVISOR', 'GUARDIA'] as const;
  * verdad ejecutable de rol × endpoint.
  */
 const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
+  ...['directory', 'create', 'update', 'assign'].map(handler => secured(
+    CompanyGroupsController, handler, ['platform:tenants:manage'], ['SUPERADMIN'],
+  )),
+  secured(DashboardController, 'portfolio', ['tenant:dashboard:read'], ['ADMIN', 'SUPERVISOR'], true),
   publicEndpoint(FeedbackController, 'submit'),
   ...['catalog','start','detail','samples','scan','finish','cancel'].map(handler => secured(ReferenceController,handler,['routes:manage'],['SUPERVISOR'],true)),
   ...['context','list','register','exit','findExit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
@@ -471,6 +476,7 @@ const CONTROLLERS = [
   DashboardController,
   GuardController,
   PlatformController,
+  CompanyGroupsController,
   HealthController,
   RulesController,
   PlatformRulesController,

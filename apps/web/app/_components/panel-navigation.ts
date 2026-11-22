@@ -97,6 +97,7 @@ export const PANEL_NAVIGATION: Record<PanelRole, PanelNavigationGroup[]> = {
       label: 'Plataforma',
       items: [
         { view: 'resumen', icon: '⌂', label: 'Empresas y licencias' },
+        { view: 'grupos', icon: '▦', label: 'Grupos empresariales' },
         { view: 'supervision', icon: '♙', label: 'Accesos de supervisión' },
         { view: 'sesiones', icon: '◉', label: 'Sesiones' },
       ],
@@ -141,6 +142,7 @@ export function panelViewCopy(role: PanelRole, view: string): { title: string; s
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },
     },
     SUPERADMIN: {
+      grupos: { title: 'Grupos empresariales', subtitle: 'Agrupa empresas y define los recintos que supervisa cada persona.' },
       supervision: {title:'Accesos de supervisión',subtitle:'Administra las asignaciones de supervisores por empresa y recinto.'},
       resumen: { title: 'Administración de la plataforma', subtitle: 'Empresas, licencias y acceso a la plataforma.' },
       sesiones: { title: 'Sesiones activas', subtitle: 'Revisa y revoca dispositivos con acceso a tu cuenta.' },

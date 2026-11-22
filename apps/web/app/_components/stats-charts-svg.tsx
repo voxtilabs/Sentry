@@ -206,7 +206,7 @@ export function SerieCumplimiento({
 }: {
   puntos: PuntoEvolucion[];
   granularidad: Granularidad;
-  umbral: number;
+  umbral?: number;
   ariaLabel: string;
 }) {
   const alto = SERIE_MARGEN_SUP + SERIE_ALTO_PLOT + SERIE_MARGEN_INF;
@@ -241,10 +241,12 @@ export function SerieCumplimiento({
         </g>
       ))}
 
-      <line className="stats-umbral" x1={0} x2="100%" y1={y(umbral)} y2={y(umbral)} />
-      <text className="stats-umbral-texto" x="100%" y={y(umbral) - 5} textAnchor="end">
-        Umbral {formatearPorcentaje(umbral)}
-      </text>
+      {umbral !== undefined && <>
+        <line className="stats-umbral" x1={0} x2="100%" y1={y(umbral)} y2={y(umbral)} />
+        <text className="stats-umbral-texto" x="100%" y={y(umbral) - 5} textAnchor="end">
+          Umbral {formatearPorcentaje(umbral)}
+        </text>
+      </>}
 
       {/* La linea se dibuja tramo a tramo y no como `polyline` porque las
           coordenadas van en porcentaje —que `points` no acepta— y porque asi un
@@ -269,7 +271,8 @@ export function SerieCumplimiento({
 
       {puntos.map((punto, indice) => {
         if (punto.compliancePct === null) return null;
-        const marca = total <= MAX_PUNTOS_CON_MARCA || destacados.has(indice);
+        const aislado = puntos[indice - 1]?.compliancePct == null && puntos[indice + 1]?.compliancePct == null;
+        const marca = total <= MAX_PUNTOS_CON_MARCA || destacados.has(indice) || aislado;
         const posicion = posicionSerie(indice, total);
         const dia = normalizarDia(punto.bucket);
         return (

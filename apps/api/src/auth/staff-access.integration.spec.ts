@@ -7,6 +7,7 @@ import {argon2id,hash} from 'argon2';
 import {AuthService} from './auth.service';
 import type {MailService} from './mail.service';
 import type {AuthenticatedUser} from './auth.guard';
+import {PortfolioService} from '../dashboard/portfolio.service';
 const database=process.env.DATABASE_TEST_URL&&process.env.REDIS_TEST_URL?describe:describe.skip;
 database('staff portfolio and assignment permissions on PostgreSQL/RLS + Redis',()=>{
  let db:DataSource,q:QueryRunner,redis:Redis,auth:AuthService;
@@ -82,5 +83,61 @@ database('staff portfolio and assignment permissions on PostgreSQL/RLS + Redis',
   await q.query("SELECT set_config('app.user_id','',true)");expect(await q.query('SELECT * FROM staff_company_portfolio()')).toEqual([]);
   const [roles]=await q.query('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user');expect(roles).toEqual({rolsuper:false,rolbypassrls:false});
   expect(await q.query(`SELECT proname FROM pg_proc p,LATERAL aclexplode(p.proacl) x WHERE proname IN('staff_company_portfolio','supervision_access_directory','set_supervision_access') AND x.grantee=0 AND x.privilege_type='EXECUTE'`)).toEqual([]);
+ });
+ it('consolida solo recintos autorizados del grupo con rondas, calidad y tareas históricas',async()=>{
+  await q.query("SELECT set_config('app.user_id',$1,true)",[platform]);
+  const [{id:group}]=await q.query("SELECT save_company_group(NULL,'Grupo de prueba',ARRAY[$1,$2]::uuid[]) AS id",[a,b]);
+  const [{id:foreignGroup}]=await q.query("SELECT save_company_group(NULL,'Grupo ajeno',ARRAY[$1]::uuid[]) AS id",[c]);
+  await q.query('SELECT assign_company_group_sites($1,$2,true,ARRAY[]::uuid[])',[group,sup]);
+  expect((await auth.staffCompanies(user(sup,'SUPERVISOR'))).companies.find(company=>company.tenantId===b)?.sites.map(site=>site.id))
+    .toEqual([siteB]);
+
+  await q.query('RESET ROLE');
+  await q.query("INSERT INTO memberships(tenant_id,user_id,role_key) VALUES($1,$2,'GUARDIA')",[b,guard]);
+  for(const [tenant,site,status,compliance,voluntary] of [
+   [a,siteA,'incompleta',50,true], [a,siteA2,'completada',100,false], [b,siteB,'vencida',null,false],
+  ] as const) {
+   const [route,point,patrol,template,item,secondItem]=Array.from({length:6},()=>randomUUID());
+   await q.query("SELECT set_config('app.tenant_id',$1,true)",[tenant]);
+   await q.query("INSERT INTO routes(id,tenant_id,site_id,name,estimated_duration_min) VALUES($1,$2,$3,'Ruta',15)",[route,tenant,site]);
+   await q.query("INSERT INTO checkpoints(id,tenant_id,site_id,name) VALUES($1,$2,$3,'Punto')",[point,tenant,site]);
+   await q.query("INSERT INTO checklist_templates(id,tenant_id,site_id,name) VALUES($1,$2,$3,'Tareas')",[template,tenant,site]);
+   await q.query(`INSERT INTO checklist_items(id,tenant_id,template_id,position,label,response_type,checkpoint_id)
+     VALUES($1,$2,$3,1,'Foto','foto',$4),($5,$2,$3,2,'Pregunta','si_no',$4)`,[item,tenant,template,point,secondItem]);
+   await q.query(`INSERT INTO patrols(id,tenant_id,site_id,route_id,guard_id,status,scheduled_start_at,scheduled_end_at,
+     started_at,closed_at,expected_checkpoint_ids,compliance_pct,is_voluntary,checklist_template_id)
+     VALUES($1,$2,$3,$4,$5,$6,'2026-11-10 13:00+00','2026-11-10 13:15+00',
+      '2026-11-10 13:00+00','2026-11-10 13:15+00',$7::jsonb,$8,$9,$10)`,
+   [patrol,tenant,site,route,guard,status,JSON.stringify([point]),compliance,voluntary,template]);
+   if(site===siteA) {
+    await q.query(`INSERT INTO scans(tenant_id,patrol_id,checkpoint_id,method,client_scan_id,latitude,longitude,accuracy_m,anomalies)
+      VALUES($1,$2,$3,'nfc',$4,-33.4,-70.6,4,'["gps_impreciso"]')`,[tenant,patrol,point,randomUUID()]);
+    await q.query("INSERT INTO checklist_responses(tenant_id,patrol_id,item_id,value,failed) VALUES($1,$2,$3,'no',true)",[tenant,patrol,secondItem]);
+   }
+  }
+
+  await q.query('SET LOCAL ROLE sentrycore_app');
+  await q.query("SELECT set_config('app.user_id',$1,true)",[platform]);
+  await q.query('SELECT assign_company_group_sites($1,$2,false,ARRAY[$3,$4]::uuid[])',[group,sup,siteA,siteB]);
+  const actualDb = {transaction:async (_isolation:string, work:(manager:typeof q.manager)=>Promise<unknown>)=>
+    work({query:(sql:string, values?:unknown[])=>sql==='SET TRANSACTION READ ONLY'
+      ? Promise.resolve([]) : q.query(sql,values)} as unknown as typeof q.manager)} as unknown as DataSource;
+  const overview = new PortfolioService(actualDb);
+  const date = {from:'2026-11-10',to:'2026-11-10'};
+  const result = await overview.overview(user(sup,'SUPERVISOR'),date);
+  expect(result.groups).toEqual([{id:group,name:'Grupo de prueba',companyIds:[a,b].sort()}]);
+  expect(result.selected).toEqual({scope:'group',scopeId:group});
+  expect(result.totals).toMatchObject({patrols:2,scheduled:1,voluntary:1,incomplete:1,expired:1,completed:0,
+    compliancePct:50,scans:1,scansFlagged:1,scansWithGps:1,avgAccuracyM:4,tasksExpected:4,tasksDone:1,tasksFailed:1,taskPct:25});
+  expect(result.sites.map(site=>site.siteId).sort()).toEqual([siteA,siteB].sort());
+  expect(result.days[0]).toMatchObject({day:date.from,patrols:2});
+  await expect(overview.overview(user(sup,'SUPERVISOR'),{...date,scope:'site',scopeId:siteA2})).rejects.toMatchObject({status:404});
+  await expect(overview.overview(user(sup,'SUPERVISOR'),{...date,scope:'group',scopeId:foreignGroup})).rejects.toMatchObject({status:404});
+  await q.query('SAVEPOINT denied_group');
+  await expect(q.query("SELECT save_company_group(NULL,'Nombre prohibido','{}')")).rejects.toMatchObject({code:'42501'});
+  await q.query('ROLLBACK TO SAVEPOINT denied_group');
+  await q.query('SAVEPOINT denied_table');
+  await expect(q.query('SELECT * FROM company_groups')).rejects.toMatchObject({code:'42501'});
+  await q.query('ROLLBACK TO SAVEPOINT denied_table');
  });
 });

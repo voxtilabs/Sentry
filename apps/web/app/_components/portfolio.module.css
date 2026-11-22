@@ -1,0 +1,308 @@
+.overview,
+.groupManagement {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.filters,
+.groupToolbar,
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .85rem;
+}
+
+.filters {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: .8rem;
+  background: var(--surface);
+}
+
+.filters label,
+.groupToolbar label,
+.sectionHeader label,
+.managementForm > label {
+  display: grid;
+  min-width: 0;
+  gap: .35rem;
+  color: var(--ink);
+  font-size: .85rem;
+  font-weight: 650;
+}
+
+.filters select,
+.filters input,
+.groupToolbar select,
+.sectionHeader select,
+.managementForm > label :is(input, select) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.65rem;
+  padding: .45rem .65rem;
+  border: 1px solid var(--line);
+  border-radius: .4rem;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+}
+
+.periodButtons,
+.dateFilter {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+
+.periodButtons button[aria-pressed='true'] {
+  border-color: var(--blue);
+  color: var(--blue-dark);
+  background: var(--canvas);
+}
+
+.periodCaption,
+.loadMessage,
+.groupMessage {
+  margin: 0;
+  font-size: .9rem;
+  color: var(--muted);
+}
+
+.loadMessage[role='alert'],
+.groupMessage[role='alert'] {
+  color: #a62835;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  margin: 0;
+}
+
+.metrics > div {
+  min-width: 0;
+  padding: .85rem;
+  border: 1px solid var(--line);
+  border-radius: .8rem;
+  background: var(--surface);
+}
+
+.metrics > div.attention {
+  border-color: #ecc7cb;
+}
+
+.metrics dt {
+  font-size: .87rem;
+  font-weight: 650;
+}
+
+.metrics dd {
+  margin: .35rem 0;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics small,
+.tableWrapper small,
+.checkboxList small {
+  display: block;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.analysis,
+.managementForm {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));
+  align-items: start;
+  gap: .9rem;
+}
+
+.charts > section {
+  min-width: 0;
+}
+
+.summaryCard {
+  min-width: 0;
+  padding: .9rem;
+  border: 1px solid var(--line);
+  border-radius: .7rem;
+  background: var(--surface);
+}
+
+.summaryCard h2,
+.summaryCard h3 {
+  margin: 0 0 .75rem;
+}
+
+.charts h3 {
+  font-size: 1rem;
+}
+
+.companyGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: .6rem;
+}
+
+.companyButton {
+  display: grid;
+  justify-items: start;
+  gap: .3rem;
+  padding: .75rem;
+  border: 1px solid var(--line);
+  border-radius: .5rem;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.companyButton:hover {
+  border-color: var(--blue);
+}
+
+.companyButton[data-review='true'] span:first-of-type {
+  color: #a62835;
+}
+
+.companyButton span {
+  font-size: .82rem;
+  color: var(--muted);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.tableWrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrapper :is(th, td) {
+  padding: .62rem .55rem;
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+}
+
+.tableWrapper thead {
+  font-size: .82rem;
+}
+
+.tableWrapper td {
+  min-width: 4rem;
+  font-size: .875rem;
+}
+
+.tableWrapper tbody th {
+  min-width: 12rem;
+}
+
+.tableWrapper th button {
+  text-align: start;
+}
+
+.tableWrapper td[data-review='true'] {
+  color: #a62835;
+  font-weight: 650;
+}
+
+.managementForm > button {
+  justify-self: start;
+}
+
+.checkboxList {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  max-height: 21rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: .5rem;
+  padding: .75rem;
+}
+
+.checkboxList label {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+  min-height: 2rem;
+}
+
+.checkboxList input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--blue);
+}
+
+@media (max-width: 540px) {
+  .filters > label,
+  .dateFilter {
+    width: 100%;
+  }
+
+  .tableWrapper :is(table, tbody) {
+    display: block;
+  }
+
+  .tableWrapper thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .tableWrapper tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: .45rem 0 .6rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tableWrapper :is(th, td) {
+    min-width: 0;
+    border: 0;
+    padding: .4rem;
+  }
+
+  .tableWrapper tbody th {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .tableWrapper td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: .12rem;
+    color: var(--muted);
+    font-size: .76rem;
+  }
+}
+
+@media (min-width: 740px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1360px) {
+  .metrics {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
