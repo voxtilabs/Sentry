@@ -5,6 +5,7 @@ import type { StaffPortfolio } from '@sentrycore/shared';
 import { operationRequest, operationError } from './operations-client';
 import { openStaffCompany, STAFF_COMPANY_CHANGE_KEY } from './company-navigation';
 import { staffViewQuery, supervisorSiteView } from './panel-navigation';
+import { staffCompanyLabel, staffSiteLabel } from './staff-site-labels';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
@@ -23,8 +24,8 @@ function useStaffPortfolio(apiUrl: string) {
   return { data, error, setError };
 }
 
-export function CompanySwitcher({ role, activeView, siteId }: {
-  role: 'ADMIN' | 'SUPERVISOR'; activeView: string; siteId?: string | undefined;
+export function CompanySwitcher({ role, activeView, siteId, webSupervisor }: {
+  role: 'ADMIN' | 'SUPERVISOR'; activeView: string; siteId?: string | undefined; webSupervisor: boolean;
 }) {
   const { data, error, setError } = useStaffPortfolio(API);
   const [busy, setBusy] = useState(false);
@@ -32,6 +33,7 @@ export function CompanySwitcher({ role, activeView, siteId }: {
   const currentCompany = data?.companies.find(company => company.tenantId === data.currentTenantId);
   const selectedSite = currentCompany?.sites.find(site => site.id === siteId);
   const siteView = supervisorSiteView(activeView);
+  const currentLabel = currentCompany && (webSupervisor ? staffCompanyLabel(currentCompany) : currentCompany.tenantName);
 
   useEffect(() => {
     const changed = (event: StorageEvent) => {
@@ -71,8 +73,11 @@ export function CompanySwitcher({ role, activeView, siteId }: {
     {data && (supervisor ? (
       <label>Recinto
         <select aria-label="Cambiar recinto" value={selectedSite?.id ?? ''} onChange={event => void change(event.target.value)} disabled={busy}>
-          <option value="">{siteView === 'recintos' ? 'Todos mis recintos' : `Todos los recintos de ${currentCompany?.tenantName ?? 'esta empresa'}`}</option>
-          {data.companies.filter(company => company.sites.length > 0).map(company => (
+          <option value="">{siteView === 'recintos' ? 'Todos mis recintos' : `Todos los recintos de ${currentLabel ?? 'esta empresa'}`}</option>
+          {webSupervisor ? data.companies.flatMap(company => {
+            const label = staffCompanyLabel(company);
+            return company.sites.map(site => <option key={site.id} value={site.id}>{staffSiteLabel(label, site.name)}</option>);
+          }) : data.companies.filter(company => company.sites.length > 0).map(company => (
             <optgroup key={company.tenantId} label={company.tenantName}>
               {company.sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
             </optgroup>

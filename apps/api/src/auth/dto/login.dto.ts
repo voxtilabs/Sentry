@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
@@ -14,6 +14,10 @@ export class LoginDto {
   @IsOptional()
   @IsUUID()
   tenantId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  supervisorWeb?: boolean;
 
   /**
    * Codigo de empresa que el guardia deja fijado en su telefono ("Codigo de

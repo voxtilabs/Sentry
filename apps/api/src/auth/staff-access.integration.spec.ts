@@ -3,6 +3,7 @@ import {DataSource,type QueryRunner} from 'typeorm';
 import Redis from 'ioredis';
 import {JwtService} from '@nestjs/jwt';
 import {ForbiddenException} from '@nestjs/common';
+import {argon2id,hash} from 'argon2';
 import {AuthService} from './auth.service';
 import type {MailService} from './mail.service';
 import type {AuthenticatedUser} from './auth.guard';
@@ -22,7 +23,7 @@ database('staff portfolio and assignment permissions on PostgreSQL/RLS + Redis',
   for(const [tenant,id,name] of [[a,siteA,'A'],[a,siteA2,'A2'],[b,siteB,'B'],[c,siteC,'Hidden']])await q.query("INSERT INTO sites(id,tenant_id,name,branch_name,address) VALUES($1,$2,$3,'Fixture','Fixture')",[id,tenant,name]);
   await q.query('INSERT INTO supervisor_sites(tenant_id,supervisor_id,site_id) VALUES($1,$2,$3)',[a,sup,siteA]);
   await q.query('SET LOCAL ROLE sentrycore_app');
-  auth=new AuthService({transaction:async(fn:(manager:typeof q.manager)=>Promise<unknown>)=>fn(q.manager)} as unknown as DataSource,new JwtService({secret:'fixture-only-secret-more-than-thirty-two-characters'}),redis,{} as MailService);
+  auth=new AuthService({query:q.query.bind(q),transaction:async(fn:(manager:typeof q.manager)=>Promise<unknown>)=>fn(q.manager)} as unknown as DataSource,new JwtService({secret:'fixture-only-secret-more-than-thirty-two-characters'}),redis,{} as MailService);
  });
  afterEach(async()=>{await auth.revokeAllSessions(owner);await auth.revokeAllSessions(sup);await q.rollbackTransaction();await q.release();});
  it('shows only own companies and assigned sites, never passwords or foreign tenants',async()=>{
@@ -30,6 +31,23 @@ database('staff portfolio and assignment permissions on PostgreSQL/RLS + Redis',
   const restricted=await auth.staffCompanies(user(sup,'SUPERVISOR'));expect(restricted.companies).toHaveLength(1);expect(restricted.companies[0]?.sites.map(s=>s.id)).toEqual([siteA]);
   expect(JSON.stringify(own)).not.toContain('password');
   await expect(auth.staffCompanies(user(guard,'GUARDIA'))).rejects.toBeInstanceOf(ForbiddenException);await expect(auth.staffCompanies(user(platform,'SUPERADMIN',null))).rejects.toBeInstanceOf(ForbiddenException);
+ });
+ it('abre una empresa autorizada en el acceso web del supervisor y conserva la selección explícita para la app',async()=>{
+  const identity=sup+'@example.test';
+  const password='solo-prueba-web-489';
+  await q.query('RESET ROLE');
+  await q.query('UPDATE users SET password_hash=$2 WHERE id=$1',[sup,await hash(password,{type:argon2id})]);
+  await q.query("INSERT INTO memberships(tenant_id,user_id,role_key) VALUES($1,$2,'SUPERVISOR')",[b,sup]);
+  await q.query('SET LOCAL ROLE sentrycore_app');
+
+  await expect(auth.login({identity,password})).resolves.toMatchObject({requiresTenantSelection:true});
+  const [first,second]=[a,b].sort();
+  await expect(auth.login({identity,password,supervisorWeb:true})).resolves.toMatchObject({
+   user:{id:sup,role:'SUPERVISOR',tenantId:first},
+  });
+  await expect(auth.login({identity,password,supervisorWeb:true,tenantId:second})).resolves.toMatchObject({
+   user:{id:sup,role:'SUPERVISOR',tenantId:second},
+  });
  });
  it('lets an owner assign an existing supervisor to another owned company; does not touch history or other users',async()=>{
   const directory=await auth.supervisionDirectory(user(owner,'ADMIN')) as {companies:Array<{id:string}>;supervisors:Array<{id:string}>};expect(directory.companies.map(x=>x.id).sort()).toEqual([a,b].sort());expect(directory.supervisors.map(x=>x.id)).toEqual([sup]);

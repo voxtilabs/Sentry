@@ -316,6 +316,9 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
     setStatus('loading');
     setErrorMessage('');
 
+    const mobile = initialCompanyLogin || esAppDelGuardia(navigator.userAgent)
+      || Boolean((window as Window & { ReactNativeWebView?: unknown }).ReactNativeWebView)
+      || Boolean((window as Window & { __sentrycorePuente?: unknown }).__sentrycorePuente);
     try {
       const response = await fetch(
         `${apiUrl}/auth/login`,
@@ -331,9 +334,10 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
             identity: credenciales.identity,
             password: credenciales.password,
             ...(credenciales.tenantId ? { tenantId: credenciales.tenantId } : {}),
-            ...(!credenciales.tenantId && codigoEmpresa
+            ...(mobile && !credenciales.tenantId && codigoEmpresa
               ? { tenantSlug: codigoEmpresa }
               : {}),
+            ...(!mobile ? { supervisorWeb: true } : {}),
           }),
         },
       );
@@ -383,21 +387,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
         return;
       }
 
-      /*
-       * Dentro de la app hay dos señales mejores que el user-agent:
-       * `ReactNativeWebView`, que solo existe en un WebView de React Native, y
-       * el puente ya inyectado. El user-agent queda de respaldo porque puede
-       * llegar recortado, y porque un APK viejo puede tardar en inyectar el
-       * puente: expulsar al guardia por llegar un instante antes seria repetir
-       * el bug del renombre por otra via.
-       */
-      const dentroDeLaApp =
-        typeof window !== 'undefined' &&
-        (Boolean((window as unknown as { __sentrycorePuente?: unknown }).__sentrycorePuente) ||
-          Boolean((window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView) ||
-          esAppDelGuardia(navigator.userAgent));
-
-      if (result.user.role === 'GUARDIA' && !dentroDeLaApp) {
+      if (result.user.role === 'GUARDIA' && !mobile) {
         await fetch(`${apiUrl}/auth/logout`, {
           method: 'POST',
           credentials: 'include',
@@ -581,7 +571,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
           </form> : null}
 
           {mode === 'login' && !companyMode ? <form className="login-form" noValidate onSubmit={submit}>
-            {editandoCodigoEmpresa || !codigoEmpresa ? (
+            {initialCompanyLogin && (editandoCodigoEmpresa || !codigoEmpresa ? (
               <label className="codigo-empresa-campo">
                 Código de empresa
                 <input
@@ -613,7 +603,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
                   Cambiar
                 </button>
               </p>
-            )}
+            ))}
 
             <label>
               Usuario o correo
@@ -622,6 +612,10 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
                 name="identity"
                 onChange={(event) => {
                   setIdentity(event.target.value);
+                  if (!initialCompanyLogin) {
+                    setTenantChoices([]);
+                    setTenantId('');
+                  }
                   setStatus('idle');
                   setErrorMessage('');
                 }}

@@ -46,12 +46,31 @@ describeDb('ronda patrón y relevo con PostgreSQL/RLS reales',()=>{
   afterEach(async()=>{await q.rollbackTransaction();await q.release()});
   const sample=():ReferencePointDto=>({clientPointId:randomUUID(),recordedAt:new Date().toISOString(),latitude:-33.4,longitude:-70.6,accuracyM:3,
     stationary:true,accelSamples:200,gyroSamples:200,satellitesUsed:12,speedMps:0,accelRmsG:0.01,gyroRmsRadS:0.01});
-  it('deduplica lotes y NFC, conserva sensores y finaliza sin alterar coordenadas de puntos',async()=>ctx.run(q,tenant,async()=>{
-    const p=sample();await service.samples(walk,[p],user);await service.samples(walk,[p],user);
-    for(const uid of uids){const scan={uid,clientScanId:randomUUID(),scannedAt:p.recordedAt};await service.scan(walk,scan,user);await service.scan(walk,scan,user)}
-    await service.samples(walk,[{...sample(),recordedAt:new Date(Date.parse(p.recordedAt)+1000).toISOString()}],user);
-    const finished=await service.finish(walk,user);expect(finished.walk.status).toBe('completed');expect(finished.points).toHaveLength(2);
-    expect(finished.checkpoints.every(c=>c.scans===1&&c.estimate?.accuracyM===3&&c.estimate.stationary)).toBe(true);
+  it('guarda etiquetas en orden y calcula una coordenada distinta por punto antes de finalizar',async()=>ctx.run(q,tenant,async()=>{
+    const now=Date.now();
+    const p={...sample(),recordedAt:new Date(now-4000).toISOString()};
+    const next={...sample(),recordedAt:new Date(now+4000).toISOString(),latitude:-33.4004,longitude:-70.6003};
+    const poor={...next,clientPointId:randomUUID(),accuracyM:DEFAULT_PATROL_RULES.referenceGpsTargetAccuracyM+10};
+    await service.samples(walk,[p,poor],user);
+    await service.samples(walk,[p,poor],user);
+    for(const [i,uid] of uids.entries()){
+      const scan={uid,clientScanId:randomUUID(),scannedAt:i===0?p.recordedAt:next.recordedAt};
+      await service.scan(walk,scan,user);
+      await service.scan(walk,scan,user);
+    }
+    await expect(service.finish(walk,user)).rejects.toBeInstanceOf(ConflictException);
+    await service.samples(walk,[next],user);
+    const finished=await service.finish(walk,user);
+    expect(finished.walk.status).toBe('completed');
+    expect(finished.points).toHaveLength(3);
+    expect(await q.query('SELECT checkpoint_id FROM reference_scans WHERE walk_id=$1 ORDER BY scanned_at',[walk]))
+      .toEqual(points.map(checkpoint_id=>({checkpoint_id})));
+    for(const [i,expected] of [p,next].entries()){
+      const checkpoint=finished.checkpoints[i];
+      expect(checkpoint).toMatchObject({id:points[i],position:i+1,scans:1,estimate:{accuracyM:3,stationary:true}});
+      expect(checkpoint?.estimate?.latitude).toBeCloseTo(expected.latitude,6);
+      expect(checkpoint?.estimate?.longitude).toBeCloseTo(expected.longitude,6);
+    }
     expect(await q.query('SELECT latitude,longitude FROM checkpoints WHERE id=$1',[points[0]])).toEqual([{latitude:null,longitude:null}]);
     await expect(service.samples(walk,[sample()],user)).rejects.toBeInstanceOf(ConflictException);
     await expect(service.samples(walk,[p],user)).resolves.toEqual({acknowledged:[p.clientPointId]});

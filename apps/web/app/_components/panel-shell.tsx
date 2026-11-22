@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { IconChevronRight, IconCircleCheck, IconUserCircle } from '@tabler/icons-react';
+import { headers } from 'next/headers';
 
+import { peticionDeAppDelGuardia } from '../_lib/app-del-guardia';
 import { CompanySwitcher } from './staff-companies';
 import { Brand } from './brand';
 import type { MarcaDelShell } from './dashboard-shell';
@@ -16,13 +18,14 @@ const roleNames: Record<PanelRole, string> = {
 };
 
 /** Administrative surface only. Guard markup and styles stay in DashboardShell. */
-export function PanelShell({ role, title, subtitle, children, marca, activeView, siteId }: {
+export async function PanelShell({ role, title, subtitle, children, marca, activeView, siteId }: {
   role: PanelRole; title: string; subtitle: string; children: ReactNode;
   marca?: MarcaDelShell; activeView: string; siteId?: string;
 }) {
   const group = PANEL_NAVIGATION[role].find(g => g.items.some(item => item.view === activeView));
   const item = group?.items.find(link => link.view === activeView);
   const name = marca?.commercialName ?? 'SentryCore';
+  const webSupervisor = role === 'SUPERVISOR' && !peticionDeAppDelGuardia(await headers());
   return <main className={`dashboard-shell ${styles.workspace}`} data-role={role}
     style={marca?.cssVariables as CSSProperties}>
     <SesionViva />
@@ -39,7 +42,7 @@ export function PanelShell({ role, title, subtitle, children, marca, activeView,
       <header className={styles.utility}>
         <PanelMenu role={role} activeView={activeView} siteId={siteId} name={name} />
         <div className={styles.context}>
-          {role === 'SUPERADMIN' ? <strong>{name}</strong> : <CompanySwitcher role={role} activeView={activeView} siteId={siteId} />}
+          {role === 'SUPERADMIN' ? <strong>{name}</strong> : <CompanySwitcher role={role} activeView={activeView} siteId={siteId} webSupervisor={webSupervisor} />}
           <span>{roleNames[role]}</span>
         </div>
         <div className={styles.actions}>
