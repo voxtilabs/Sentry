@@ -22,6 +22,8 @@ export class VisitsGuardController {
   exit(@Body() input: ExitVisitDto,@Req() req: UserRequest) { return this.visits.exit(req.user.sub,input); }
   @Post('find-exit') @HttpCode(200) @Header('Cache-Control','no-store') @Permissions('visitors:register')
   findExit(@Body() input: FindVisitExitDto,@Req() req:UserRequest) { return this.visits.findExit(req.user.sub,input); }
+  @Post('returning-visitor') @HttpCode(200) @Header('Cache-Control','no-store') @Permissions('visitors:register')
+  returningVisitor(@Body() input: FindVisitExitDto,@Req() req:UserRequest) { return this.visits.returningVisitor(req.user.sub,input); }
   @Post('public-check') @Permissions('visitors:register')
   publicCheck(@Body() input: PublicVehicleCheckDto,@Req() req: UserRequest) { return this.visits.recordPublicCheck(req.user.sub,input); }
   @Post('vehicle') @Permissions('visitors:register')

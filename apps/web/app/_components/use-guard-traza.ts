@@ -88,15 +88,19 @@ export function useTrazaEnVivo({
      * este estado no se registra recorrido (sin consentimiento, seguimiento
      * apagado en la empresa), el grifo ni se abre.
      */
-    void (async () => {
+    let checkingPolicy = false;
+    const startIfAllowed = async () => {
+      if (checkingPolicy || cancelado) return;
+      checkingPolicy = true;
       try {
-        const respuesta = await fetch(`${apiUrl}/geo/policy`, { credentials: 'include' });
+        const respuesta = await fetch(`${apiUrl}/geo/policy`, { credentials: 'include',signal:AbortSignal.timeout(5_000) });
         if (!respuesta.ok || cancelado) return;
         const politica = (await respuesta.json()) as {
           tracksLocation?: boolean;
           sampling?: { intervalSeconds?: number };
         };
-        if (!politica.tracksLocation || cancelado) return;
+        if (cancelado) return;
+        if (!politica.tracksLocation) { puenteEstable.detenerTraza(); return; }
         puenteEstable.iniciarTraza(politica.sampling?.intervalSeconds ?? 60, {
           patrolId,
           /*
@@ -110,8 +114,10 @@ export function useTrazaEnVivo({
       } catch {
         // Sin politica no hay traza. La ronda sigue: la traza es contexto,
         // nunca condicion.
-      }
-    })();
+      } finally { checkingPolicy = false; }
+    };
+    void startIfAllowed();
+    window.addEventListener('online',startIfAllowed);
 
     const baja = puenteEstable.alPuntoDeTraza((punto) => {
       cola.current = acumular(cola.current, punto);
@@ -120,6 +126,7 @@ export function useTrazaEnVivo({
 
     return () => {
       cancelado = true;
+      window.removeEventListener('online',startIfAllowed);
       baja();
       puenteEstable.detenerTraza();
     };

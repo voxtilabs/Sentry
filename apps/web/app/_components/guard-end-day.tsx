@@ -1,5 +1,6 @@
 'use client';
 
+import { forgetOfflineRound } from './guard-offline-session';
 import { listarPendientes } from './guard-photo-store';
 import { cargarEstadoRonda } from './guard-shift-state';
 import { subirFotoPersistida } from './guard-evidence-upload';
@@ -54,6 +55,7 @@ export function GuardEndDay() {
         const body = await response.json().catch(() => null) as { message?: string } | null;
         throw new Error(typeof body?.message === 'string' ? body.message : 'No pudimos terminar tu jornada.');
       }
+      forgetOfflineRound();
       const bridge = crearClientePuente();
       try {
         const connected = await bridge.conectar();

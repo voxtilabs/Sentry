@@ -1,65 +1,94 @@
-/*
- * Service Worker acotado a los tiles del mapa (#76).
- *
- * Único objetivo: que el guardia siga viendo el mapa de su recinto en modo
- * avión. NO cachea nada de la app —ni HTML, ni scripts, ni datos—: solo
- * responde peticiones de imagen que ya estan en el cache de tiles, y deja pasar
- * todo lo demas a la red sin tocarlo. Asi no cambia el comportamiento del resto
- * del portal ni se mete con otras pantallas.
- *
- * El precache lo dispara el cliente con un mensaje `precache-tiles` cuando la
- * ronda carga con señal; aca solo se bajan y se guardan.
- */
-
 const CACHE_TILES = 'sentrycore-tiles-v1';
-
-// Plantilla de ruta de tile: .../{z}/{x}/{y}.ext — para decidir si una imagen
-// que no estaba en cache vale la pena guardarla al pasar por la red.
+const CACHE_SCREEN = 'sentrycore-offline-round-v1';
+const SCREEN = '/ronda-sin-conexion';
 const RUTA_DE_TILE = /\/\d+\/\d+\/\d+(\.\w+)?(\?|$)/;
+const staticAsset = url => url.origin === self.location.origin && url.pathname.startsWith('/_next/static/');
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (evento) => evento.waitUntil(self.clients.claim()));
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
-self.addEventListener('message', (evento) => {
-  const dato = evento.data;
-  if (!dato || dato.type !== 'precache-tiles' || !Array.isArray(dato.urls)) return;
-  evento.waitUntil(precachear(dato.urls));
+let preparing;
+self.addEventListener('message', event => {
+  if (!event.source || new URL(event.source.url).origin !== self.location.origin) return;
+  const data = event.data;
+  if (data?.type === 'prepare-round-screen') {
+    preparing ??= prepareScreen().finally(() => { preparing = undefined; });
+    event.waitUntil(preparing.then(() => event.ports[0]?.postMessage(true), () => event.ports[0]?.postMessage(false)));
+  } else if (data?.type === 'precache-tiles' && Array.isArray(data.urls)) {
+    event.waitUntil(prepareTiles(data.urls.slice(0,240)));
+  }
 });
 
-async function precachear(urls) {
-  const cache = await caches.open(CACHE_TILES);
-  await Promise.all(
-    urls.map(async (url) => {
-      try {
-        // `no-cors`: los tiles son de otro origen; la respuesta opaca igual
-        // sirve para pintar la imagen y se puede guardar en el cache.
-        const respuesta = await fetch(url, { mode: 'no-cors', cache: 'no-store' });
-        await cache.put(url, respuesta);
-      } catch {
-        // Sin señal para un tile puntual: no aborta el resto del precache.
-      }
-    }),
-  );
+async function prepareScreen() {
+  const cache = await caches.open(CACHE_SCREEN);
+  // This dedicated static page contains only code. Never cache an authenticated
+  // document, an API response or Next's per-session server-component payload.
+  const response = await fetch(SCREEN, {credentials:'omit',cache:'no-cache'});
+  if (!response.ok || response.redirected || !response.headers.get('content-type')?.includes('text/html')) throw Error('offline-screen-unavailable');
+  const html = await response.clone().text();
+  const assets = new Set([...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+    .map(match => new URL(match[1].replaceAll('&amp;', '&'),self.location.origin))
+    .filter(staticAsset).map(url => url.href));
+  if (!assets.size) throw Error('offline-assets-unavailable');
+  assets.add(new URL('/worker-foto-v1.js',self.location.origin).href);
+  for (const url of assets) {
+    if (!await cache.match(url)) await cache.add(new Request(url,{credentials:'omit'}));
+  }
+  // Publish only when every referenced asset is available for a cold start.
+  await cache.put(SCREEN,response);
+  for (const request of await cache.keys()) {
+    if (staticAsset(new URL(request.url)) && !assets.has(request.url)) await cache.delete(request);
+  }
 }
 
-self.addEventListener('fetch', (evento) => {
-  const peticion = evento.request;
-  // Solo imagenes GET. Todo lo demas (navegacion, scripts, API) pasa intacto.
-  if (peticion.method !== 'GET' || peticion.destination !== 'image') return;
+async function prepareTiles(urls) {
+  const cache = await caches.open(CACHE_TILES);
+  const queue = urls.filter(url => typeof url === 'string' && RUTA_DE_TILE.test(url));
+  async function next() {
+    while (queue.length) {
+      const url = queue.shift();
+      try {
+        if (await cache.match(url)) continue;
+        const res = await fetch(url,{mode:'no-cors',credentials:'omit'});
+        if (res.ok || res.type==='opaque') await cache.put(url,res);
+      } catch { /* A missing tile must not delay the round. */ }
+    }
+  }
+  await Promise.all([next(),next()]);
+}
 
-  evento.respondWith(
-    caches.open(CACHE_TILES).then((cache) =>
-      cache.match(peticion).then((enCache) => {
-        if (enCache) return enCache;
-        return fetch(peticion)
-          .then((respuesta) => {
-            if (RUTA_DE_TILE.test(peticion.url) && (respuesta.ok || respuesta.type === 'opaque')) {
-              cache.put(peticion, respuesta.clone());
-            }
-            return respuesta;
-          })
-          .catch(() => enCache);
-      }),
-    ),
-  );
+self.addEventListener('fetch', event => {
+  const request=event.request;
+  if (request.method!=='GET') return;
+  const url=new URL(request.url);
+  if (staticAsset(url) || (url.origin===self.location.origin && url.pathname==='/worker-foto-v1.js')) {
+    event.respondWith(caches.open(CACHE_SCREEN).then(async cache => (await cache.match(request)) ?? fetch(request)));
+    return;
+  }
+  if (request.mode==='navigate' && url.origin===self.location.origin &&
+      ['/', '/app/guardia', SCREEN].includes(url.pathname) &&
+      /(?:SentryCore|VoxIA)Android\//.test(request.headers.get('user-agent') || self.navigator.userAgent)) {
+    event.respondWith((async () => {
+      const cache=await caches.open(CACHE_SCREEN);
+      if (url.pathname===SCREEN && url.search==='?reanudar=1') {
+        const page=await cache.match(SCREEN);
+        if (page) return page;
+      }
+      if (url.pathname===SCREEN || !await cache.match(SCREEN)) return fetch(request);
+      // A radio may stay connected to Wi-Fi while DNS or the gateway has stopped responding.
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),4_000);
+      try { return await fetch(request,{signal:controller.signal}); }
+      catch { return Response.redirect(new URL(SCREEN+'?reanudar=1',url).href); }
+      finally { clearTimeout(timer); }
+    })());
+  } else if (request.destination==='image' && RUTA_DE_TILE.test(url.pathname)) {
+    event.respondWith(caches.open(CACHE_TILES).then(async cache => {
+      const existing=await cache.match(request);
+      if (existing) return existing;
+      const response=await fetch(request);
+      if (response.ok || response.type==='opaque') await cache.put(request,response.clone()).catch(()=>{});
+      return response;
+    }));
+  }
 });

@@ -9,7 +9,7 @@ const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
  * `vigilab.png` es el logo del convenio (#231), en la pantalla de ingreso.
  * Es una marca publica —esta en vigilab.cl— y no lleva dato de nadie.
  */
-const ASSETS_PUBLICOS_APROBADOS = new Set(['sw-tiles.js', 'vigilab.png']);
+const ASSETS_PUBLICOS_APROBADOS = new Set(['sw-tiles.js', 'worker-foto-v1.js', 'vigilab.png']);
 const EXTENSIONES_OPERATIVAS = new Set([
   '.csv',
   '.env',

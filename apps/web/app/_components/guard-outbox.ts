@@ -372,6 +372,7 @@ export async function enviarEscaneo(
   let respuesta: Response;
   try {
     respuesta = await pedirApi(apiUrl, `/guard/patrols/${patrolId}/scans`, {
+      signal: AbortSignal.timeout(4_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -381,7 +382,8 @@ export async function enviarEscaneo(
   }
 
   if (respuesta.ok) {
-    return { clase: 'confirmado', respuesta: (await respuesta.json()) as RespuestaEscaneo };
+    try { return { clase: 'confirmado', respuesta: (await respuesta.json()) as RespuestaEscaneo }; }
+    catch { return encolarEste(); }
   }
   // 5xx es del servidor y puede pasar solo: se encola igual que un corte de red.
   if (respuesta.status >= 500) return encolarEste();

@@ -56,8 +56,8 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   const { sincronizarCola,cancelarOcr,cancelarConsultaPublica }=bridge;
   const [siteId,setSiteId]=useState(initialSiteId ?? context?.sites[0]?.id ?? '');
   const [step,setStep]=useState<'identity'|'vehicle-question'|'vehicle'|'done'>('identity');
-  const [givenNames,setGivenNames]=useState('');
-  const [familyNames,setFamilyNames]=useState('');
+  const [givenNames,setGivenNames]=useState<string>();
+  const [familyNames,setFamilyNames]=useState<string>();
   const [run,setRun]=useState('');
   const [originCompany,setOriginCompany]=useState('');
   const [destination,setDestination]=useState('');
@@ -77,6 +77,26 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   const clientId=useRef<string>('');
   const enteredAt=useRef<string>('');
   const formRef=useRef<HTMLFormElement>(null);
+
+  const [previous,setPrevious]=useState<{key:string;givenNames:string;familyNames:string}>();
+  const normalizedRun=normalizarRun(run);
+  const identityKey=siteId + '/' + normalizedRun;
+  const recent=informed && normalizedRun ? visits.find(v=>v.siteId===siteId && v.run===normalizedRun) : undefined;
+  const known=informed && (recent || (previous?.key===identityKey ? previous : undefined));
+  const first=givenNames ?? (known ? known.givenNames : '');
+  const last=familyNames ?? (known ? known.familyNames : '');
+  useEffect(()=>{
+    if (!normalizedRun || recent || !informed || !siteId || step!=='identity' || !bridge.conexion.enLinea) return;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>{
+      void json<{visitor:{givenNames:string;familyNames:string}|null}>(`${apiUrl}/visits/guard/returning-visitor`,{
+        ...post({siteId,run:normalizedRun}), cache:'no-store',signal:controller.signal,
+      }).then(({visitor})=>{
+        if (!controller.signal.aborted && visitor) setPrevious({key:identityKey,...visitor});
+      }).catch(()=>undefined);
+    },180);
+    return ()=>{clearTimeout(timer);controller.abort();};
+  },[apiUrl,siteId,identityKey,normalizedRun,informed,recent,step,bridge.conexion.enLinea]);
 
   const load=useCallback(async()=>{
     if(!siteId) return [];
@@ -173,10 +193,11 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   function next(event:FormEvent) {
     event.preventDefault();setError('');
     if(!normalizarRun(run)) {setError('Revisa el RUN y su dígito verificador.');return;}
-    if(!givenNames.trim()||!familyNames.trim()) {setError('Completa los nombres y apellidos.');return;}
+    if(!first.trim()||!last.trim()) {setError('Completa los nombres y apellidos.');return;}
     if(!siteId||!informed) {setError('Selecciona el recinto e informa a la visita antes de continuar.');return;}
     clientId.current ||= crypto.randomUUID();
     enteredAt.current ||= new Date().toISOString();
+    setGivenNames(first);setFamilyNames(last);
     setStep('vehicle-question');setNotice('');
   }
 
@@ -186,7 +207,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
     setBusy(true);setError('');
     clientId.current ||= crypto.randomUUID();enteredAt.current ||= new Date().toISOString();
     const body={clientVisitId:clientId.current,siteId,expectedActorId:context.actorId,expectedTenantId:context.tenantId,
-      givenNames,familyNames,run,enteredAt:enteredAt.current,arrivesInVehicle:vehicle,visitorInformed:true,
+      givenNames:first,familyNames:last,run,enteredAt:enteredAt.current,arrivesInVehicle:vehicle,visitorInformed:true,
       originCompany,destination,...(vehicle?{plate:normalizarPatente(plate),
         ...(check?.plate===normalizarPatente(plate)?{vehicleCheckId:check.lookupId}:{})}:{})};
     try {
@@ -230,7 +251,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   }
 
   function reset() {
-    clientId.current='';enteredAt.current='';setGivenNames('');setFamilyNames('');setRun('');setPlate('');
+    clientId.current='';enteredAt.current='';setGivenNames(undefined);setFamilyNames(undefined);setRun('');setPlate('');
     setCheck(undefined);setConfirmedPlate(undefined);setCandidates([]);setOriginCompany('');setDestination('');
     setInformed(false);setStep('identity');setNotice('');setError('');
   }
@@ -238,7 +259,7 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
   return <section className="visits-panel">
     <div className="visits-heading"><h2>Registro de visitas</h2><button className="secondary-button" type="button" disabled={busy} onClick={onClose}>Volver</button></div>
     {context?<>
-      <label>Recinto<select value={siteId} disabled={step!=='identity'||busy} onChange={e=>setSiteId(e.target.value)}>
+      <label>Recinto<select value={siteId} disabled={step!=='identity'||busy} onChange={e=>{reset();setPrevious(undefined);setSiteId(e.target.value);}}>
         <option value="">Selecciona un recinto</option>{context.sites.map(s=><option key={s.id} value={s.id}>{s.branchName?`${s.branchName} · `:''}{s.name}</option>)}
       </select></label>
       {!bridge.conexion.enLinea?<p role="status">Sin conexión. Los registros se guardarán cifrados en este teléfono.</p>:null}
@@ -249,9 +270,13 @@ export function Visits({apiUrl,context,initialSiteId,bridge,onClose}:{
         <label className="visits-checkbox"><input type="checkbox" checked={informed} onChange={e=>setInformed(e.target.checked)} required/>He informado a la visita sobre el uso de sus datos para el control de acceso.</label>
         <button className="primary-button" type="button" disabled={busy||!siteId||!informed} onClick={()=>void read('identity')}>{busy?'Leyendo…':'Leer carnet con la cámara'}</button>
         <p>Confirma nombre y RUN. El número de documento y la foto del carnet no se guardan.</p>
-        <label>Nombres<input autoComplete="off" required maxLength={120} value={givenNames} onChange={e=>setGivenNames(e.target.value)}/></label>
-        <label>Apellidos<input autoComplete="off" required maxLength={120} value={familyNames} onChange={e=>setFamilyNames(e.target.value)}/></label>
-        <label>RUN / RUT<input autoComplete="off" required maxLength={12} placeholder="12345678-5" value={run} onChange={e=>setRun(e.target.value.toUpperCase())}/></label>
+        <label>RUN / RUT<input autoComplete="off" required maxLength={12} placeholder="12345678-5" value={run} onChange={e=>{
+          if (known) {setGivenNames(undefined);setFamilyNames(undefined);}
+          setRun(e.target.value.toUpperCase());
+        }}/></label>
+        {known?<p role="status">Visita anterior encontrada. Confirma sus nombres y apellidos.</p>:null}
+        <label>Nombres<input autoComplete="off" required maxLength={120} value={first} onChange={e=>setGivenNames(e.target.value)}/></label>
+        <label>Apellidos<input autoComplete="off" required maxLength={120} value={last} onChange={e=>setFamilyNames(e.target.value)}/></label>
         <label>Empresa de procedencia (opcional)<input autoComplete="off" maxLength={160} value={originCompany} onChange={e=>setOriginCompany(e.target.value)}/></label>
         <label>Persona o lugar de destino (opcional)<input autoComplete="off" maxLength={200} value={destination} onChange={e=>setDestination(e.target.value)}/></label>
         <button className="primary-button" disabled={busy||!siteId} type="submit">Continuar</button>

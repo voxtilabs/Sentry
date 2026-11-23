@@ -81,6 +81,19 @@ export class VisitsService {
        ORDER BY entered_at_device DESC,id DESC LIMIT 10`, [input.siteId, run, retentionDays]);
   }
 
+  async returningVisitor(actorId: string, input: FindVisitExitDto) {
+    const run = normalizarRun(input.run);
+    if (!run) throw new BadRequestException('Revisa el RUN y su dígito verificador');
+    const {sites, retentionDays} = await this.sites(actorId, 'GUARDIA');
+    if (!sites.some(site => site.id === input.siteId)) throw new ForbiddenException('No tienes acceso a este recinto');
+    const rows = await this.context.manager.query<Array<{givenNames:string; familyNames:string}>>(
+      `SELECT given_names AS "givenNames", family_names AS "familyNames"
+       FROM visitor_sessions WHERE tenant_id=app_tenant_id() AND site_id=$1 AND run=$2
+         AND created_at >= now()-make_interval(days=>$3)
+       ORDER BY created_at DESC,id DESC LIMIT 1`, [input.siteId,run,retentionDays]);
+    return { visitor: rows[0] ?? null };
+  }
+
   async register(actorId: string, input: RegisterVisitDto) {
     this.identity(actorId, input);
     await this.ensureSite(input.siteId, actorId, 'GUARDIA');

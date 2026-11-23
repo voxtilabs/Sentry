@@ -87,7 +87,7 @@ const ENDPOINT_AUTHORIZATION: readonly EndpointAuthorization[] = [
   secured(DashboardController, 'portfolio', ['tenant:dashboard:read'], ['ADMIN', 'SUPERVISOR'], true),
   publicEndpoint(FeedbackController, 'submit'),
   ...['catalog','start','detail','samples','scan','finish','cancel'].map(handler => secured(ReferenceController,handler,['routes:manage'],['SUPERVISOR'],true)),
-  ...['context','list','register','exit','findExit','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
+  ...['context','list','register','exit','findExit','returningVisitor','lookup','lookupStatus','publicCheck'].map(handler => secured(VisitsGuardController,handler,['visitors:register'],['GUARDIA'],true)),
   ...['context','list','listAll'].map(handler => secured(VisitsManagementController,handler,['visitors:read'],['ADMIN','SUPERVISOR'],true)),
   publicEndpoint(AuthController, 'login'),
   publicEndpoint(AuthController, 'nfcLogin'),

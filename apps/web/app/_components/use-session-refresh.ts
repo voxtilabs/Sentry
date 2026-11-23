@@ -1,5 +1,6 @@
 'use client';
 
+import { forgetOfflineRound } from './guard-offline-session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -112,6 +113,7 @@ async function performRefresh(apiUrl: string): Promise<number | null> {
     method: 'POST',
     credentials: 'include',
     cache: 'no-store',
+    signal: AbortSignal.timeout(5_000),
   });
   // 401 es "esta sesión ya no existe"; el resto son fallas transitorias.
   if (response.status === 401) return null;
@@ -236,6 +238,7 @@ export function useSessionRefresh(
 
     const giveUp = () => {
       writeStorage(RENEW_AT_KEY, '');
+      forgetOfflineRound();
       setStatus('expired');
       const handler = expiredHandler.current;
       if (handler) {

@@ -1,5 +1,6 @@
 'use client';
 
+import { forgetOfflineRound, prepareOfflineScreen } from './guard-offline-session';
 import type { Role } from '@sentrycore/shared';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
@@ -96,6 +97,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
       const datos = await response.json() as { expiresIn?: number };
       rememberSessionLifetime(datos.expiresIn ?? 0);
       guardarCodigoEmpresa(current.tenantSlug);
+      forgetOfflineRound();
       window.location.assign(rutaDelPanel('GUARDIA'));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No pudimos conectar.');
@@ -149,6 +151,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
 
   useEffect(() => {
     setCodigoEmpresa(leerCodigoEmpresa());
+    if (esAppDelGuardia(navigator.userAgent)) prepareOfflineScreen();
   }, []);
 
   useEffect(() => {
@@ -168,9 +171,11 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
           const role = await restoreSessionFromCookies(apiUrl);
           if (!active) return;
           if (role) {
+            if (role !== 'GUARDIA') forgetOfflineRound();
             window.location.replace(rutaDelPanel(role));
             return;
           }
+          forgetOfflineRound();
         }
         if (restoreCompany) {
           const response = await fetch(`${apiUrl}/auth/company-picker`, {
@@ -178,7 +183,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
           });
           if (response.ok) {
             const picker = await response.json() as NonNullable<typeof companyPicker>;
-            if (active) setCompanyPicker(picker);
+            if (active) { forgetOfflineRound(); setCompanyPicker(picker); }
           } else if (response.status !== 401 && response.status !== 403) {
             throw new Error('No se pudo recuperar el acceso de empresa.');
           }
@@ -397,6 +402,7 @@ export function LoginScreen({ initialCompanyLogin = false, restoreSession = fals
         return;
       }
 
+      forgetOfflineRound();
       window.location.assign(rutaDelPanel(result.user.role));
     } catch (error) {
       const expiro = error instanceof DOMException && error.name === 'TimeoutError';
