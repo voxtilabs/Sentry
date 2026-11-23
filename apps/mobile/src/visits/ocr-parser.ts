@@ -26,11 +26,11 @@ export function extraerIdentidad(lines: readonly string[]): ResultadoOcrPayload 
 
 export function extraerPatentes(lines: readonly string[]): ResultadoOcrPayload {
   // ML Kit can transcribe the printed dividers or split the plate into lines.
-  const separator = '[ .·•∙⋅●✦✧✱✿✪*|:\\-]*';
+  const separator = '[ .·*:|/\\s\\u2000-\\u206f\\u2190-\\u27ff\\u2e00-\\u2e7f\\-]*';
   const format = (shape: string) => Array.from(shape, char => char === 'L' ? '[A-Z]' : '[0-9]').join(separator);
   const patterns = ['LLLLDD', 'LLDDDD', 'LLLDDD', 'LLLDD'].map(format).join('|');
-  const complete = new RegExp(`^(?:${patterns})$`);
-  const misreadBadge = new RegExp(`^(${format('LLLL')})${separator}[OQ0]${separator}(${format('DD')})$`);
+  const complete = new RegExp(`^(?:${patterns})$`, 'u');
+  const misreadBadge = new RegExp(`^(${format('LLLL')})${separator}[OQ0]${separator}(${format('DD')})$`, 'u');
   const plates = new Set<string>();
   const normalized = lines.slice(0, 64).map(line => line.slice(0, 256).normalize('NFKC').toUpperCase().replace(/\s+/g, ' ').trim()).filter(Boolean);
   const append = (value: string) => {
@@ -54,7 +54,7 @@ export function extraerPatentes(lines: readonly string[]): ResultadoOcrPayload {
   }
   for (const line of normalized) {
     if (appendComplete(line)) continue;
-    const candidates = new RegExp(`(?:^|[^A-Z0-9])(${patterns})(?=$|[^A-Z0-9])`, 'g');
+    const candidates = new RegExp(`(?:^|[^A-Z0-9])(${patterns})(?=$|[^A-Z0-9])`, 'gu');
     for (const match of line.matchAll(candidates)) {
       if (match[1]) append(match[1]);
     }

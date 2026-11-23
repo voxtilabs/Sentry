@@ -78,7 +78,12 @@ async function hmacSha256(key: Uint8Array, message: string): Promise<string> {
   return hex(await sha256(outerInput));
 }
 
-async function identidad() {
+let pendingIdentity: ReturnType<typeof readIdentity> | undefined;
+function identidad() {
+  return pendingIdentity ??= readIdentity().finally(() => { pendingIdentity = undefined; });
+}
+
+async function readIdentity() {
   let deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
   let secretHex = await SecureStore.getItemAsync(SECRET_KEY);
   if (!deviceId || !/^[0-9a-f-]{36}$/i.test(deviceId)) {

@@ -72,7 +72,10 @@ export async function abrirBaseOperativa(): Promise<SQLiteDatabase> {
       );
     `);
     return db;
-  })());
+  })().catch(error => {
+    apertura = undefined;
+    throw error;
+  }));
 }
 
 export async function guardarRutaOffline(ruta: RutaOfflinePayload): Promise<string> {

@@ -16,9 +16,9 @@ test('salir a la cámara y volver solo consulta la conexión, sin recrear WebVie
     ts.forEachChild(n,walk);
   }
   walk(source);assert.ok(expression,'falta el listener de primer/segundo plano');
-  let consultas=0,recreaciones=0;
-  const listener=new Function('preguntarDeNuevo','setGeneracionWebView','mostrarFallo',`return (${expression})`)(()=>{consultas++},()=>{recreaciones++},()=>{recreaciones++});
+  let consultas=0,recreaciones=0,cancelacionesNfc=0;
+  const listener=new Function('manejadores','preguntarDeNuevo','setGeneracionWebView','mostrarFallo',`return (${expression})`)({cancelarEscaneo:()=>{cancelacionesNfc++}},()=>{consultas++},()=>{recreaciones++},()=>{recreaciones++});
   listener('background');assert.equal(consultas,0);assert.equal(recreaciones,0);
   listener('active');assert.equal(consultas,1);assert.equal(recreaciones,0);
-  listener('background');listener('active');assert.equal(consultas,2);assert.equal(recreaciones,0);
+  listener('background');listener('active');assert.equal(consultas,2);assert.equal(recreaciones,0);assert.equal(cancelacionesNfc,2);
 });

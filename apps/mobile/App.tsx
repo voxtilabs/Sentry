@@ -221,6 +221,8 @@ function AppShell({ portal }: { portal: URL }) {
   /** Solo se recarga sola UNA vez: en bucle taparia un fallo de verdad. */
   const reintentado = useRef(false);
   const cargadoInicialmente = useRef(false);
+  const falloDeCarga = useRef(false);
+  const [intentoInicial, setIntentoInicial] = useState(0);
   const [urlActual, setUrlActual] = useState(portal.href);
   const [bloqueo, setBloqueo] = useState<{
     motivo: MotivoIncompatible | 'portal-sin-puente'; mensaje: string;
@@ -274,14 +276,16 @@ function AppShell({ portal }: { portal: URL }) {
       if (!reintentado.current) {
         reintentado.current = true;
         webView.current?.reload();
+        setIntentoInicial(i => i + 1);
         return;
       }
+      falloDeCarga.current = true;
       setMotivoFallo('La pagina no termino de cargar, ni siquiera al reintentar.');
       setLoading(false);
       setFailed(true);
     }, PACIENCIA_MS);
     return () => clearTimeout(aviso);
-  }, [loading, failed]);
+  }, [loading, failed, intentoInicial]);
   useEffect(() => {
     void registrarSincronizacionBackground().catch(() => undefined);
   }, []);
@@ -290,6 +294,15 @@ function AppShell({ portal }: { portal: URL }) {
     const avisar = (estado: Network.NetworkState) => {
       puente.notificarConexion(normalizarConexion(estado));
       if (estado.isConnected === true && estado.isInternetReachable !== false) {
+        if (falloDeCarga.current && AppState.currentState === 'active') {
+          falloDeCarga.current = false;
+          setMotivoFallo(undefined);
+          setFailed(false);
+          setLoading(true);
+          cargadoInicialmente.current = false;
+          reintentado.current = false;
+          setGeneracionWebView(i => i + 1);
+        }
         void sincronizarCola().catch(() => undefined);
       }
     };
@@ -318,17 +331,18 @@ function AppShell({ portal }: { portal: URL }) {
     preguntarDeNuevo();
     const alCambiarDeEstado = AppState.addEventListener('change', (estadoApp) => {
       if (estadoApp === 'active') preguntarDeNuevo();
+      if (estadoApp === 'background') manejadores.cancelarEscaneo();
     });
 
     return () => {
       subscription.remove();
       alCambiarDeEstado.remove();
     };
-  }, [puente]);
+  }, [puente, manejadores]);
 
   // Escaneo continuo NFC en la pantalla de Login
   useEffect(() => {
-    const enPantallaLogin = !urlActual.includes('/app');
+    const enPantallaLogin = urlActual === portal.href || urlActual.startsWith(portal.href + '?');
     if (enPantallaLogin && !failed && !bloqueo) {
       void iniciarEscuchaNfcLogin((uid) => {
         const script = `
@@ -346,7 +360,7 @@ function AppShell({ portal }: { portal: URL }) {
     return () => {
       detenerEscuchaNfcLogin();
     };
-  }, [urlActual, failed, bloqueo]);
+  }, [urlActual, failed, bloqueo, portal.href]);
 
   const allowNavigation = (navigation: WebViewNavigation) => {
     try {
@@ -365,6 +379,7 @@ function AppShell({ portal }: { portal: URL }) {
   };
 
   const retry = () => {
+    falloDeCarga.current = false;
     setBloqueo(null);
     reintentado.current = false;
     setMotivoFallo(undefined);
@@ -377,6 +392,7 @@ function AppShell({ portal }: { portal: URL }) {
   };
 
   const mostrarFallo = () => {
+    falloDeCarga.current = true;
     setLoading(false);
     setFailed(true);
     void leerRutaOffline().then(setRutaOffline).catch(() => undefined);
@@ -423,10 +439,13 @@ function AppShell({ portal }: { portal: URL }) {
             setFailed(false);
           }
         }}
-        onLoadEnd={() => {
+        onLoad={() => {
+          falloDeCarga.current = false;
+          setFailed(false);
           cargadoInicialmente.current = true;
           setLoading(false);
         }}
+        renderError={() => <View />}
         onError={(event) => {
           event.preventDefault();
           const { nativeEvent } = event;
@@ -434,7 +453,6 @@ function AppShell({ portal }: { portal: URL }) {
           if (
             nativeEvent.code === -3 ||
             nativeEvent.code === -999 ||
-            nativeEvent.code === -1 ||
             desc.includes('err_aborted') ||
             desc.includes('net::err_aborted') ||
             desc.includes('cancel') ||
@@ -511,9 +529,7 @@ function AppShell({ portal }: { portal: URL }) {
             perfecta y no hay nada que revisar en la red.
           */}
           <Text style={styles.description}>
-            Revisa tu conexión y vuelve a intentarlo. Si tienes señal y sigue sin
-            abrir, actualiza «Android System WebView» desde la Play Store y
-            reinicia el teléfono.
+            Cuando vuelva la conexión se abrirá automáticamente. También puedes reintentar ahora.
           </Text>
           {/*
             El motivo tecnico, a la vista. Un guardia no lo va a entender, pero
