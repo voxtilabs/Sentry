@@ -2,6 +2,7 @@ const CACHE_TILES = 'sentrycore-tiles-v1';
 const CACHE_SCREEN = 'sentrycore-offline-round-v1';
 const SCREEN = '/ronda-sin-conexion';
 const RUTA_DE_TILE = /\/\d+\/\d+\/\d+(\.\w+)?(\?|$)/;
+const nativeApp = agent => /(?:SentryCore|VoxIA)Android\//.test(agent || '');
 const staticAsset = url => url.origin === self.location.origin && url.pathname.startsWith('/_next/static/');
 
 self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
@@ -67,18 +68,23 @@ self.addEventListener('fetch', event => {
   }
   if (request.mode==='navigate' && url.origin===self.location.origin &&
       ['/', '/app/guardia', SCREEN].includes(url.pathname) &&
-      /(?:SentryCore|VoxIA)Android\//.test(request.headers.get('user-agent') || self.navigator.userAgent)) {
+      (nativeApp(request.headers.get('user-agent')) || nativeApp(self.navigator.userAgent))) {
     event.respondWith((async () => {
       const cache=await caches.open(CACHE_SCREEN);
       if (url.pathname===SCREEN && url.search==='?reanudar=1') {
         const page=await cache.match(SCREEN);
         if (page) return page;
       }
-      if (url.pathname===SCREEN || !await cache.match(SCREEN)) return fetch(request);
+      // Android WebView strips its application UA from requests reissued by a
+      // worker. Preserve the existing app signal on these same-origin navigations.
+      const headers = new Headers(request.headers);
+      headers.set('X-Requested-With','com.voxtilabs.sentrycore');
+      const options = {headers,redirect:'manual'};
+      if (url.pathname===SCREEN || !await cache.match(SCREEN)) return fetch(request,options);
       // A radio may stay connected to Wi-Fi while DNS or the gateway has stopped responding.
       const controller=new AbortController();
       const timer=setTimeout(()=>controller.abort(),4_000);
-      try { return await fetch(request,{signal:controller.signal}); }
+      try { return await fetch(request,{...options,signal:controller.signal}); }
       catch { return Response.redirect(new URL(SCREEN+'?reanudar=1',url).href); }
       finally { clearTimeout(timer); }
     })());
