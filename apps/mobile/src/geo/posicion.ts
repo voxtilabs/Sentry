@@ -1,30 +1,37 @@
 import * as Location from 'expo-location';
-
 import type { PosicionEscaneo } from '../nfc/nfc-reader';
 
-/**
- * Posicion del telefono en el instante del escaneo, para los dos lectores
- * —etiqueta NFC (#57) y respaldo por QR (#226)—.
- *
- * Esta funcion existe compartida y no copiada en cada lector porque de ella
- * dependen dos anomalias del servidor: `sin_fix_gps` y `fuera_de_radio_gps`. Dos
- * copias que se separen con el tiempo darian rondas con criterios distintos
- * segun como se marco el punto, y eso es peor que no medir.
- *
- * Devuelve `undefined` cuando no hay permiso concedido. NO lo pide: el permiso
- * de ubicacion se negocia en su propio momento, con su aviso, y pedirlo en medio
- * de un escaneo interrumpe al guardia justo cuando esta apuntando al punto.
- */
+/** A scan has a timestamp of its own. Never attach an old position to it. */
 export async function posicionDelEscaneo(): Promise<PosicionEscaneo | undefined> {
-  const permiso = await Location.getForegroundPermissionsAsync();
-  if (permiso.status !== 'granted') return undefined;
-  const posicion = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.BestForNavigation,
-    mayShowUserSettingsDialog: true,
-  });
-  return {
-    latitude: posicion.coords.latitude,
-    longitude: posicion.coords.longitude,
-    ...(posicion.coords.accuracy === null ? {} : { accuracyM: posicion.coords.accuracy }),
+  let finished = false;
+  let subscription: Location.LocationSubscription | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const read = async () => {
+    if ((await Location.getForegroundPermissionsAsync()).status !== 'granted' || finished) return;
+    const recent = await Location.getLastKnownPositionAsync({ maxAge: 5_000, requiredAccuracy: 15 });
+    if (finished) return;
+    if (recent) return recent.coords;
+    return new Promise<Location.LocationObjectCoords | undefined>((resolve, reject) => {
+      void Location.watchPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation, mayShowUserSettingsDialog: false,
+      }, fix => {
+        if (Math.abs(Date.now() - fix.timestamp) <= 5_000) resolve(fix.coords);
+      }, () => resolve(undefined)).then(handle => {
+        if (finished) handle.remove();
+        else subscription = handle;
+      }, reject);
+    });
   };
+  try {
+    const coords = await Promise.race([
+      read(), new Promise<undefined>(resolve => { timeout = setTimeout(() => resolve(undefined), 3_000); }),
+    ]);
+    if (!coords) return undefined;
+    return { latitude: coords.latitude, longitude: coords.longitude,
+      ...(coords.accuracy === null ? {} : { accuracyM: coords.accuracy }) };
+  } finally {
+    finished = true;
+    clearTimeout(timeout);
+    subscription?.remove();
+  }
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { forgetOfflineRound } from './guard-offline-session';
 import { useState } from 'react';
 
 import { crearClientePuente } from '../_lib/bridge/web-client';
@@ -28,6 +29,7 @@ export function LogoutButton() {
       return;
     }
     try {
+      forgetOfflineRound();
       const puente = crearClientePuente();
       try {
         const estado = await puente.conectar().catch(() => undefined);

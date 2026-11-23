@@ -202,6 +202,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
 
   useEffect(() => {
     let cancelado = false;
+    let registrarAlConectar: (() => void) | undefined;
 
     const bajaConexion = cliente.alCambiarConexion((estado) => {
       if (!cancelado) setConexion(estado);
@@ -244,15 +245,14 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
       setSoportaTraza(estado.info.protocolo.minor >= MINOR_CON_TRAZA);
 
       if (estado.info.protocolo.minor >= 3 && apiUrl && typeof window !== 'undefined') {
-        try {
-          await cliente.registrarFirma({
+        const registrar = () => cliente.registrarFirma({
             apiUrl: new URL(apiUrl, window.location.origin).href.replace(/\/$/, ''),
             portalOrigin: window.location.origin,
-          });
-        } catch {
-          setAviso('No se pudo registrar la identidad segura de este teléfono. Revisa la conexión.');
-          return;
-        }
+          }).catch(() => undefined);
+        // La firma se genera en el teléfono incluso en modo avión.
+        if (navigator.onLine) void registrar();
+        registrarAlConectar = registrar;
+        window.addEventListener('online', registrar);
       }
 
       /*
@@ -325,6 +325,7 @@ export function useGuardBridge(apiUrl?: string): PuenteGuardia {
 
     return () => {
       cancelado = true;
+      if (registrarAlConectar) window.removeEventListener('online', registrarAlConectar);
       bajaConexion();
       cliente.desconectar();
     };

@@ -10,6 +10,7 @@ import {
   type MetodoEscaneo,
 } from './guard-escaneo-modelo';
 import { PanicoPanel } from './panico-panel';
+import { prepareOfflineScreen, rememberOfflineRound } from './guard-offline-session';
 import { SyncEstado } from './sync-estado';
 import { GuardEventForm } from './guard-event-form';
 import {
@@ -152,7 +153,10 @@ const hora = new Intl.DateTimeFormat('es-CL', {
  * reabrir o al recuperar señal.
  */
 
-export function GuardShift({ data, apiUrl }: { data: GuardShiftData; apiUrl: string }) {
+export function GuardShift({ data, apiUrl, offlineSnapshot=false }: { data: GuardShiftData; apiUrl: string; offlineSnapshot?:boolean }) {
+  useEffect(() => {
+    if (!offlineSnapshot) { rememberOfflineRound(data); prepareOfflineScreen(); }
+  }, [data,offlineSnapshot]);
   useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
   if (!data.hasAssignment || data.patrol === undefined || data.shift === undefined) {
     return <SinAsignacion apiUrl={apiUrl} mensaje={data.message} />;
@@ -162,6 +166,7 @@ export function GuardShift({ data, apiUrl }: { data: GuardShiftData; apiUrl: str
       apiUrl={apiUrl}
       patrol={data.patrol}
       shift={data.shift}
+      offlineSnapshot={offlineSnapshot}
       qrPermitido={data.qrFallbackEnabled !== false}
       {...(data.photoBudget ? { presupuestoFoto: data.photoBudget } : {})}
       {...(data.photoPolicy ? { politicaFoto: data.photoPolicy } : {})}
@@ -198,6 +203,7 @@ function Ronda({
   shift,
   apiUrl,
   qrPermitido,
+  offlineSnapshot,
   presupuestoFoto,
   politicaFoto,
 }: {
@@ -205,6 +211,7 @@ function Ronda({
   shift: NonNullable<GuardShiftData['shift']>;
   apiUrl: string;
   qrPermitido: boolean;
+  offlineSnapshot: boolean;
   presupuestoFoto?: GuardShiftData['photoBudget'];
   politicaFoto?: PoliticaFoto;
 }) {
@@ -365,13 +372,13 @@ function Ronda({
   // por el servidor gana; lo pendiente en cola gana el teléfono.
   // Se lee después de montar para no romper la hidratación.
   useEffect(() => {
-    const reconciliado = restaurarCierreServidor(reconciliarConServidor(cargarEstadoRonda(patrol.id), puntos),puntos,{status:patrol.status,closedAt:patrol.closedAt,compliancePct:patrol.compliancePct});
+    const reconciliado = offlineSnapshot ? cargarEstadoRonda(patrol.id) : restaurarCierreServidor(reconciliarConServidor(cargarEstadoRonda(patrol.id), puntos),puntos,{status:patrol.status,closedAt:patrol.closedAt,compliancePct:patrol.compliancePct});
     // Se persiste de inmediato: si el estado viejo tenía un fantasma, dejarlo
     // en el disco es dejarlo listo para reaparecer en la próxima recarga.
     guardarEstadoRonda(reconciliado);
     setEstado(reconciliado);
     if (reconciliado.cierre) setVista('resumen');
-  }, [patrol.id, patrol.status, patrol.closedAt, patrol.compliancePct, puntos]);
+  }, [patrol.id, patrol.status, patrol.closedAt, patrol.compliancePct, puntos, offlineSnapshot]);
 
   useEffect(() => iniciarAutoSync(apiUrl), [apiUrl]);
 
@@ -385,8 +392,10 @@ function Ronda({
       const { clientScanId } = (evento as CustomEvent<{ clientScanId: string }>).detail;
       actualizar((actual) => marcarFotoPuntoSubida(actual, clientScanId, true));
     };
-    const sincronizar = () => { void sincronizarTareasGuardadas(apiUrl, patrol.id,
-      cargarEstadoRonda(patrol.id).puntos).catch(() => undefined); };
+    const sincronizar = () => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      void sincronizarTareasGuardadas(apiUrl, patrol.id,cargarEstadoRonda(patrol.id).puntos).catch(() => undefined);
+    };
     window.addEventListener('sentrycore:tareas', refrescar);
     window.addEventListener('sentrycore:foto-tarea-subida', fotoSubida);
     window.addEventListener('online', sincronizar);
@@ -425,7 +434,7 @@ function Ronda({
       void sincronizarTareasGuardadas(apiUrl, patrol.id, registros).catch(() => undefined);
 
       try {
-        const respuesta = await pedirApi(apiUrl, `/checklists/patrols/${patrol.id}/template`);
+        const respuesta = await pedirApi(apiUrl, `/checklists/patrols/${patrol.id}/template`,{signal:AbortSignal.timeout(8_000)});
         if (!respuesta.ok) throw new Error('No se pudo descargar la plantilla');
         if (!vivo) return;
         const plantilla = (await respuesta.json()) as PlantillaTareas;
@@ -442,6 +451,13 @@ function Ronda({
       vivo = false;
     };
   }, [actualizarTareas, apiUrl, patrol.id, reintentoPlantilla]);
+
+  useEffect(() => {
+    if (plantillaLista) return;
+    const retry = () => setReintentoPlantilla(i => i + 1);
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [plantillaLista]);
 
   // Al montar (o al reabrir tras cerrar el WebView), rehidrata las fotos que
   // quedaron sin subir: las que ya tienen id de servidor se reintentan ahora, y

@@ -53,7 +53,7 @@ export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: str
     const descartadas = new Set<string>();
     let corriendo = false, vivo = true;
     const sincronizar = async () => {
-      if (corriendo || !vivo || navigator.onLine === false) return;
+      if (corriendo || !vivo || document.visibilityState === 'hidden' || navigator.onLine === false) return;
       corriendo = true;
       try {
         const durables = await rehidratarTareasDurables();

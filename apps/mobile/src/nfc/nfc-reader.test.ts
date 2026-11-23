@@ -120,6 +120,15 @@ test('un NFC que no contesta NO cuelga las capacidades', async () => {
   assert.deepEqual(capacidades, { tieneNfc: false, nfcActivado: false });
 });
 
+test('reintenta la inicialización del lector después de desbloquear sin reiniciar la app', async () => {
+  let intentos = 0;
+  const lector = crearLectorNfc(puerto({iniciar: async () => {
+    if (++intentos === 1) throw new Error('activity paused');
+  }}));
+  assert.equal((await lector.capacidades()).tieneNfc, false);
+  assert.equal((await lector.escanear(100)).tech, 'nfc');
+});
+
 test('un NFC que lanza excepcion tampoco cuelga', async () => {
   const lector = crearLectorNfc(puerto({
     iniciar: async () => { throw new Error('la pila de NFC del sistema fallo'); },

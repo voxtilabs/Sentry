@@ -55,8 +55,12 @@ describeDatabase('visitas con PostgreSQL real: aislamiento, privilegios e idempo
     {} as ConstructorParameters<typeof VisitsService>[2],{} as ConstructorParameters<typeof VisitsService>[3]);
     expect(await service.findExit(guard,{siteId:site,run:'12.345.678-5'})).toMatchObject([{id:open.rows[0].id,run:'12345678-5',exitedAt:null}]);
     await expect(service.findExit(guard,{siteId:randomUUID(),run:'12345678-5'})).rejects.toThrow('No tienes acceso');
+    await db.query('UPDATE visitor_sessions SET exited_at_device=now(),exited_at_server=now(),exit_guard_id=$1 WHERE id=$2',[guard,open.rows[0].id]);
+    expect(await service.returningVisitor(guard,{siteId:site,run:'12.345.678-5'})).toEqual({visitor:{givenNames:'Nombre',familyNames:'Apellido'}});
+    await expect(service.returningVisitor(guard,{siteId:randomUUID(),run:'12345678-5'})).rejects.toThrow('No tienes acceso');
     expect(await service.listAll(guard,'GUARDIA')).toHaveLength(2);
     await db.query("SELECT set_config('app.tenant_id',$1,true)",[tenantB]);
+    await expect(service.returningVisitor(guard,{siteId:site,run:'12345678-5'})).rejects.toThrow('No tienes acceso');
     expect(await service.listAll(guard,'GUARDIA')).toEqual([]);
   });
   it('no permite editar la identidad ni borrar un ingreso',async()=>{

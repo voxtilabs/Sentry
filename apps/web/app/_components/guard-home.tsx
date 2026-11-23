@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 
+import { forgetOfflineRound, prepareOfflineScreen } from './guard-offline-session';
 import { DivulgacionUbicacion } from './divulgacion-ubicacion';
 import { useEffect, useState } from 'react';
 
@@ -105,9 +106,13 @@ const time = new Intl.DateTimeFormat('es-CL', {
 
 export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: string }) {
   useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
+  useEffect(() => {
+    if (data.assignedSites || data.patrol?.status === 'pendiente') forgetOfflineRound();
+    prepareOfflineScreen();
+  }, [data]);
   const router = useRouter();
   const puente = useGuardBridge(apiUrl);
-  const guardarRutaOffline = puente.guardarRutaOffline;
+  const { guardarRutaOffline, pedirPermiso, fase } = puente;
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string>();
   const rutasVoluntarias = data.voluntaryRoutes ?? [];
@@ -190,9 +195,9 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
     // 'sin-puente' y el catch se lo traga, que fue exactamente lo que paso la
     // primera vez que se probo esto en el telefono —el dialogo no aparecia y
     // no habia ningun error a la vista—.
-    if (puente.fase !== 'listo') return;
-    void puente.pedirPermiso('notificaciones', true).catch(() => undefined);
-  }, [puente, puente.fase]);
+    if (fase !== 'listo') return;
+    void pedirPermiso('notificaciones', true).catch(() => undefined);
+  }, [pedirPermiso, fase]);
 
   useEffect(() => {
     if (!data.hasAssignment || !data.patrol || !data.shift) return;

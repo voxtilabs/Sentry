@@ -45,7 +45,25 @@ class SentryOcrModule : Module() {
                   box.width() >= width * 0.035f
               }
             } else lines
-            promise.resolve(visibleLines.map { it.text })
+            val text = visibleLines.map { it.text }.toMutableList()
+            if (plateOnly) {
+              // ML Kit can return each pair or each glyph as a separate block.
+              // Join fragments only along the same physical row, left to right.
+              val rows = mutableListOf<MutableList<com.google.mlkit.vision.text.Text.Line>>()
+              for (line in visibleLines.sortedBy { it.boundingBox!!.exactCenterY() }) {
+                val box = line.boundingBox!!
+                val row = rows.lastOrNull()
+                val anchor = row?.firstOrNull()?.boundingBox
+                if (row != null && anchor != null &&
+                  kotlin.math.abs(anchor.exactCenterY() - box.exactCenterY()) < minOf(anchor.height(), box.height()) * 0.65f) {
+                  row.add(line)
+                } else rows.add(mutableListOf(line))
+              }
+              for (row in rows.filter { it.size > 1 }) {
+                text.add(0, row.sortedBy { it.boundingBox!!.left }.joinToString(" ") { it.text })
+              }
+            }
+            promise.resolve(text)
           }
           .addOnFailureListener {
             file.delete()

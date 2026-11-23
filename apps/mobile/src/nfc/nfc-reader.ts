@@ -106,8 +106,12 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
    * primera el guardia trabaja por QR, y en la segunda no trabaja.
    */
   async function capacidades() {
-    const arrancado = await conTope(iniciar().then(() => true).catch(() => false), false);
-    if (!arrancado) return { tieneNfc: false, nfcActivado: false };
+    const intento = iniciar();
+    const arrancado = await conTope(intento.then(() => true).catch(() => false), false);
+    if (!arrancado) {
+      if (inicio === intento) inicio = undefined;
+      return { tieneNfc: false, nfcActivado: false };
+    }
     const tieneNfc = await conTope(puerto.soportado().catch(() => false), false);
     if (!tieneNfc) return { tieneNfc: false, nfcActivado: false };
     return { tieneNfc, nfcActivado: await conTope(puerto.activado().catch(() => false), false) };
@@ -126,6 +130,7 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
       }
       if (!estado.nfcActivado) throw errorClasificado('radio-apagada');
 
+      if (cancelado) throw errorClasificado('cancelado');
       const vencimiento = new Promise<never>((_, rechazar) => {
         temporizador = setTimeout(() => rechazar(errorClasificado('timeout')), timeoutMs);
       });
@@ -177,6 +182,7 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
   }
 
   function cancelar() {
+    if (!escaneoActivo) return;
     cancelado = true;
     void puerto.cancelar().catch(() => undefined);
   }

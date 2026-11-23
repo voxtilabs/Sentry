@@ -37,14 +37,14 @@
  */
 export const TAMANO_OBJETIVO_BYTES = 500 * 1024;
 
-/** Lado más largo tras reescalar. 1600 px basta para leer el estado de una puerta. */
-export const LADO_MAXIMO = 1600;
+/** Lado más largo tras reescalar. 1440 px basta para leer el estado de una puerta. */
+export const LADO_MAXIMO = 1440;
 
 /**
  * Escalones de calidad JPEG que se prueban en orden hasta entrar bajo el
  * objetivo. Se empieza alto para no degradar de más una foto que ya era liviana.
  */
-export const CALIDADES_JPEG: readonly number[] = [0.82, 0.7, 0.6, 0.5, 0.42];
+export const CALIDADES_JPEG: readonly number[] = [0.72, 0.62, 0.52, 0.42];
 
 /** Calidad mínima aceptable: por debajo la foto deja de servir como evidencia. */
 export const CALIDAD_MINIMA = CALIDADES_JPEG[CALIDADES_JPEG.length - 1] as number;
@@ -175,6 +175,27 @@ function aBlob(canvas: HTMLCanvasElement, calidad: number): Promise<Blob | null>
   return new Promise((resolver) => canvas.toBlob(resolver, 'image/jpeg', calidad));
 }
 
+async function comprimirEnSegundoPlano(canvas: HTMLCanvasElement, objetivo: number): Promise<Blob | null> {
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null;
+  let worker: Worker | undefined;
+  let copia: ImageBitmap | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // Keep the marked canvas intact if Android stops the worker under memory pressure.
+    copia = await createImageBitmap(canvas);
+    worker = new Worker('/worker-foto-v1.js');
+    const activo = worker;
+    const bitmap = copia;
+    return await new Promise<Blob | null>((resolve) => {
+      activo.onmessage = ({data}) => resolve(data instanceof Blob && data.type === 'image/jpeg' && data.size > 0 ? data : null);
+      activo.onerror = () => resolve(null);
+      timeout = setTimeout(() => resolve(null), 10_000);
+      activo.postMessage({bitmap,qualities:CALIDADES_JPEG,target:objetivo}, [bitmap]);
+    });
+  } catch { return null; }
+  finally { clearTimeout(timeout); worker?.terminate(); copia?.close(); }
+}
+
 function nombreJpeg(original: string): string {
   const base = original.replace(/\.[^.]+$/, '');
   return `${base || 'evidencia'}.jpg`;
@@ -204,22 +225,23 @@ export async function procesarFoto(file: File, opciones: OpcionesFoto = {}): Pro
     canvas.width = destino.ancho;
     canvas.height = destino.alto;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return file;
-
-    ctx.drawImage(bitmap, 0, 0, destino.ancho, destino.alto);
-    bitmap.close?.();
+    try {
+      if (!ctx) return file;
+      ctx.drawImage(bitmap, 0, 0, destino.ancho, destino.alto);
+    } finally { bitmap.close?.(); }
     dibujarMarcaAgua(ctx, destino.ancho, destino.alto, lineas);
 
     // Se prueban las calidades en orden y se guarda el último blob válido: si
     // ninguno entra bajo el objetivo, se sube el más liviano que se logró antes
     // que dejar al guardia sin registrar la novedad.
-    let mejor: Blob | null = null;
-    for (const calidad of CALIDADES_JPEG) {
+    let mejor = await comprimirEnSegundoPlano(canvas, objetivo);
+    if (!mejor) for (const calidad of CALIDADES_JPEG) {
       const blob = await aBlob(canvas, calidad);
       if (!blob) continue;
       mejor = blob;
       if (blob.size <= objetivo) break;
     }
+    canvas.width = canvas.height = 0;
     if (!mejor) return file;
 
     return new File([mejor], nombreJpeg(file.name), {

@@ -16,6 +16,7 @@ test('patentes ambiguas se devuelven para confirmar, sin inventar sustituciones'
   assert.deepEqual(extraerPatentes(['CHILE','ABCD-12','AB 1234','ABCD12','ZZY 17']),{kind:'plate',plates:['ABCD12','AB1234','ZZY17']});
 });
 test('lee placas chilenas con distintivo, puntos y fragmentos separados por ML Kit',()=>{
+  assert.deepEqual(extraerPatentes(['VP•RK★88']),{kind:'plate',plates:['VPRK88']});
   assert.deepEqual(extraerPatentes(['JK·RT✿52','CHILE']),{kind:'plate',plates:['JKRT52']});
   assert.deepEqual(extraerPatentes(['J K', 'R T', '5 2', 'CHILE']),{kind:'plate',plates:['JKRT52']});
   assert.deepEqual(extraerPatentes(['JK · RT', '52', 'CHILE']),{kind:'plate',plates:['JKRT52']});

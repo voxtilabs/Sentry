@@ -58,7 +58,7 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
     setBusy(true);setError('');
     let uri:string|undefined;
     try {
-      const picture=await view.current?.takePictureAsync({quality:1,exif:false});
+      const picture=await view.current?.takePictureAsync({quality:0.87,exif:false});
       uri=picture?.uri;
       if(!uri) throw new Error('No se pudo tomar la imagen');
       const lines=await ocr.readAndDelete(uri,state.kind==='plate');
@@ -71,7 +71,7 @@ export function VistaCamaraOcr({camera}:{camera:ReturnType<typeof crearCamaraOcr
   };
   return <View style={styles.layer}>
     <View style={styles.preview}>
-      <CameraView ref={view} style={StyleSheet.absoluteFill} facing="back" onCameraReady={()=>setReady(true)}
+      <CameraView ref={view} style={StyleSheet.absoluteFill} facing="back" autofocus="on" onCameraReady={()=>setReady(true)}
         onMountError={()=>setError('No se pudo abrir la cámara. Vuelve a intentarlo o ingresa la patente manualmente.')} />
       {state.kind==='plate' ? <View pointerEvents="none" style={styles.plateGuide} /> : null}
     </View>

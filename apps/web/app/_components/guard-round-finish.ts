@@ -1,3 +1,4 @@
+import { forgetOfflineRound } from './guard-offline-session';
 import { pedirApi, sincronizar } from './guard-outbox';
 import { listarPendientes, fijarServerId, borrarFoto } from './guard-photo-store';
 import { subirFotoPersistida } from './guard-evidence-upload';
@@ -54,6 +55,7 @@ export async function cerrarRondaManualmente(apiUrl: string, patrolId: string,
     const body=await response.json().catch(()=>null) as {message?:string}|null;
     throw Error(body?.message??'No pudimos terminar la ronda. Tu trabajo sigue guardado; vuelve a intentarlo.');
   }
+  forgetOfflineRound();
   navegar('/app/guardia');
 }
 
@@ -67,5 +69,6 @@ export async function confirmarTerminoDeRonda(apiUrl: string, patrolId: string,
     const body = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(typeof body?.message === 'string' ? body.message : 'No pudimos confirmar el cierre. Intenta nuevamente.');
   }
+  forgetOfflineRound();
   navegar('/app/guardia');
 }
