@@ -4,6 +4,8 @@ import { operationRequest } from './operations-client';
 
 import { FormEvent, useEffect, useDeferredValue, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { SummaryStats } from './summary-stats';
+import { formatearEntero } from './stats-charts-data';
 import { CompanyCardSettings } from './company-card-settings';
 import { IconPlus, IconX } from '@tabler/icons-react';
 
@@ -119,6 +121,10 @@ export function PlatformManagement({
     [tenants],
   );
 
+  const busiest = [...tenants].filter(tenant => tenant.monthlyPatrolCount > 0)
+    .sort((a, b) => b.monthlyPatrolCount - a.monthlyPatrolCount || a.displayName.localeCompare(b.displayName, 'es'))
+    .slice(0, 5);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -156,10 +162,18 @@ export function PlatformManagement({
 
   return (
     <>
-      <section className="stat-grid" id="resumen">
-        <PlatformMetric label="Empresas activas" value={totals.active} detail={`${tenants.length - totals.active} suspendidas`} />
-        <PlatformMetric label="Usuarios" value={totals.users} detail={`${totals.sites} recintos`} />
-        <PlatformMetric label="Rondas del mes" value={totals.patrols} detail="Toda la plataforma" />
+      <section id="resumen" aria-label="Estadísticas de la plataforma">
+        <SummaryStats blocks={[
+          { type: 'Metrics', props: { items: [
+            { label: 'Empresas activas', value: totals.active, detail: `${tenants.length - totals.active} suspendidas`, icon: 'company' },
+            { label: 'Usuarios', value: totals.users, detail: `${totals.sites} recintos`, icon: 'users' },
+            { label: 'Rondas del mes', value: totals.patrols, detail: 'Toda la plataforma', icon: 'route' },
+          ] } },
+          { type: 'Ranking', props: { title: 'Actividad mensual por empresa', caption: 'Empresas con más rondas este mes',
+            scale: busiest[0]?.monthlyPatrolCount ?? 0, empty: 'Sin rondas registradas este mes.',
+            items: busiest.map(tenant => ({ key: tenant.id, label: tenant.displayName, value: tenant.monthlyPatrolCount,
+              display: formatearEntero(tenant.monthlyPatrolCount) })) } },
+        ]} />
       </section>
       <div className="panel-platform-actions">
         <button type="button" className={creating ? 'secondary-button' : 'primary-button'}
@@ -259,10 +273,6 @@ export function PlatformManagement({
       </section>
     </>
   );
-}
-
-function PlatformMetric({ label, value, detail }: { label: string; value: number; detail: string }) {
-  return <article className="stat-card"><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
 }
 
 function formatActivity(value: string | null) {

@@ -4,8 +4,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { StaffCompany } from '@sentrycore/shared';
 import { operationError, operationRequest } from './operations-client';
 import { staffCompanyLabel, staffSiteLabel } from './staff-site-labels';
-import { BarrasHorizontales, SerieCumplimiento } from './stats-charts-svg';
-import { formatearEntero, formatearPorcentaje } from './stats-charts-data';
+import { SummaryStats } from './summary-stats';
+import { formatearPorcentaje } from './stats-charts-data';
 import styles from './portfolio.module.css';
 
 interface Metrics {
@@ -114,11 +114,11 @@ export function PortfolioOverview({ apiUrl }: { apiUrl: string }) {
   const points = (data?.days ?? []).map(day => ({
     bucket: day.day, patrols: day.patrols, completed: day.completed, sites: 0, compliancePct: day[metric],
   }));
-  const bars = sites.filter(site => site[metric] !== null).sort((a, b) => (a[metric] ?? 0) - (b[metric] ?? 0))
-    .slice(0, 10).map(site => ({
-      clave: site.siteId, titulo: siteNames.get(site.siteId) ?? 'Recinto',
-      valor: site[metric] ?? 0, etiquetaValor: formatearPorcentaje(site[metric]),
-      alerta: (metric === 'compliancePct' && review(site) > 0) || (metric === 'taskPct' && site.tasksDone < site.tasksExpected),
+  const measuredSites = sites.filter(site => site[metric] !== null).sort((a, b) => (a[metric] ?? 0) - (b[metric] ?? 0));
+  const bars = measuredSites.slice(0, 10).map(site => ({
+      key: site.siteId, label: siteNames.get(site.siteId) ?? 'Recinto',
+      value: site[metric] ?? 0, display: formatearPorcentaje(site[metric]),
+      attention: (metric === 'compliancePct' && review(site) > 0) || (metric === 'taskPct' && site.tasksDone < site.tasksExpected),
     }));
   const total = data?.totals;
 
@@ -160,20 +160,22 @@ export function PortfolioOverview({ apiUrl }: { apiUrl: string }) {
         <div className={styles.periodCaption}>
           {shortDate(data.range.desde)} – {shortDate(data.range.hasta)} · {sites.length} {sites.length === 1 ? 'recinto' : 'recintos'}
         </div>
-        <dl className={styles.metrics}>
-          <div><dt>Rondas</dt><dd>{formatearEntero(total.patrols)}</dd>
-            <small>{total.scheduled} programadas · {total.voluntary} voluntarias</small></div>
-          <div><dt>Completadas</dt><dd>{formatearEntero(total.completed)}</dd>
-            <small>{total.active} activas · {total.waiting} pendientes con inicio alcanzado</small></div>
-          <div className={review(total) > 0 ? styles.attention : undefined}><dt>Requieren revisión</dt><dd>{formatearEntero(review(total))}</dd>
-            <small>Incompletas {total.incomplete} · Vencidas {total.expired}</small></div>
-          <div><dt>Cumplimiento</dt><dd>{formatearPorcentaje(total.compliancePct)}</dd>
-            <small>Promedio de rondas cerradas con medición</small></div>
-          <div><dt>Escaneos con ubicación</dt><dd>{formatearPorcentaje(total.scanGpsPct)}</dd>
-            <small>{total.scansWithGps} de {total.scans} · {meters(total.avgAccuracyM)} de precisión media</small></div>
-          <div><dt>Tareas ejecutadas</dt><dd>{formatearPorcentaje(total.taskPct)}</dd>
-            <small>{total.tasksDone} de {total.tasksExpected} · {total.tasksFailed} con falla reportada</small></div>
-        </dl>
+        <SummaryStats blocks={[
+          { type: 'Metrics', props: { items: [
+            { label: 'Rondas', icon: 'route', value: total.patrols, detail: `${total.scheduled} programadas · ${total.voluntary} voluntarias` },
+            { label: 'Completadas', icon: 'check', value: total.completed, detail: `${total.active} en curso · ${total.waiting} con inicio atrasado` },
+            { label: 'Requieren revisión', icon: 'review', value: review(total), attention: review(total) > 0,
+              detail: `${total.incomplete} incompletas · ${total.expired} vencidas` },
+            { label: 'Cumplimiento', icon: 'target', value: formatearPorcentaje(total.compliancePct), detail: 'Promedio de rondas cerradas con medición' },
+            { label: 'Escaneos con ubicación', icon: 'gps', value: formatearPorcentaje(total.scanGpsPct),
+              detail: `${total.scansWithGps} de ${total.scans} escaneos${total.avgAccuracyM === null ? '' : ` · ${meters(total.avgAccuracyM)} de precisión media`}` },
+            { label: 'Tareas ejecutadas', icon: 'tasks', value: formatearPorcentaje(total.taskPct),
+              detail: `${total.tasksDone} de ${total.tasksExpected} · ${total.tasksFailed} con falla reportada` },
+          ] } },
+          { type: 'PatrolStates', props: { completed: total.completed, active: total.active, waiting: total.waiting,
+            incomplete: total.incomplete, expired: total.expired,
+            upcoming: Math.max(0, total.patrols - total.completed - total.active - total.waiting - review(total)) } },
+        ]} />
         {!sites.length ? <p className={styles.loadMessage}>Tu cuenta aún no tiene recintos asignados.</p> : <>
           <section className={styles.analysis}>
             <div className={styles.sectionHeader}>
@@ -182,19 +184,13 @@ export function PortfolioOverview({ apiUrl }: { apiUrl: string }) {
                 {Object.entries(metricChoices).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
               </select></label>
             </div>
-            <div className={styles.charts}>
-              <section className={styles.summaryCard}>
-                <h3>Evolución diaria</h3>
-                {points.some(point => point.compliancePct !== null)
-                  ? <SerieCumplimiento puntos={points} granularidad="dia" ariaLabel={`Evolución diaria de ${metricChoices[metric].toLowerCase()}`} />
-                  : <p>Sin mediciones en el período.</p>}
-              </section>
-              <section className={styles.summaryCard}>
-                <h3>Comparación por recinto</h3>
-                {bars.length ? <BarrasHorizontales items={bars} escala={100} ariaLabel={`${metricChoices[metric]} por recinto`} />
-                  : <p>Sin recintos con datos para esta métrica.</p>}
-              </section>
-            </div>
+            <SummaryStats layout="charts" blocks={[
+              { type: 'DailyTrend', props: { metric: metricChoices[metric], points } },
+              { type: 'Ranking', props: { title: 'Comparación por recinto', scale: 100, items: bars,
+                caption: `${metricChoices[metric]} · ${measuredSites.length > 10
+                  ? 'Los 10 recintos con menor porcentaje' : 'De menor a mayor porcentaje'}`,
+                empty: 'Sin recintos con datos para esta métrica.' } },
+            ]} />
           </section>
           {byCompany.length > 1 && <section className={styles.summaryCard}>
             <h2>Por empresa</h2>

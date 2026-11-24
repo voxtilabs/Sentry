@@ -77,38 +77,6 @@
   color: #a62835;
 }
 
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .65rem;
-  margin: 0;
-}
-
-.metrics > div {
-  min-width: 0;
-  padding: .85rem;
-  border: 1px solid var(--line);
-  border-radius: .8rem;
-  background: var(--surface);
-}
-
-.metrics > div.attention {
-  border-color: #ecc7cb;
-}
-
-.metrics dt {
-  font-size: .87rem;
-  font-weight: 650;
-}
-
-.metrics dd {
-  margin: .35rem 0;
-  font-size: clamp(1.4rem, 3vw, 2rem);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.metrics small,
 .tableWrapper small,
 .checkboxList small {
   display: block;
@@ -123,17 +91,6 @@
   gap: 1rem;
 }
 
-.charts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));
-  align-items: start;
-  gap: .9rem;
-}
-
-.charts > section {
-  min-width: 0;
-}
-
 .summaryCard {
   min-width: 0;
   padding: .9rem;
@@ -145,10 +102,6 @@
 .summaryCard h2,
 .summaryCard h3 {
   margin: 0 0 .75rem;
-}
-
-.charts h3 {
-  font-size: 1rem;
 }
 
 .companyGrid {
@@ -292,17 +245,5 @@
     margin-bottom: .12rem;
     color: var(--muted);
     font-size: .76rem;
-  }
-}
-
-@media (min-width: 740px) {
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1360px) {
-  .metrics {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }

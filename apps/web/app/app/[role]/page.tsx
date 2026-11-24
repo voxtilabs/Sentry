@@ -46,6 +46,8 @@ import { SessionManagement, type UserSession } from '../../_components/session-m
 import { SiteManagement } from '../../_components/site-management';
 import { panelViewCopy, resolvePanelView, type PanelRole } from '../../_components/panel-navigation';
 import { CompanyGroups } from '../../_components/company-groups';
+import { SummaryStats } from '../../_components/summary-stats';
+import { formatearPorcentaje } from '../../_components/stats-charts-data';
 import { PortfolioOverview } from '../../_components/portfolio-overview';
 import { peticionDeAppDelGuardia } from '../../_lib/app-del-guardia';
 
@@ -217,13 +219,13 @@ export default async function RoleDashboard({
     <div className="panel-view" data-view="resumen">
       <PanelAutoRefresh />
       {!overview && <p role="alert">No pudimos consultar el resumen. Reintentaremos automáticamente.</p>}
-      <section className="stat-grid">
-        <Metric label="Recintos visibles" value={overview?.metrics.sites ?? 0} detail={isSupervisor ? 'Solo asignados' : 'Toda la empresa'} />
-        <Metric label="Rondas abiertas" value={overview?.metrics.activePatrols ?? 0} detail={`${overview?.metrics.pendingPatrols ?? 0} pendientes`} />
-        <Metric label="Guardias activos" value={overview?.metrics.guards ?? 0} detail={isSupervisor?'Asignados a tus recintos':'Toda la empresa'} />
-        <Metric label="Completadas · últimas 24 h" value={overview?.metrics.completedLast24h??0} detail={`${overview?.metrics.incompleteLast24h??0} incompletas o vencidas`} />
-        <Metric label="Cumplimiento · últimas 24 h" value={overview?.metrics.averageLast24h===null||overview?.metrics.averageLast24h===undefined?'—':`${overview.metrics.averageLast24h}%`} detail="Rondas cerradas con datos" />
-      </section>
+      {overview && <SummaryStats blocks={[{ type: 'Metrics', props: { items: [
+        { label: 'Recintos visibles', value: overview.metrics.sites, detail: isSupervisor ? 'Solo asignados' : 'Toda la empresa', icon: 'sites' },
+        { label: 'Rondas abiertas', value: overview.metrics.activePatrols, detail: `${overview.metrics.pendingPatrols} pendientes`, icon: 'route' },
+        { label: 'Guardias activos', value: overview.metrics.guards, detail: isSupervisor ? 'Asignados a tus recintos' : 'Toda la empresa', icon: 'users' },
+        { label: 'Completadas · últimas 24 h', value: overview.metrics.completedLast24h, detail: `${overview.metrics.incompleteLast24h} incompletas o vencidas`, icon: 'check' },
+        { label: 'Cumplimiento · últimas 24 h', value: formatearPorcentaje(overview.metrics.averageLast24h), detail: 'Rondas cerradas con datos', icon: 'target' },
+      ] } }]} />}
 
       <section className="activity-card">
         <div className="card-heading">
@@ -412,24 +414,6 @@ function resolveGuardView(value: string | undefined): 'turno' | 'puntos' | 'sesi
 
 function firstParameter(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function Metric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: number | string;
-  detail: string;
-}) {
-  return (
-    <article className="stat-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </article>
-  );
 }
 
 function publicApiUrl() {
