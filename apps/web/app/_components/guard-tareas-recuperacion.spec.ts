@@ -3,10 +3,12 @@ import { sincronizarTareasGuardadas } from './guard-tareas-flujo';
 import { estadoTareasInicial, type EstadoTareas } from './guard-tareas-modelo';
 import { recuperarTareasGuardadas, tareasGuardadasConTrabajo } from './guard-tareas-recuperacion';
 import { enviarTareasAlTerminar } from './guard-round-finish';
+import { escribirJson, leerJson } from './guard-storage';
 
 jest.mock('./guard-outbox', () => ({ pedirApi: jest.fn() }));
 jest.mock('./guard-tareas-flujo', () => ({ sincronizarTareasGuardadas: jest.fn() }));
 jest.mock('./guard-round-finish', () => ({ enviarTareasAlTerminar: jest.fn() }));
+jest.mock('./guard-storage', () => ({ ...jest.requireActual('./guard-storage'), leerJson: jest.fn(), escribirJson: jest.fn() }));
 const pedir = jest.mocked(pedirApi), sincronizar = jest.mocked(sincronizarTareasGuardadas);
 const propia = 'a0000000-0000-4000-8000-000000000007';
 const ajena = 'b0000000-0000-4000-8000-000000000007';
@@ -50,12 +52,44 @@ describe('recuperación tras cerrar una ronda y volver a la portada sin asignaci
   it('una ronda que no pertenece a la sesión no envía fotos ni respuestas y conserva su trabajo', async () => {
     pedir.mockResolvedValue({ ok: false, status: 404 } as Response);
     const estados = [pendiente(ajena)], antes = JSON.stringify(estados), descartadas = new Set<string>();
-    await recuperarTareasGuardadas('/api', estados, undefined, descartadas);
-    await recuperarTareasGuardadas('/api', estados, undefined, descartadas);
+    await recuperarTareasGuardadas('/api', estados, undefined, { descartadas });
+    await recuperarTareasGuardadas('/api', estados, undefined, { descartadas });
     expect(sincronizar).not.toHaveBeenCalled();
     expect(enviarTareasAlTerminar).not.toHaveBeenCalled();
     expect(pedir).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(estados)).toBe(antes);
+  });
+  it('al recargar evita repetir un rechazo reciente y separa el trabajo por guardia', async () => {
+    const almacenamiento = new Map<string, unknown>();
+    jest.mocked(leerJson).mockImplementation(<T>(key: string, fallback: T) => (almacenamiento.get(key) ?? fallback) as T);
+    jest.mocked(escribirJson).mockImplementation((key, data) => { almacenamiento.set(key, data); });
+    pedir.mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ patrolStatus: 'completada' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ patrolStatus: 'completada' })));
+    const estados = [pendiente(ajena)];
+    const ahora = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    try {
+      await recuperarTareasGuardadas('/api', estados, undefined, { recoveryScope: 'empresa:guardia-A' });
+      await recuperarTareasGuardadas('/api', estados, undefined, { recoveryScope: 'empresa:guardia-A' });
+      expect(pedir).toHaveBeenCalledTimes(1);
+      await recuperarTareasGuardadas('/api', estados, undefined, { recoveryScope: 'empresa:guardia-B' });
+      expect(enviarTareasAlTerminar).toHaveBeenCalledTimes(1);
+      ahora.mockReturnValue(1_000 + 30 * 60_000);
+      await recuperarTareasGuardadas('/api', estados, undefined, { recoveryScope: 'empresa:guardia-A' });
+      expect(pedir).toHaveBeenCalledTimes(3);
+    } finally {
+      ahora.mockRestore();
+    }
+  });
+  it('un 401 pausa el lote y permite volver a recuperar tras renovar la sesión', async () => {
+    pedir.mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockImplementation(async () => new Response(JSON.stringify({ patrolStatus: 'completada' })));
+    const estados = [pendiente(propia), pendiente(ajena)];
+    const opciones = { descartadas: new Set<string>() };
+    await recuperarTareasGuardadas('/api', estados, undefined, opciones);
+    expect(pedir).toHaveBeenCalledTimes(1);
+    await recuperarTareasGuardadas('/api', estados, undefined, opciones);
+    expect(enviarTareasAlTerminar).toHaveBeenCalledTimes(2);
   });
   it('recupera el alias del punto de una ronda anterior sin reemplazar los ids reales', async () => {
     pedir.mockResolvedValue(new Response(JSON.stringify({ syncScans: [

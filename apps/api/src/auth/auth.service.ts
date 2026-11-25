@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -45,6 +46,9 @@ const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=65536,t=3,p=1$eqtH1eJxD2FbVVd3DgQVXg$IRTC4hC6I+G4VZcmWvPr0j5oN9UrRkLphD3k+TUn5Gs';
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
+// El portal y la cola nativa pueden renovar a la vez con la misma cookie.
+// Este plazo fijo cubre el cruce entre respuestas. El duplicado no recibe tokens.
+const REFRESH_OVERLAP_SECONDS = 15;
 
 interface RefreshSession {
   familyId: string;
@@ -847,20 +851,35 @@ export class AuthService {
         local session = cjson.decode(stored)
         redis.call('DEL', KEYS[1])
         redis.call('SET', KEYS[2], session.familyId, 'EX', ARGV[1])
+        redis.call('SET', KEYS[3], '1', 'EX', ARGV[2])
         return {'valid', stored}
       end
       local reused_family = redis.call('GET', KEYS[2])
-      if reused_family then return {'reused', reused_family} end
+      if reused_family then
+        if redis.call('EXISTS', 'auth:revoked-family:' .. reused_family) == 1 then
+          return {'missing', ''}
+        end
+        if redis.call('EXISTS', KEYS[3]) == 1 then return {'overlap', ''} end
+        return {'reused', reused_family}
+      end
       return {'missing', ''}
     `;
     const consumed = (await this.redis.eval(
       consumeScript,
-      2,
+      3,
       `auth:refresh:${refreshHash}`,
       `auth:used-refresh:${refreshHash}`,
+      `auth:refresh-in-progress:${refreshHash}`,
       REFRESH_TTL_SECONDS,
-    )) as ['valid' | 'reused' | 'missing', string];
+      REFRESH_OVERLAP_SECONDS,
+    )) as ['valid' | 'overlap' | 'reused' | 'missing', string];
 
+    if (consumed[0] === 'overlap') {
+      throw new ConflictException({
+        code: 'SESSION_REFRESH_IN_PROGRESS',
+        message: 'La sesión se está renovando. Intenta nuevamente en unos segundos.',
+      });
+    }
     if (consumed[0] === 'reused') {
       await this.revokeFamily(consumed[1]);
       this.logger.warn(JSON.stringify({ event: 'refresh_token_reuse', family_revoked: true }));

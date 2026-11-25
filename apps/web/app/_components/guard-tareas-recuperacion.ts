@@ -8,6 +8,16 @@ import { cargarEstadoTareas, modificarEstadoTareas, recuperarCapturasTareas, reh
 import { listarPendientes } from './guard-photo-store';
 import { mapaEscaneosRecuperados } from './guard-scan-recovery';
 import { enviarTareasAlTerminar } from './guard-round-finish';
+import { escribirJson, leerJson } from './guard-storage';
+
+const NO_DISPONIBLE_MS = 30 * 60_000;
+const MAX_NO_DISPONIBLES = 128;
+
+interface OpcionesRecuperacion {
+  descartadas?: Set<string>;
+  recoveryScope?: string;
+  signal?: AbortSignal;
+}
 
 /** También se ejecuta cuando el servidor ya no ofrece la ronda recién cerrada. */
 export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key' | 'getItem'>): EstadoTareas[] {
@@ -26,34 +36,60 @@ export function tareasGuardadasConTrabajo(storage: Pick<Storage, 'length' | 'key
 }
 
 export async function recuperarTareasGuardadas(apiUrl: string, estados: readonly EstadoTareas[],
-  activePatrolId?: string, descartadas = new Set<string>()) {
-  for (const estado of estados) {
-    if (estado.patrolId === activePatrolId || descartadas.has(estado.patrolId)) continue;
-    // El servidor comprueba guardia y tenant ANTES de devolver los escaneos.
-    // Un teléfono compartido no envía el trabajo de otro guardia bajo la sesión nueva.
-    const r = await pedirApi(apiUrl, `/checklists/patrols/${encodeURIComponent(estado.patrolId)}/template?includeScanIds=true`);
-    if (r.status === 403 || r.status === 404) { descartadas.add(estado.patrolId); continue; }
-    if (!r.ok) continue;
-    const body = await r.json() as { patrolStatus?:string; template?: { items: ItemTarea[] };
-      syncScans?: Array<{ clientScanId: string; scanId: string; checkpointId: string }> };
-    if (body.template?.items) {
-      const pendientes = await listarPendientes();
-      await modificarEstadoTareas(estado.patrolId, (actual) =>
-        recuperarCapturasTareas(actual, body.template!.items, body.syncScans ?? [], pendientes));
+  activePatrolId?: string, { descartadas, recoveryScope, signal }: OpcionesRecuperacion = {}) {
+  const clave = recoveryScope ? `sentrycore.guard.rondas-no-disponibles.v1:${recoveryScope}` : undefined;
+  const guardadas = clave ? leerJson<Record<string, number> | null>(clave, {}) : {};
+  const ahora = Date.now();
+  const expiraciones = new Map(Object.entries(guardadas ?? {}).filter(([, vence]) => vence > ahora));
+  let cambio = false;
+  try {
+    for (const estado of estados) {
+      const id = estado.patrolId;
+      if (signal?.aborted) return;
+      if (id === activePatrolId || expiraciones.has(id) || descartadas?.has(id)) continue;
+      // El servidor valida guardia y empresa. Guardamos solo el rechazo temporal:
+      // la cola queda disponible cuando entre el guardia al que le pertenece.
+      const ruta = `/checklists/patrols/${encodeURIComponent(id)}/template?includeScanIds=true`;
+      const r = signal ? await pedirApi(apiUrl, ruta, { signal }) : await pedirApi(apiUrl, ruta);
+      if (signal?.aborted || r.status === 401) return;
+      if (r.status === 403 || r.status === 404) {
+        if (clave) {
+          expiraciones.set(id, Date.now() + NO_DISPONIBLE_MS);
+          cambio = true;
+        } else {
+          descartadas?.add(id);
+        }
+        continue;
+      }
+      if (!r.ok) continue;
+      const body = await r.json() as { patrolStatus?: string; template?: { items: ItemTarea[] };
+        syncScans?: Array<{ clientScanId: string; scanId: string; checkpointId: string }> };
+      if (signal?.aborted) return;
+      if (body.template?.items) {
+        const pendientes = await listarPendientes();
+        await modificarEstadoTareas(id, (actual) =>
+          recuperarCapturasTareas(actual, body.template!.items, body.syncScans ?? [], pendientes));
+      }
+      if (signal?.aborted) return;
+      if (body.patrolStatus && ['completada', 'incompleta', 'vencida'].includes(body.patrolStatus)) {
+        await enviarTareasAlTerminar(apiUrl, id, { permitirIncompletas: true });
+      } else {
+        await sincronizarTareasGuardadas(apiUrl, id, mapaEscaneosRecuperados(body.syncScans ?? []));
+      }
     }
-    if(body.patrolStatus&&['completada','incompleta','vencida'].includes(body.patrolStatus)) {
-      await enviarTareasAlTerminar(apiUrl,estado.patrolId,{permitirIncompletas:true});
-    } else await sincronizarTareasGuardadas(apiUrl, estado.patrolId,
-      mapaEscaneosRecuperados(body.syncScans ?? []));
+  } finally {
+    if (clave && cambio) escribirJson(clave, Object.fromEntries([...expiraciones].slice(-MAX_NO_DISPONIBLES)));
   }
 }
 
-export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: string) {
+export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: string, recoveryScope?: string) {
   useEffect(() => {
     const descartadas = new Set<string>();
-    let corriendo = false, vivo = true;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let corriendo = false;
     const sincronizar = async () => {
-      if (corriendo || !vivo || document.visibilityState === 'hidden' || navigator.onLine === false) return;
+      if (corriendo || signal.aborted || document.visibilityState === 'hidden' || navigator.onLine === false) return;
       corriendo = true;
       try {
         const durables = await rehidratarTareasDurables();
@@ -62,7 +98,8 @@ export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: str
         const fotosDeRondas=new Set((await listarPendientes()).filter(f=>f.destino==='escaneo'&&f.patrolId).map(f=>f.patrolId!));
         for(const id of fotosDeRondas)if(!estados.has(id))estados.set(id,cargarEstadoTareas(id));
         await recuperarTareasGuardadas(apiUrl, [...estados.values()].filter((e) => e.cola.length ||
-          Object.values(e.borradores ?? {}).some((b) => b.fotos.some(f=>!f.photoId))||fotosDeRondas.has(e.patrolId)), activePatrolId, descartadas);
+          Object.values(e.borradores ?? {}).some((b) => b.fotos.some(f=>!f.photoId))||fotosDeRondas.has(e.patrolId)), activePatrolId,
+          { descartadas, recoveryScope, signal });
       }
       catch { /* Se conserva la cola completa y se reintenta al reconectar. */ }
       finally { corriendo = false; }
@@ -73,9 +110,9 @@ export function useRecuperarTareasGuardadas(apiUrl: string, activePatrolId?: str
     document.addEventListener('visibilitychange', alVolver);
     const timer = window.setInterval(() => void sincronizar(), 10_000);
     return () => {
-      vivo = false; window.clearInterval(timer);
+      controller.abort(); window.clearInterval(timer);
       window.removeEventListener('online', sincronizar);
       document.removeEventListener('visibilitychange', alVolver);
     };
-  }, [apiUrl, activePatrolId]);
+  }, [apiUrl, activePatrolId, recoveryScope]);
 }

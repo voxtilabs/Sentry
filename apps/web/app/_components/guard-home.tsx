@@ -15,6 +15,8 @@ import { useGuardBridge } from './use-guard-bridge';
 
 export interface GuardHomeData {
   hasAssignment: boolean;
+  /** Separa la recuperación local de evidencia cuando el teléfono se comparte. */
+  recoveryScope?: string;
   message?: string;
   assignedSites?: Array<{
     id: string;
@@ -105,7 +107,7 @@ const time = new Intl.DateTimeFormat('es-CL', {
 });
 
 export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: string }) {
-  useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
+  useRecuperarTareasGuardadas(apiUrl, data.patrol?.id, data.recoveryScope);
   useEffect(() => {
     if (data.assignedSites || data.patrol?.status === 'pendiente') forgetOfflineRound();
     prepareOfflineScreen();

@@ -52,11 +52,12 @@ export class GuardController {
    */
   @Get('home')
   @Permissions('patrols:execute')
-  home(
+  async home(
     @Req() request: Request & { user: AuthenticatedUser },
     @Query('siteId', new ParseUUIDPipe({ optional: true })) siteId?: string,
   ) {
-    return this.guardService.getHome(request.user.sub, siteId);
+    const home = await this.guardService.getHome(request.user.sub, siteId);
+    return { ...home, recoveryScope: `${request.user.tenant_id}:${request.user.sub}` };
   }
 
   @Post('patrols/:patrolId/start')

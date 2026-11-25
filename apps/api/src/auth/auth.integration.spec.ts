@@ -104,7 +104,32 @@ describeAuth('AuthService (integración)', () => {
     }
   });
 
-  it('rota el refresh token y vuelve inutilizable el anterior', async () => {
+  it('rechaza una renovación concurrente y conserva la sesión del intento ganador', async () => {
+    const login = await auth.login({
+      identity: 'guardia@demo-andina.test',
+      password: demoPassword!,
+    });
+    if ('requiresTenantSelection' in login) throw new Error('Login demo ambiguo');
+
+    const attempts = await Promise.allSettled([
+      auth.refresh(login.refreshToken),
+      auth.refresh(login.refreshToken),
+    ]);
+    expect(attempts).toHaveLength(2);
+    const winner = attempts.find((attempt) => attempt.status === 'fulfilled');
+    const duplicate = attempts.find((attempt) => attempt.status === 'rejected');
+    expect(duplicate?.reason).toMatchObject({
+      status: 409,
+      response: { code: 'SESSION_REFRESH_IN_PROGRESS' },
+    });
+    if (!winner) throw new Error('La renovación ganadora debe completar la rotación');
+    expect(winner.value.refreshToken).not.toBe(login.refreshToken);
+    const next = await auth.refresh(winner.value.refreshToken);
+    await auth.logout(next.refreshToken);
+    await expect(auth.refresh(login.refreshToken)).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('revoca la familia si se vuelve a usar el token después de la renovación concurrente', async () => {
     const login = await auth.login({
       identity: 'guardia@demo-andina.test',
       password: demoPassword!,
@@ -113,6 +138,10 @@ describeAuth('AuthService (integración)', () => {
 
     const rotated = await auth.refresh(login.refreshToken);
     expect(rotated.refreshToken).not.toBe(login.refreshToken);
+    const originalHash = createHash('sha256').update(login.refreshToken).digest('hex');
+    const duplicateKey = `auth:refresh-in-progress:${originalHash}`;
+    expect(await redis.ttl(duplicateKey)).toBeGreaterThan(0);
+    await redis.pexpire(duplicateKey, 0);
     await expect(auth.refresh(login.refreshToken)).rejects.toMatchObject({ status: 401 });
     await expect(auth.refresh(rotated.refreshToken)).rejects.toMatchObject({ status: 401 });
 
