@@ -294,7 +294,7 @@ services:
       # Docker (no pasa por el proxy ni por internet). Sin esto, el middleware
       # no puede resolver el rol y rebota al login aunque las credenciales
       # sean correctas.
-      API_INTERNAL_URL: http://api:3001/api
+      API_INTERNAL_URL: http://${COMPOSE_PROJECT_NAME}-api-1:3001/api
       WEB_ORIGIN: ${WEB_PUBLIC_URL:-http://localhost:3000}
       # Sin default publico en produccion: el proveedor se decide por entorno.
       MAP_TILE_URL: ${MAP_TILE_URL:-}
