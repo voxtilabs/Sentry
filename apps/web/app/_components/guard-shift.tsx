@@ -100,6 +100,7 @@ import {
 
 export interface GuardShiftData {
   hasAssignment: boolean;
+  recoveryScope?: string;
   message?: string;
   shift?: { scheduledStartAt: string; scheduledEndAt: string };
   /** Presupuesto de la foto, resuelto por la API en la cascada del recinto. */
@@ -157,7 +158,7 @@ export function GuardShift({ data, apiUrl, offlineSnapshot=false }: { data: Guar
   useEffect(() => {
     if (!offlineSnapshot) { rememberOfflineRound(data); prepareOfflineScreen(); }
   }, [data,offlineSnapshot]);
-  useRecuperarTareasGuardadas(apiUrl, data.patrol?.id);
+  useRecuperarTareasGuardadas(apiUrl, data.patrol?.id, data.recoveryScope);
   if (!data.hasAssignment || data.patrol === undefined || data.shift === undefined) {
     return <SinAsignacion apiUrl={apiUrl} mensaje={data.message} />;
   }

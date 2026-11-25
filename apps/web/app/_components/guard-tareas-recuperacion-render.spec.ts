@@ -11,5 +11,5 @@ it('la portada sin ronda asignada monta la recuperación de evidencia de rondas 
   const html = renderToStaticMarkup(createElement(GuardHome, { data: { hasAssignment: false,
     synchronization: { pendingItems: 0 } }, apiUrl: '/api' }));
   expect(html).toContain('No tienes una ronda asignada');
-  expect(useRecuperarTareasGuardadas).toHaveBeenCalledWith('/api', undefined);
+  expect(useRecuperarTareasGuardadas).toHaveBeenCalledWith('/api', undefined, undefined);
 });
