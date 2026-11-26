@@ -53,6 +53,18 @@ const FAMILIAS_QUE_ESCUCHA =
   // SentryCore uses the UID, never records that could launch another app.
   NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK;
 
+let generacionLectura = 0;
+const ultimoDiagnostico = new Map<string, number>();
+
+function diagnostico(codigo: string) {
+  const ahora = Date.now();
+  if (ahora - (ultimoDiagnostico.get(codigo) ?? 0) < 300_000) return;
+  ultimoDiagnostico.set(codigo, ahora);
+  const error = new Error(`Lectura de punto: ${codigo}`);
+  error.name = 'NfcBridgeError';
+  void reportarCaida(error, { fatal: false }).catch(() => undefined);
+}
+
 export const puertoNfcAndroid: PuertoNfc = {
   iniciar: async () => {
     await NfcManager.start();
@@ -65,19 +77,30 @@ export const puertoNfcAndroid: PuertoNfc = {
   soportado: () => NfcManager.isSupported(),
   activado: () => NfcManager.isEnabled(),
   esperarEtiqueta: async () => {
+    const generacion = generacionLectura;
+    const comprobarVigencia = () => {
+      if (generacion !== generacionLectura) throw new NfcError.UserCancel();
+    };
     await detenerEscuchaNfcLogin();
+    comprobarVigencia();
     // UID only: NDEF parsing is disabled in Android's reader flags. The
     // physical tag technologies work for formatted and blank tags alike.
     await reservarLector(() => NfcManager.registerTagEvent({
       isReaderModeEnabled: true, readerModeFlags: FAMILIAS_QUE_ESCUCHA,
     }));
+    comprobarVigencia();
     await NfcManager.requestTechnology(
       [NfcTech.NfcA, NfcTech.NfcB, NfcTech.NfcF, NfcTech.NfcV, NfcTech.MifareUltralight],
       { isReaderModeEnabled: true, readerModeFlags: FAMILIAS_QUE_ESCUCHA },
     );
+    comprobarVigencia();
     return NfcManager.getTag();
   },
-  cancelar: () => NfcManager.cancelTechnologyRequest({ throwOnError: false }),
+  cancelar: () => {
+    generacionLectura++;
+    return NfcManager.cancelTechnologyRequest({ throwOnError: false });
+  },
+  diagnostico,
   // Misma lectura de GPS que el respaldo por QR: las anomalias que calcula el
   // servidor tienen que salir del mismo dato, no de dos copias que se separen.
   posicion: posicionDelEscaneo,

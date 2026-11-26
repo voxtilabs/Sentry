@@ -12,7 +12,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ROLES, type Role } from '@sentrycore/shared';
 import { argon2id, hash, verify } from 'argon2';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 
 import { CodeLoginDto } from './dto/code-login.dto';
@@ -36,7 +36,7 @@ import type {
   LoginResult,
 } from './auth.types';
 import { AUTH_REDIS } from './redis.provider';
-import { CompanyContext } from './company-context';
+import { CompanyContext, companyContextKey } from './company-context';
 import { companyCodeLookup } from './company-code';
 import type { AuthenticatedUser } from './auth.guard';
 
@@ -49,8 +49,14 @@ const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
 // El portal y la cola nativa pueden renovar a la vez con la misma cookie.
 // Este plazo fijo cubre el cruce entre respuestas. El duplicado no recibe tokens.
 const REFRESH_OVERLAP_SECONDS = 15;
+// El recibo vence con el refresh. Reintentar nunca prolonga la vida del sucesor.
+
+function successorToken(previous: string, company: string, nonce: string): string {
+  return createHmac('sha384', previous).update(`guard-refresh-v1:${company}:${nonce}`).digest('base64url');
+}
 
 interface RefreshSession {
+  companyKey?: string;
   familyId: string;
   userId: string;
   tenantId: string | null;
@@ -518,7 +524,7 @@ export class AuthService {
          redis.call('DEL', KEYS[1]); return 1 end; return 0`, 1, key, serialized,
     );
     if (Number(consumed) !== 1) throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
-    return this.createSession(guard, device);
+    return this.createSession(guard, device, ticket.contextToken);
   }
 
   async companyPicker(contextToken: string | undefined, sourceIp: string, device: string) {
@@ -826,12 +832,19 @@ export class AuthService {
     );
   }
 
-  async logout(refreshToken?: string): Promise<void> {
+  async logout(refreshToken?: string, companyToken?: string): Promise<void> {
     if (!refreshToken) return;
     if (this.redis.status === 'wait') await this.redis.connect();
     const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
     const serialized = await this.redis.get(`auth:refresh:${refreshHash}`);
-    if (!serialized) return;
+    if (!serialized) {
+      if (!companyToken || !/^[\w-]{43}$/.test(companyToken)) return;
+      const [receipt, family] = await this.redis.mget(
+        `auth:guard-refresh-receipt:${refreshHash}`, `auth:used-refresh:${refreshHash}`,
+      );
+      if (family && receipt?.startsWith(`${companyContextKey(companyToken)}:`)) await this.revokeFamily(family);
+      return;
+    }
     try {
       const stored = JSON.parse(serialized) as RefreshSession;
       await this.revokeFamily(stored.familyId);
@@ -840,24 +853,61 @@ export class AuthService {
     }
   }
 
-  async refresh(refreshToken?: string): Promise<AuthenticatedSession> {
+  async refresh(refreshToken?: string, companyToken?: string): Promise<AuthenticatedSession> {
     if (!refreshToken) throw new UnauthorizedException('Sesión inválida o expirada');
     if (this.redis.status === 'wait') await this.redis.connect();
 
     const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
+    const companyKey = companyToken && /^[\w-]{43}$/.test(companyToken) ? companyContextKey(companyToken) : '';
+    // Un valor aleatorio nuevo por rotación impide derivar las rotaciones futuras.
+    const nonce = randomBytes(32).toString('base64url');
+    const proposed = companyKey ? successorToken(refreshToken, companyToken!, nonce) : '';
+    const proposedHash = proposed && createHash('sha256').update(proposed).digest('hex');
     const consumeScript = `
       local stored = redis.call('GET', KEYS[1])
       if stored then
         local session = cjson.decode(stored)
+        if redis.call('EXISTS', 'auth:revoked-family:' .. session.familyId) == 1 then
+          return {'missing', ''}
+        end
+        if session.companyKey and (session.companyKey ~= ARGV[3] or redis.call('EXISTS', ARGV[3]) == 0) then
+          return {'missing', ''}
+        end
         redis.call('DEL', KEYS[1])
         redis.call('SET', KEYS[2], session.familyId, 'EX', ARGV[1])
         redis.call('SET', KEYS[3], '1', 'EX', ARGV[2])
+        if session.role == 'GUARDIA' then
+          local ctx = ARGV[3] ~= '' and redis.call('GET', ARGV[3])
+          if ctx and cjson.decode(ctx).tenantId == session.tenantId then
+            -- Registrar sucesor y recibo en la misma operación: incluso si el
+            -- proceso termina antes del Set-Cookie, el teléfono puede reintentar.
+            session.companyKey = ARGV[3]
+            local family = 'auth:family:' .. session.familyId
+            redis.call('SET', 'auth:refresh:' .. ARGV[5], cjson.encode(session), 'EX', ARGV[1])
+            redis.call('SREM', family, ARGV[6])
+            redis.call('SADD', family, ARGV[5])
+            redis.call('EXPIRE', family, ARGV[1])
+            redis.call('EXPIRE', 'auth:session:' .. session.familyId, ARGV[1])
+            redis.call('EXPIRE', 'auth:user-sessions:' .. session.userId, ARGV[1])
+            redis.call('SET', KEYS[4], ARGV[3] .. ':' .. ARGV[4], 'EX', ARGV[1])
+            return {'bound', stored, ARGV[4]}
+          end
+        end
         return {'valid', stored}
       end
       local reused_family = redis.call('GET', KEYS[2])
       if reused_family then
         if redis.call('EXISTS', 'auth:revoked-family:' .. reused_family) == 1 then
           return {'missing', ''}
+        end
+        local receipt = redis.call('GET', KEYS[4])
+        if receipt then
+          local prefix = ARGV[3] .. ':'
+          if ARGV[3] ~= '' and string.sub(receipt, 1, #prefix) == prefix
+            and redis.call('EXISTS', ARGV[3]) == 1 then
+            return {'retry', reused_family, string.sub(receipt, #prefix + 1)}
+          end
+          return {'overlap', ''}
         end
         if redis.call('EXISTS', KEYS[3]) == 1 then return {'overlap', ''} end
         return {'reused', reused_family}
@@ -866,15 +916,35 @@ export class AuthService {
     `;
     const consumed = (await this.redis.eval(
       consumeScript,
-      3,
+      4,
       `auth:refresh:${refreshHash}`,
       `auth:used-refresh:${refreshHash}`,
       `auth:refresh-in-progress:${refreshHash}`,
+      `auth:guard-refresh-receipt:${refreshHash}`,
       REFRESH_TTL_SECONDS,
       REFRESH_OVERLAP_SECONDS,
-    )) as ['valid' | 'overlap' | 'reused' | 'missing', string];
+      companyKey,
+      nonce,
+      proposedHash,
+      refreshHash,
+    )) as ['valid' | 'bound' | 'retry' | 'overlap' | 'reused' | 'missing', string, string?];
 
-    if (consumed[0] === 'overlap') {
+    const successor = consumed[2] && companyToken
+      ? successorToken(refreshToken, companyToken, consumed[2])
+      : undefined;
+    if (consumed[0] === 'retry' && successor) {
+      const hash = createHash('sha256').update(successor).digest('hex');
+      const live = await this.redis.get(`auth:refresh:${hash}`);
+      if (live) {
+        const current = JSON.parse(live) as RefreshSession;
+        if (current.role === 'GUARDIA' && current.familyId === consumed[1]) {
+          this.logger.log(JSON.stringify({ event: 'guard_refresh_recovered', tenant_id: current.tenantId }));
+          return this.sessionCredentials(current, successor);
+        }
+      }
+    }
+
+    if (consumed[0] === 'overlap' || consumed[0] === 'retry') {
       throw new ConflictException({
         code: 'SESSION_REFRESH_IN_PROGRESS',
         message: 'La sesión se está renovando. Intenta nuevamente en unos segundos.',
@@ -885,7 +955,7 @@ export class AuthService {
       this.logger.warn(JSON.stringify({ event: 'refresh_token_reuse', family_revoked: true }));
       throw new UnauthorizedException('Sesión inválida o expirada');
     }
-    if (consumed[0] !== 'valid') {
+    if (consumed[0] !== 'valid' && consumed[0] !== 'bound') {
       throw new UnauthorizedException('Sesión inválida o expirada');
     }
 
@@ -899,6 +969,7 @@ export class AuthService {
       throw new UnauthorizedException('Sesión inválida o expirada');
     }
 
+    if (consumed[0] === 'bound' && successor) return this.sessionCredentials(stored, successor);
     const session = await this.getStoredSession(stored.familyId);
     return this.rotateSession(stored, session);
   }
@@ -1036,6 +1107,7 @@ export class AuthService {
   private async createSession(
     identity: Pick<AuthIdentityRow, 'user_id'|'tenant_id'|'role_key'>,
     device: string,
+    companyToken?: string,
   ): Promise<AuthenticatedSession> {
     // Conecta de forma diferida para que readiness pueda informar Redis caído sin
     // impedir que Nest construya el módulo.
@@ -1056,7 +1128,7 @@ export class AuthService {
       device: device.slice(0, 180),
       createdAt: now,
       lastUsedAt: now,
-    });
+    }, companyToken ? companyContextKey(companyToken) : undefined);
   }
 
   private rotateSession(
@@ -1087,12 +1159,12 @@ export class AuthService {
     tenant_id: string | null;
     role: Role;
     sid: string;
-  }, session: StoredSession): Promise<AuthenticatedSession> {
-    const accessToken = await this.jwt.signAsync(payload, { expiresIn: ACCESS_TTL_SECONDS });
+  }, session: StoredSession, companyKey?: string): Promise<AuthenticatedSession> {
     const refreshToken = randomBytes(48).toString('base64url');
     const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
 
     const serialized = JSON.stringify({
+        companyKey,
         familyId: payload.sid,
         userId: payload.sub,
         tenantId: payload.tenant_id,
@@ -1127,6 +1199,12 @@ export class AuthService {
       throw new UnauthorizedException('Sesión inválida o expirada');
     }
 
+    return this.sessionCredentials(session, refreshToken);
+  }
+
+  private async sessionCredentials(session: RefreshSession, refreshToken: string): Promise<AuthenticatedSession> {
+    const payload = { sub: session.userId, tenant_id: session.tenantId, role: session.role, sid: session.familyId };
+    const accessToken = await this.jwt.signAsync(payload, { expiresIn: ACCESS_TTL_SECONDS });
     return {
       accessToken,
       refreshToken,

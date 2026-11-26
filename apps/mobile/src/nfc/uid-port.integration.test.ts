@@ -33,3 +33,14 @@ test('a recovered native class is reported without tag data and becomes a retrya
  const {port,calls}=adapter();assert.equal(port.clasificarError(new Error('nfc-reader-recovered:SecurityException')),'conexion-perdida');
  assert.equal(calls.reports[0]?.message,'NfcReaderRecovered:SecurityException');assert.equal(port.clasificarError(new Error('nfc-reader-recovered:UID=04AABBCC')),'desconocido');assert.equal(calls.reports.length,1);
 });
+
+test('cancelling while the login reader stops cannot arm an orphan point request', async () => {
+  let release!: () => void;
+  const { port, calls } = adapter(() => new Promise<void>(resolve => { release = resolve; }));
+  const read = port.esperarEtiqueta();
+  await new Promise(resolve => setImmediate(resolve));
+  await port.cancelar();
+  release();
+  await assert.rejects(read);
+  assert.equal(calls.techs.length, 0);
+});

@@ -33,6 +33,7 @@ export interface PuertoNfc {
   }) => Promise<{
     clientScanId: string; deviceId: string; signature: string;
   }>;
+  readonly diagnostico?: (codigo: string) => void;
   readonly clasificarError: (causa: unknown) => FalloNfcNativo;
   readonly ahora?: () => Date;
 }
@@ -67,8 +68,7 @@ function errorClasificado(fallo: FalloNfcNativo): ErrorEscaneo {
 
 export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
   let inicio: Promise<void> | undefined;
-  let escaneoActivo = false;
-  let cancelado = false;
+  let detenerActivo: (() => void) | undefined;
 
   const iniciar = () => (inicio ??= puerto.iniciar());
 
@@ -118,13 +118,17 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
   }
 
   async function escanear(timeoutMs: number): Promise<ResultadoEscaneoPayload> {
-    if (escaneoActivo) throw errorClasificado('ocupado');
-    escaneoActivo = true;
-    cancelado = false;
+    if (detenerActivo) throw errorClasificado('ocupado');
+    let cancelado = false;
+    let interrumpir!: () => void;
+    const interrupcion = new Promise<never>((_, reject) => {
+      interrumpir = () => reject(errorClasificado('cancelado'));
+    });
+    detenerActivo = () => { cancelado = true; interrumpir(); };
     let temporizador: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      const estado = await capacidades();
+      const estado = await Promise.race([capacidades(), interrupcion]);
       if (!estado.tieneNfc) {
         throw new ErrorEscaneo('nfc-no-disponible', 'Este teléfono no tiene NFC. Usa el respaldo QR.', false);
       }
@@ -134,7 +138,7 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
       const vencimiento = new Promise<never>((_, rechazar) => {
         temporizador = setTimeout(() => rechazar(errorClasificado('timeout')), timeoutMs);
       });
-      const etiqueta = await Promise.race([puerto.esperarEtiqueta(), vencimiento]);
+      const etiqueta = await Promise.race([puerto.esperarEtiqueta(), vencimiento, interrupcion]);
       if (cancelado) throw errorClasificado('cancelado');
 
       const uid = normalizarUid(etiqueta?.id);
@@ -146,18 +150,25 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
       // conserva además su sonido de descubrimiento NFC (no usamos NO_PLATFORM_SOUNDS).
       puerto.confirmar();
       const scannedAt = (puerto.ahora?.() ?? new Date()).toISOString();
-      const posicion = await puerto.posicion().catch(() => undefined);
+      const posicion = await Promise.race([puerto.posicion().catch(() => undefined), interrupcion]);
       const scan = {
         uid,
         scannedAt,
         ...(posicion ?? {}),
       };
-      const firma = await puerto.firmar({ ...scan, method: 'nfc' });
+      const firma = await Promise.race([
+        conTope(puerto.firmar({ ...scan, method: 'nfc' }), undefined), interrupcion,
+      ]);
+      if (!firma) throw new ErrorEscaneo('error-desconocido', 'No se pudo firmar la marca. Vuelve a escanear el punto.', true);
       return { ...scan, tech: 'nfc', ...firma };
     } catch (causa) {
-      if (causa instanceof ErrorEscaneo) throw causa;
+      if (causa instanceof ErrorEscaneo) {
+        if (causa.codigo !== 'cancelado') puerto.diagnostico?.(causa.codigo);
+        throw causa;
+      }
       const clase = cancelado ? 'cancelado' : puerto.clasificarError(causa);
       const error = errorClasificado(clase);
+      if (clase !== 'cancelado') puerto.diagnostico?.(clase);
       /*
        * `clasificarError` reduce cualquier fallo a una de seis frases, y la
        * sexta —"No se pudo iniciar el lector NFC"— es un cajon de sastre que no
@@ -176,15 +187,14 @@ export function crearLectorNfc(puerto: PuertoNfc): LectorNfc {
       throw error;
     } finally {
       if (temporizador) clearTimeout(temporizador);
-      await puerto.cancelar().catch(() => undefined);
-      escaneoActivo = false;
+      const liberado = await conTope(puerto.cancelar().then(() => true, () => false), false);
+      if (!liberado) puerto.diagnostico?.('cancelacion-sin-respuesta');
+      detenerActivo = undefined;
     }
   }
 
   function cancelar() {
-    if (!escaneoActivo) return;
-    cancelado = true;
-    void puerto.cancelar().catch(() => undefined);
+    detenerActivo?.();
   }
 
   return { capacidades, escanear, cancelar };

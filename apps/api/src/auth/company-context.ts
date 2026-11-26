@@ -8,7 +8,7 @@ type Guard = AuthIdentityRow & { guard_name: string };
 interface Context { tenantId: string; issuerId?: string; uid?: string; codeLookup?: string; binding: string }
 // Keep the browser cookie and its revocable server record on the same horizon.
 export const COMPANY_CONTEXT_TTL_SECONDS = 400 * 24 * 60 * 60;
-const key = (token: string) => `auth:company-context:${createHash('sha256').update(token).digest('hex')}`;
+export const companyContextKey = (token: string) => `auth:company-context:${createHash('sha256').update(token).digest('hex')}`;
 const binding = (device: string) => createHash('sha256').update(device).digest('hex');
 const stableBinding = (device: string) => binding(
   device.replace(/\b(Chrome|SentryCoreAndroid|VoxIAAndroid)\/[\w.-]+/g, '$1'),
@@ -19,13 +19,13 @@ export class CompanyContext {
   constructor(private readonly db: DataSource, private readonly redis: Redis) {}
   async issue(context: Omit<Context, 'binding'>, device: string) {
     const token = randomBytes(32).toString('base64url');
-    await this.redis.set(key(token), JSON.stringify({ ...context, binding: stableBinding(device) }), 'EX', COMPANY_CONTEXT_TTL_SECONDS);
+    await this.redis.set(companyContextKey(token), JSON.stringify({ ...context, binding: stableBinding(device) }), 'EX', COMPANY_CONTEXT_TTL_SECONDS);
     return token;
   }
-  async revoke(token?: string) { if (token) await this.redis.del(key(token)); }
+  async revoke(token?: string) { if (token) await this.redis.del(companyContextKey(token)); }
   async guards(token: string | undefined, device: string): Promise<{ context: Context; guards: Guard[] }> {
     if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new UnauthorizedException('Selecciona una empresa');
-    const raw = await this.redis.get(key(token));
+    const raw = await this.redis.get(companyContextKey(token));
     if (!raw) throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     const context = JSON.parse(raw) as Context;
     const deviceBinding = stableBinding(device);
@@ -42,8 +42,8 @@ export class CompanyContext {
     // Upgrade old bindings on use. Both operations require an existing key,
     // so a logout during validation cannot revive the revoked authorization.
     const renewed = context.binding === deviceBinding
-      ? await this.redis.expire(key(token), COMPANY_CONTEXT_TTL_SECONDS)
-      : await this.redis.set(key(token), JSON.stringify({ ...context, binding: deviceBinding }), 'EX', COMPANY_CONTEXT_TTL_SECONDS, 'XX');
+      ? await this.redis.expire(companyContextKey(token), COMPANY_CONTEXT_TTL_SECONDS)
+      : await this.redis.set(companyContextKey(token), JSON.stringify({ ...context, binding: deviceBinding }), 'EX', COMPANY_CONTEXT_TTL_SECONDS, 'XX');
     if (!renewed) {
       throw new UnauthorizedException('Vuelve a identificar la empresa con su código o tarjeta');
     }

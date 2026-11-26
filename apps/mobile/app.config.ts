@@ -104,7 +104,7 @@ const config: ExpoConfig = {
    * "remote"` en eas.json). Ponerlo a mano vuelve a reintroducir el conflicto
    * "versionCode ya usado" al subir a Play.
    */
-  version: '0.3.7',
+  version: '0.3.8',
   // Let Android handle rotation, split screen and tablet/foldable windows.
   orientation: 'default',
   userInterfaceStyle: 'light',
