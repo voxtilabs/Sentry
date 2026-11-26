@@ -27,3 +27,11 @@ test('stop interrupts the post-tag debounce without cancelling twice',async()=>{
  const running=login.iniciar(()=>{detections++;});await tick();const at=Date.now();await login.detener();await running;
  assert.equal(detections,1);assert.equal(cancels,1);assert(Date.now()-at<300);
 });
+
+test('un callback de lectura perdido no bloquea el paso del login al primer punto', async () => {
+  const login = crearEscuchaLogin(port({ request: () => new Promise(() => {}) }));
+  const running = login.iniciar(() => assert.fail('lectura cancelada'));
+  await tick();
+  await login.detener();
+  await running;
+});

@@ -39,9 +39,9 @@ describe('tarjeta de empresa', () => {
   });
   it('elige un guardia de la misma empresa y consume el ticket una sola vez', async () => {
     const { auth, session } = setup();
-    const { ticket } = await auth.companyCard('AABB1234', 'ip-a', 'android-a');
+    const { ticket, contextToken } = await auth.companyCard('AABB1234', 'ip-a', 'android-a');
     await auth.selectCompanyGuard({ ticket, guardId: 'guard-a' }, 'ip-a', 'android-a');
-    expect(session).toHaveBeenCalledWith(GUARD, 'android-a');
+    expect(session).toHaveBeenCalledWith(GUARD, 'android-a', contextToken);
     await expect(auth.selectCompanyGuard({ ticket, guardId: 'guard-a' }, 'ip-a', 'android-a')).rejects.toBeInstanceOf(UnauthorizedException);
   });
   it('rechaza otro guardia, otro dispositivo y un ticket vencido', async () => {

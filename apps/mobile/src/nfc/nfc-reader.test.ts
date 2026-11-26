@@ -136,3 +136,18 @@ test('un NFC que lanza excepcion tampoco cuelga', async () => {
 
   assert.deepEqual(await lector.capacidades(), { tieneNfc: false, nfcActivado: false });
 });
+
+test('cancelar permite reintentar aunque Android no conteste ni lectura ni limpieza', { timeout: 5500 }, async () => {
+  let attempts = 0;
+  let cancellations = 0;
+  const reader = crearLectorNfc(puerto({
+    esperarEtiqueta: async () => ++attempts === 1 ? new Promise(() => {}) : { id: '04AABBCC' },
+    cancelar: async () => { if (++cancellations === 1) await new Promise(() => {}); },
+  }));
+  const pending = reader.escanear(15_000);
+  await new Promise(resolve => setImmediate(resolve));
+  reader.cancelar();
+  await assert.rejects(pending, (e: unknown) => e instanceof ErrorEscaneo && e.codigo === 'cancelado');
+  assert.equal((await reader.escanear(100)).uid, '04AABBCC');
+  assert.equal(cancellations, 2);
+});

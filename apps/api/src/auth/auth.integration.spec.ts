@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { Client } from 'pg';
 import { DataSource } from 'typeorm';
 
+import { CompanyContext } from './company-context';
 import { AuthService } from './auth.service';
 import { createAuthActionToken } from './auth-action-token';
 import type { MailService } from './mail.service';
@@ -127,6 +128,33 @@ describeAuth('AuthService (integración)', () => {
     const next = await auth.refresh(winner.value.refreshToken);
     await auth.logout(next.refreshToken);
     await expect(auth.refresh(login.refreshToken)).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('recupera una respuesta perdida con la misma cookie de empresa y el sucesor aún vigente', async () => {
+    const login = await auth.login({ identity: 'guardia@demo-andina.test', password: demoPassword! });
+    if ('requiresTenantSelection' in login) throw new Error('Login demo ambiguo');
+    const contexts = new CompanyContext(dataSource, redis);
+    const company = await contexts.issue({ tenantId: login.user.tenantId! }, 'QA');
+    const other = await contexts.issue({ tenantId: login.user.tenantId! }, 'otro teléfono');
+    const original = login.refreshToken;
+    const first = await auth.refresh(original, company);
+    const oldHash = createHash('sha256').update(original).digest('hex');
+    // Simula una respuesta perdida y el reintento fuera de los 15 s originales.
+    await redis.del(`auth:refresh-in-progress:${oldHash}`);
+    await expect(auth.refresh(original, other)).rejects.toMatchObject({ status: 409 });
+    await expect(auth.refresh(original)).rejects.toMatchObject({ status: 409 });
+    const recovered = await auth.refresh(original, company);
+    expect(recovered.refreshToken).toBe(first.refreshToken);
+    expect(recovered.user).toEqual(first.user);
+
+    await expect(auth.refresh(first.refreshToken, other)).rejects.toMatchObject({ status: 401 });
+    const latest = await auth.refresh(recovered.refreshToken, company);
+    await expect(auth.refresh(original, company)).rejects.toMatchObject({ status: 409 });
+    await contexts.revoke(company);
+    await expect(auth.refresh(recovered.refreshToken, company)).rejects.toMatchObject({ status: 409 });
+    await auth.logout(original, company);
+    await expect(auth.refresh(latest.refreshToken, company)).rejects.toMatchObject({ status: 401 });
+    await expect(auth.refresh(original, company)).rejects.toMatchObject({ status: 401 });
   });
 
   it('revoca la familia si se vuelve a usar el token después de la renovación concurrente', async () => {

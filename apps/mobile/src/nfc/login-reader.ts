@@ -22,7 +22,10 @@ export function crearEscuchaLogin(port: LoginReaderPort) {
   let current: Session | undefined;
   let generation = 0;
   const valid = (session: Session) => current === session && !session.cancelled;
-  const cancel = (session: Session) => session.cancelRequest ??= port.cancel().catch(() => undefined);
+  const cancel = (session: Session) => session.cancelRequest ??= new Promise<void>(resolve => {
+    const timer = setTimeout(resolve, 3000);
+    void port.cancel().catch(() => undefined).finally(() => { clearTimeout(timer); resolve(); });
+  });
   const delay = (session: Session, ms: number) => new Promise<void>(resolve => {
     const timer = setTimeout(resolve, ms);
     void session.stopSignal.then(() => {
@@ -44,9 +47,9 @@ export function crearEscuchaLogin(port: LoginReaderPort) {
         try {
           session.cancelRequest = undefined;
           session.ownsRequest = true;
-          await port.request();
+          await Promise.race([port.request(), session.stopSignal]);
           if (!valid(session)) continue;
-          const tag = await port.read();
+          const tag = await Promise.race([port.read(), session.stopSignal.then(() => null)]);
           const uid = tag?.id?.replace(/[^0-9a-f]/gi, '').toUpperCase();
           if (uid && uid.length >= 4 && uid.length <= 64 && valid(session)) {
             port.confirm();
