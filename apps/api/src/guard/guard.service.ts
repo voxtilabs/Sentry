@@ -321,11 +321,10 @@ export class GuardService {
        * iniciarlas el servidor lo mandaba al otro recinto sin decirle nada.
        */
       const elegidoParaRondas =
-        siteId !== undefined ? assignedSites.find((s) => s.id === siteId) : undefined;
-      const recintosOfrecidos = elegidoParaRondas
-        ? [elegidoParaRondas.id]
-        : assignedSites.map((s) => s.id);
-      const rutasVoluntarias = await this.rutasParaRondaVoluntaria(recintosOfrecidos);
+        assignedSites.length === 1 ? assignedSites[0] : assignedSites.find((s) => s.id === siteId);
+      const rutasVoluntarias = elegidoParaRondas
+        ? await this.rutasParaRondaVoluntaria([elegidoParaRondas.id])
+        : [];
 
       /*
        * Cuantas hay en los OTROS recintos del guardia.
@@ -351,16 +350,15 @@ export class GuardService {
        * Con dos recintos asignados, "no tienes un turno" a secas se lee como
        * "no trabajas hoy" y el guardia no vuelve a mirar el otro.
        */
-      const elegido = assignedSites.find((s) => s.id === siteId);
       const mensaje =
-        elegido && assignedSites.length > 1
-          ? `No tienes un turno asignado en ${elegido.name} en este momento.`
+        elegidoParaRondas && assignedSites.length > 1
+          ? `No tienes un turno asignado en ${elegidoParaRondas.name} en este momento.`
           : 'No tienes un turno asignado en este momento.';
 
       return {
         hasAssignment: false as const,
         assignedSites,
-        selectedSiteId: siteId ?? assignedSites[0]?.id ?? null,
+        selectedSiteId: elegidoParaRondas?.id ?? null,
         message: mensaje,
         voluntaryRoutes: rutasVoluntarias,
         voluntaryRoutesElsewhere: rutasEnOtrosRecintos,
@@ -819,7 +817,8 @@ export class GuardService {
     const target = resolved[0];
     if (!target) throw new NotFoundException('La etiqueta no resuelve a ningún punto');
     if (!patrol.expected_checkpoint_ids.includes(target.checkpoint_id)) {
-      throw new ConflictException('El punto escaneado no pertenece a esta ronda');
+      this.logger.warn(JSON.stringify({ event: 'escaneo_fuera_de_ruta', patrol_id: patrolId, site_id: patrol.site_id }));
+      throw new ConflictException('El punto escaneado no pertenece a esta ronda. Revisa el recinto y la ruta que iniciaste.');
     }
 
     // Reglas efectivas del RECINTO (#16), resueltas una sola vez al entrar al
