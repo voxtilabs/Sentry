@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 import { forgetOfflineRound, prepareOfflineScreen } from './guard-offline-session';
 import { DivulgacionUbicacion } from './divulgacion-ubicacion';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 
 import type { CheckpointKind } from '@sentrycore/shared';
 
@@ -23,7 +23,7 @@ export interface GuardHomeData {
     name: string;
     branchName?: string;
   }>;
-  selectedSiteId?: string;
+  selectedSiteId?: string | null;
   /**
    * Rutas que el guardia puede recorrer por su cuenta, sin que se la asignen
    * (#133). La API las manda solo cuando NO tiene ronda abierta, porque con una
@@ -117,7 +117,9 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
   const { guardarRutaOffline, pedirPermiso, fase } = puente;
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string>();
-  const rutasVoluntarias = data.voluntaryRoutes ?? [];
+  const [cambiandoRecinto, cambiarRecinto] = useTransition();
+  const recintoElegido = data.assignedSites?.find((site) => site.id === data.selectedSiteId);
+  const rutasVoluntarias = (data.voluntaryRoutes ?? []).filter((ruta) => ruta.siteId === recintoElegido?.id);
   const [rutaElegida, setRutaElegida] = useState<string>('');
   const [iniciandoVoluntaria, setIniciandoVoluntaria] = useState(false);
   const [errorVoluntaria, setErrorVoluntaria] = useState<string>();
@@ -237,11 +239,16 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
               <span>📍 Seleccionar recinto asignado:</span>
               <select
                 value={data.selectedSiteId ?? ''}
+                disabled={cambiandoRecinto || iniciandoVoluntaria || enRecorridoLibre}
                 onChange={(e) => {
-                  router.push(`/app/guardia?siteId=${e.target.value}`);
+                  const nuevoRecinto = e.target.value;
+                  setRutaElegida('');
+                  setErrorVoluntaria(undefined);
+                  cambiarRecinto(() => router.push(`/app/guardia?siteId=${nuevoRecinto}`));
                 }}
                 style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.375rem', border: '1px solid #cbd5e1', fontSize: '0.95rem', backgroundColor: '#f8fafc', color: '#0f172a' }}
               >
+                <option value="" disabled>Elige tu recinto</option>
                 {data.assignedSites.map((site) => (
                   <option key={site.id} value={site.id}>
                     {site.branchName ? `${site.branchName} · ${site.name}` : site.name}
@@ -308,8 +315,8 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
             <button
               className="primary-button"
               disabled={
-                iniciandoVoluntaria ||
-                (rutasVoluntarias.length > 1 && rutaElegida === '')
+                iniciandoVoluntaria || cambiandoRecinto ||
+                (rutasVoluntarias.length > 1 && !rutasVoluntarias.some((ruta) => ruta.id === rutaElegida))
               }
               onClick={() =>
                 iniciarRondaVoluntaria(
@@ -318,7 +325,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
               }
               type="button"
             >
-              {iniciandoVoluntaria ? 'Iniciando…' : 'Iniciar ronda voluntaria'}
+              {iniciandoVoluntaria ? 'Iniciando…' : `Iniciar ronda voluntaria en ${rutasVoluntarias[0]!.siteName}`}
             </button>
             {errorVoluntaria ? (
               <p className="ronda-voluntaria-error" role="alert">
@@ -335,7 +342,7 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
           * dos botones del mismo tamanio elige el que no le pide ruta, y este
           * no acredita ningun punto de control.
           */}
-        {data.assignedSites && data.assignedSites.length > 0 ? (
+        {recintoElegido ? (
           <details className="recorrido-libre">
             <summary>¿Necesitas salir sin una ronda asignada?</summary>
             <p>
@@ -344,9 +351,9 @@ export function GuardHome({ data, apiUrl }: { data: GuardHomeData; apiUrl: strin
             </p>
             <button
               className="secondary-button"
-              disabled={enRecorridoLibre}
+              disabled={enRecorridoLibre || cambiandoRecinto}
               onClick={() =>
-                iniciarRecorridoLibre(data.selectedSiteId ?? data.assignedSites![0]!.id)
+                iniciarRecorridoLibre(recintoElegido.id)
               }
               type="button"
             >

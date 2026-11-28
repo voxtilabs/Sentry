@@ -152,7 +152,7 @@ export default async function RoleDashboard({
           {data.patrol && data.patrol.status !== 'pendiente' ? (
             <ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardShift data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador>
           ) : (
-            <GuardHomeEntrance apiUrl={publicApiUrl()} context={visitorContext} initialSiteId={data.selectedSiteId}><ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardHome data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador></GuardHomeEntrance>
+            <GuardHomeEntrance apiUrl={publicApiUrl()} context={visitorContext} initialSiteId={data.selectedSiteId ?? undefined}><ConsentimientoTrabajador apiUrl={publicApiUrl()}><GuardHome data={data} apiUrl={publicApiUrl()} /></ConsentimientoTrabajador></GuardHomeEntrance>
           )}
           </>
         ) : guardView === 'puntos' ? (

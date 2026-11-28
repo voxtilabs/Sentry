@@ -13,11 +13,40 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from '@jest/globals';
 
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { GuardHome } from './guard-home';
+
+jest.mock('next/navigation', () => ({ useRouter: () => ({}) }));
+jest.mock('./use-guard-bridge', () => ({ useGuardBridge: () => ({}) }));
+jest.mock('./guard-tareas-recuperacion', () => ({ useRecuperarTareasGuardadas: jest.fn() }));
+
 const AQUI = __dirname;
 const pantalla = readFileSync(join(AQUI, 'guard-home.tsx'), 'utf8');
 const css = readFileSync(join(AQUI, '..', 'globals.css'), 'utf8');
 
 describe('ronda voluntaria en la app del guardia', () => {
+  it('solo permite iniciar en el recinto visible aunque lleguen rutas de dos recintos', () => {
+    const sites = [{ id: 'edi', name: 'Edificio' }, { id: 'maq', name: 'Maquinaria' }];
+    const render = (selectedSiteId?: string) => renderToStaticMarkup(createElement(GuardHome, {
+      apiUrl: '/api',
+      data: {
+        hasAssignment: false, synchronization: { pendingItems: 0 }, assignedSites: sites,
+        selectedSiteId,
+        voluntaryRoutes: sites.map(site => ({
+          id: 'ruta-' + site.id, name: site.name, siteId: site.id, siteName: site.name, checkpointCount: 14,
+        })),
+      },
+    }));
+    expect(render()).toContain('Elige tu recinto');
+    expect(render()).not.toContain('Iniciar ronda voluntaria');
+    expect(render()).not.toContain('Empezar recorrido libre');
+    for (const site of sites) {
+      expect(render(site.id)).toContain('Iniciar ronda voluntaria en ' + site.name);
+      expect(render(site.id)).not.toContain('¿Qué ronda vas a hacer?');
+    }
+  });
+
   it('llama al endpoint que ya existia', () => {
     expect(pantalla).toContain('/voluntary-patrol');
     expect(pantalla).toMatch(/method: 'POST'/);
@@ -39,7 +68,7 @@ describe('ronda voluntaria en la app del guardia', () => {
   });
 
   it('no deja iniciar sin elegir ruta cuando hay varias', () => {
-    expect(pantalla).toMatch(/rutasVoluntarias\.length > 1 && rutaElegida === ''/);
+    expect(pantalla).toContain('rutasVoluntarias.length > 1 && !rutasVoluntarias.some((ruta) => ruta.id === rutaElegida)');
   });
 
   it('con una sola ruta no obliga a elegirla de una lista', () => {

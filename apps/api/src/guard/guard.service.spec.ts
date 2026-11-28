@@ -96,6 +96,21 @@ describe('GuardService', () => {
     ]);
   });
 
+  it.each([undefined, 'recinto-no-asignado'])(
+    'con dos recintos y selección %s, espera la elección sin ofrecer rutas mezcladas',
+    async (siteId) => {
+      const manager = { query: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([
+        { id: 'maq', name: 'Maquinaria', branch_name: '' },
+        { id: 'edi', name: 'Edificio', branch_name: '' },
+      ]).mockResolvedValue([]) };
+      const service = new GuardService({ manager } as unknown as TenantContextService, sinCorreo(), sinReglas(), sinEscalamiento(), sinPuertaGps(), sinEnvioInforme());
+      await expect(service.getHome('guard', siteId)).resolves.toMatchObject({
+        selectedSiteId: null, voluntaryRoutes: [], voluntaryRoutesElsewhere: 0,
+      });
+      expect(manager.query).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it('sin rutas en el recinto elegido, dice cuantas hay en los otros', async () => {
     /*
      * Reportado el mismo dia que se filtro por recinto: «eliminó el botón de
@@ -144,8 +159,8 @@ describe('GuardService', () => {
     };
     const service = new GuardService({ manager } as unknown as TenantContextService, sinCorreo(), sinReglas(), sinEscalamiento(), sinPuertaGps(), sinEnvioInforme());
 
-    await expect(service.getHome('guard-id', 'site-unico')).resolves.toMatchObject({
-      voluntaryRoutesElsewhere: 0,
+    await expect(service.getHome('guard-id')).resolves.toMatchObject({
+      selectedSiteId: 'site-unico', voluntaryRoutesElsewhere: 0,
     });
     expect(manager.query).toHaveBeenCalledTimes(3);
   });
